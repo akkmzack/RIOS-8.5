@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_tcp                                                 -->
+<!--   Module Root: /rbt/sport/vegas                                        -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_tcp.c            -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/vegas/config/myconfig</name>                   -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_tcp">
+    <config>
+        <name>/rbt/sport/vegas/config/sack/enable</name>
+        <description>TCP Selective Acknowledgment</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/lan_global/adaptive_read_buffers/enable</name>
+        <description>LAN Adaptive Read Buffers</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/wan_global/adaptive_read_buffers/enable</name>
+        <description>WAN Adaptive Read Buffers</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/wan_global/legacy_send_sockbufsz_behavior/enable</name>
+        <description>WAN Legacy Send Sockbufsz Behavior</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/slow_start_after_idle/enable</name>
+        <description>TCP Slow Start After Idle Connections</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/sei_richochet</name>
+        <description>Single ended interception ricochet option</description>
+        <value type="uint8">80</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_sei_trpy_ricochet</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/mode</name>
+        <description>TCP Congestion Control Mode</description>
+        <value type="uint8" min="1" max="7">1</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/override/hstcp/enable</name>
+        <description>Override congestion control mode HSTCP enable</description>
+        <value type="bool">false</value>
+        <commit-descriptor>
+            <apply-func>md_rbt_tcp_cong_ctrl_mode_enable</apply-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/override/westwood/enable</name>
+        <description>Override congestion control mode westwood enable</description>
+        <value type="bool">false</value>
+        <commit-descriptor>
+            <apply-func>md_rbt_tcp_cong_ctrl_mode_enable</apply-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/override/hybla/enable</name>
+        <description>Override congestion control mode hybla enable</description>
+        <value type="bool">false</value>
+        <commit-descriptor>
+            <apply-func>md_rbt_tcp_cong_ctrl_mode_enable</apply-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/override/per_connection/enable</name>
+        <description>Override congestion control mode Skipware per connection enable</description>
+        <value type="bool">false</value>
+        <commit-descriptor>
+            <apply-func>md_rbt_tcp_cong_ctrl_mode_enable</apply-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/cong_ctrl/override/error_tolerant/enable</name>
+        <description>Override congestion control mode Skipware error tolerant enable</description>
+        <value type="bool">false</value>
+        <commit-descriptor>
+            <apply-func>md_rbt_tcp_cong_ctrl_mode_enable</apply-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/sei/enable</name>
+        <description>SCPS Single ended interception table enable</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/rate_cap_enabled</name>
+        <description>Configure rate-cap for non-single ended connections</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/sei/force_passthrough/enable</name>
+        <description>SCPS Single ended interception force passthrough enable</description>
+        <value type="bool">true</value>
+        <sysctl-key-association>
+            <sysctl-key>nbt.scps_passthrough_force</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/enable</name>
+        <description>Skipware legacy compression</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/initiate/enable</name>
+        <description>Initiate legacy compression</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/terminate/enable</name>
+        <description>Terminate legacy compression</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/wan_rtt_threshold</name>
+        <description>TCP proxy wan rtt threshold(ms)</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/snack/enable</name>
+        <description>Skipware SNACK</description>
+        <value type="bool">true</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_scps_snack</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/extended_option/enable</name>
+        <description>Skipware SCPS extended option</description>
+        <value type="bool">true</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_scps_ext_opt</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/init_cwnd</name>
+        <description>Set the initial congestion window for all TCP connections</description>
+        <value type="uint32">0</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_init_cwnd</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/max_ssthresh</name>
+        <description>Set the slow start threshold for all TCP connections</description>
+        <value type="uint32">0</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_sf_max_ssthresh</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/error_tolerant/err_window</name>
+        <description>Skipware error tolerant window before triggiering recovery</description>
+        <value type="uint8" min="0" max="8">4</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_skipware_et_err</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/per_conn/cong_avoid_ack</name>
+        <description>Skipware per connection congestion avoidance ACK limit</description>
+        <value type="uint16" min="0" max="1024">8</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_skipware_pc_ca</sysctl-key>
+        </sysctl-key-association>
+    </config>
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/bw_est/level</name>
+         <description>TCP bandwidth estimation aggressive level</description>
+        <value type="uint32">2</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_wwood_aggressive</sysctl-key>
+        </sysctl-key-association>
+    </config>
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/bw_est/min_delta</name>
+        <description>TCP bandwidth estimation min delta</description>
+        <value type="uint32">50</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_rbt_wwood_min_delta</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/early_retrans</name>
+        <description>TCP Early Retransmit Feature(RFC 5827)</description>
+        <value type="uint16" min="0" max="2">0</value>
+        <sysctl-key-association>
+            <sysctl-key>net.ipv4.tcp_early_retrans</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/process_batch</name>
+        <description>Control the max number of packets to process before yielding processor</description>
+        <value type="uint32">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/max_queuing_delay</name>
+        <description>Set upper bound on packets queued for module processing</description>
+        <value type="uint32">1500</value>
+    </config>
+
+</node-list>

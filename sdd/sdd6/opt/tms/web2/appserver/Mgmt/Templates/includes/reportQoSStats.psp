@@ -1,0 +1,221 @@
+<%
+## Copyright 2006,2009 Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportQosStats.psp
+## This is the common template for the QoS Stats Dropped/Sent report pages.
+
+## QoS Stats Dropped and QoS Stats Sent are virtually identical except for data source and labelling,
+## so they use the same Pagelet superclass and this include file.
+##
+%>
+
+<%@page imports="ajaxentrytable, ReportUtils, FormUtils, GfxUtils, ProductReportContext:QoSStatsPagelet" %>
+<%@page extends="QoSStatsPagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="css">
+    return '''
+table#reportParams td {
+    padding-right: 10px;
+}
+.applianceSelector {
+    width: 150px;
+}
+#appliance {
+    min-width: 150px;
+}
+'''
+</psp:method>
+
+<psp:method name="prepare" params="reportOpts">
+    super(self.__class__, self).prepare(reportOpts)
+    ## extract the QoS class ids from the request
+    req = self.request()
+    ## put selected QoS ids in a comma-separated list
+    ## if 'custom' is selected in the ids dropdown, use selected custom ids from second list ('mids')
+    qosClassIds, isCustom = ReportUtils.getQoSClassIds(req, reportOpts['direction'])
+    if isCustom:
+        reportOpts['idStr'] = '__RBT_CUSTOM__'
+        numMids = len(qosClassIds)
+        if numMids > 8:
+            self.getPagePresentationServlet().setFormError('You have selected more than 8 classes for display. Only the first 8 will be displayed.')
+            qosClassIds = qosClassIds[:8]
+        reportOpts['midStr'] = qosClassIds
+    else:
+        reportOpts['idStr'] = qosClassIds[0]
+        reportOpts['midStr'] = ''
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(self.__class__, self).dialogEntries(reportOpts)
+    req = self.request()
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "$('%s').submit();" % controlFormId
+    ## retrieve the class, custom class lists
+    idStr = reportOpts.get('idStr', '')
+    # The graphing functions expect a list of comma separated integers
+    midStr = ','.join(reportOpts.get('midStr', ''))
+    ## get the statistic type
+    fields = req.fields()
+    session = req.session()
+    stypeField = fields.get('stype', session.value('stype', 'bytes'))
+    ## deal with custom navigation and set up options
+    chooseOrSubmitAction = "chooseOrSubmit($('%s'), '%sids', 'qos_custom')" % (controlFormId, reportOpts['direction'])
+    qosOptions = ReportUtils.fetchQoSClassOptions(req, reportOpts['direction'])
+    qosMultiOptions = list(qosOptions) # take a copy; don't include 'All' or 'Custom'
+    ## only insert 'Custom' if there are classes to select
+    if len(qosOptions) > 1:
+        qosOptions.append(('__RBT_CUSTOM__', '(Custom)'))
+    ## all this stuff is needed in the gfx request
+    self.updateGfxParams(reportOpts,
+                         {'%sids' % (reportOpts['direction']): idStr,
+                          '%smids' % (reportOpts['direction']): midStr,
+                          'stype': stypeField,
+                          'dtype': reportOpts['dtype']})
+    stypeOptions = (('bytes',   'Bit Counts'),
+                    ('packets', 'Packet Counts'))
+    dialogEntries['classes'] = FormUtils.NodeEntry(
+        name = '%sids' % (reportOpts['direction']),
+        widget = 'select',
+        widgetClass = 'qos_class_select',
+        action = chooseOrSubmitAction,
+        selectOptions = qosOptions,
+        value = idStr,
+        )
+    dialogEntries['custom_classes'] = FormUtils.NodeEntry(
+        name = '%smids' % (reportOpts['direction']),
+        widget = 'select',
+        widgetClass = 'qos_custom_classes',
+        multiple = 'multiple',
+        size = '5',
+        selectOptions = qosMultiOptions,
+        )
+    dialogEntries['stype'] = FormUtils.NodeEntry(
+        name = 'stype',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = stypeOptions,
+        value = stypeField,
+        )
+    return dialogEntries
+</psp:method>
+
+<psp:method name="finalize" params="dialogEntries, reportOpts">
+    super(self.__class__, self).finalize(dialogEntries, reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    applianceSelected = reportOpts['applianceSelected']
+    if not applianceSelected:
+       dialogEntries['classes'].disabled = 'true'
+    classField = fields.get('%sids' % (reportOpts['direction']), session.value('%sids' % (reportOpts['direction']), '0'))
+    customClassClass = ('__RBT_CUSTOM__' == classField) and '' or ' class="hidden"'
+    reportOpts['classCol'] = '''
+%s
+<div id="qos_custom"%s>
+    <p class="reportFormLabel">Custom Classes:</p>
+    %s
+</div>
+''' % (dialogEntries['classes'].html(self, format='inline'), customClassClass, dialogEntries['custom_classes'].html(self, format='inline'))
+</psp:method>
+
+<psp:method name="beginPagelet" params="reportOpts">
+    super(self.__class__, self).beginPagelet(reportOpts);
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    customClassScript = """
+function switchOn_class(formId) {
+    var formEl = $(formId);
+    chooseCustom(formEl, '%sids', 'qos_custom');
+    return false;
+}
+""" % (reportOpts['direction'])
+    self.addPageletJavascript(customClassScript);
+    formId = reportOpts['controlFormId']
+    onloadFrag = "onloadScript += \" switchOn_class('%s');\"" % (formId)
+    self.addPageletJavascript(onloadFrag)
+</psp:method>
+
+<%
+qosClassesEnforcedTable = ajaxentrytable.AjaxEntryTable('qosClassesEnforced',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about QoS Classes.')
+aetCssClass = reportOpts.get('hideData') and 'hidden' or 'midLevel'
+%>
+<%
+applianceSelected = reportOpts['applianceSelected']
+if applianceSelected: {
+%>
+<div id="qosClassesPreEnforcementGraphDiv" class="graphDiv">
+  <img id="qosClassesPreEnforcementGraphImg" class="graphImg"
+    alt="QoS Pre-Enforcement Graph" />
+</div>
+
+<div id="qosClassesEnforcedGraphDiv" class="graphDiv">
+  <img id="qosClassesEnforcedGraphImg" class="graphImg"
+    alt="QoS Enforced Graph" />
+</div>
+<% } else: { %>
+<fieldset>
+  <div class="midLevel">
+    Please select an appliance below to view this report.
+  </div>
+</fieldset>
+<%
+}
+%>
+
+<form id="qosClassesEnforcedForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <input type="hidden" name="dtype" value="<%=reportOpts.get('dtype')%>" />
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Classes:</th>
+          <th>Statistic:</th>
+<% if applianceSelected: { %>
+          <th>Refresh:</th>
+<% } %>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+      <%= reportOpts.get('groupCol', '') %>
+      <td>
+        <%= reportOpts['classCol'] %>
+      </td>
+      <%= dialogEntries['stype'].html(self, format='horiz') %>
+<% if applianceSelected: { %>
+      <%= dialogEntries['refresh'].html(self, format='horiz') %>
+<% } %>
+      <td class="go">
+        <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+      </td>
+        </tr>
+      </tbody>
+    </table>
+
+<% if applianceSelected: { %>
+<%= qosClassesEnforcedTable.html(self, cssClass="%s" % aetCssClass) %>
+<% } %>
+<%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>

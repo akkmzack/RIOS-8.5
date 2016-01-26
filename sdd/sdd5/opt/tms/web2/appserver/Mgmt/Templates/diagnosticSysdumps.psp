@@ -1,0 +1,283 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticSysdumps
+## This is the template to display a table of sysdumps.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    if RVBDUtils.isSH():
+        import rsp
+        rspPublicName = rsp.publicName()
+    else:
+        rspPublicName = 'RSP'
+
+    return {
+        'IncludeStats': FormUtils.NodeEntry(
+            type='bool',
+            name='includeStats',
+            widget='checkboxLeft',
+            label='Include Statistics',
+            value='true'),
+        'IncludeAllLogs': FormUtils.NodeEntry(
+            type='bool',
+            name='includeAllLogs',
+            widget='checkboxLeft',
+            label='Include All Logs',
+            tooltip= \
+                'Include all logs regardless of size. Normally, system ' \
+                'dumps are limited to 50 MB of compressed logs.'),
+        'IncludeRsp': FormUtils.NodeEntry(
+            type='bool',
+            name='includeRsp',
+            widget='checkboxLeft',
+            label='Include %s' % rspPublicName,
+            tooltip='This will substantially increase the size of the system ' \
+                    'dump and should be used only if specifically requested ' \
+                    'by Riverbed support.',
+            value='false'),
+        'IncludeVsp': FormUtils.NodeEntry(
+            type='bool',
+            name='includeRsp',
+            widget='checkboxLeft',
+            label='Include VSP',
+            value='true'),
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/debug/generate/dump',
+            type='action')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'upload_case': FormUtils.NodeEntry(
+            name='upload_case',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='medium',
+            label='Case Number')}
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<psp:method name="css">
+    return '''
+#sysdumpsTable_main {
+    width: 835px;
+}
+fieldset {
+    width: 500px;
+}
+span.hint {
+  padding-right: 7px;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+fields = req.fields()
+
+# on CMC, make sure it's clear that the "Include Statistics" option
+# only saves the CMC stats, not the managed appliances
+if RVBDUtils.isCMC(): {
+    nodeEntries['IncludeStats'].tooltip = \
+        'Applies to statistics for the CMC itself, not managed appliances.'
+}
+
+sysdumpsTable = ajaxentrytable.AjaxEntryTable('sysdumps',
+    url='/mgmt/xmldata?p=sysdumpFiles&errorRedirect=%s' %
+       HTTPUtils._makeQuerystringDestParameter(self.request()),
+    headerSpec=('',
+                'System Dump',
+                ('Time Stamp', 'table_diagnosticfile_time'),
+                ('Size', 'table_diagnosticfile_size'),
+                'Upload Status'),
+    rowSpec = '''
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('timestring', 'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.tdDumpUploadStatus]''',
+    emptyMessage='No system dumps.',
+    removeName='removeFiles',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_')
+
+sysdumpsTable.editDivContent = '''
+  <div class="topLevel">
+    <table>
+      <tr><td class="labelPaddedRight">MD5 Checksum:</td><td id="editDump_md5sum">&nbsp;</td></tr>
+    </table>
+  </div>
+  <fieldset>
+    <legend>Download</legend>
+    <div class="midLevel">
+      <p>
+        Receive a copy of the system dump file:
+        <b><a title="Click to download the file." id="editDump_download">Download</a></b>
+      </p>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Upload to Riverbed Support</legend>
+    <div class="midLevel" id="editDump_uploadDiv">
+      Previous Upload:
+      <div class="indent">
+        <table>
+          <tbody>
+            <tr><td class="labelPaddedRight">Status:</td><td id="editDump_uploadStatus">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Case Number:</td><td id="editDump_uploadCase">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_startTimeDiv">
+            <tr><td class="labelPaddedRight">Start Time:</td><td id="editDump_uploadStart">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_percentDiv">
+            <tr><td class="labelPaddedRight">Percent:</td><td id="editDump_uploadPercent">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_finishTimeDiv">
+            <tr><td class="labelPaddedRight">Finish Time:</td><td id="editDump_uploadFinish">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_detailsDiv">
+            <tr><td class="labelPaddedRight">Details:</td><td id="editDump_uploadDetails">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Error Message:</td><td id="editDump_uploadError">&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="midLevel">
+      Upload:
+      <div id="uploadSysdumpLiveStatusAttachPoint" class="indent liveStatusAttachPoint">
+        %s
+        %s
+      </div>
+    </div>
+  </fieldset>
+''' % (dialogEntries['upload_case'].html(self, format='inline'),
+       FormUtils.renderButton(self, {'name': 'uploadFile', 'value': 'Upload'}))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="sysdumpsForm">
+  <div>
+    <input type="hidden" name="_action_" value="diagnosticFile" />
+    <input type="hidden" name="dir" value="sysdumps" />
+    <input type="hidden" name="upload_dir" value="sysdumps" />
+    <input type="hidden" name="upload_name" />
+    <%= sysdumpsTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<form method="post"
+      id="diagnosticSysdumpsForm"
+      action="<%= self.thisPageletRequest() %>"
+      onsubmit="return generateSysdumpsOverlay();"
+      class="liveStatusAttachPoint">
+  <fieldset class="topLevel">
+  <legend>Generate System Dump</legend>
+  <div class="midLevel">
+    <%= nodeEntries['IncludeStats'].html(self) %>
+    <%= nodeEntries['IncludeAllLogs'].html(self) %>
+    <%= RVBDUtils.isRspSupported() and nodeEntries['IncludeRsp'].html(self) or ''%>
+    <%= RVBDUtils.isEXVSP() and nodeEntries['IncludeVsp'].html(self) or ''%>
+  </div>
+  <div class="submitButtons">
+    <input type="hidden" name="_action_" value="generateSysdump" />
+    <input type="submit" name="genSysdump" value="Generate System Dump" />
+  </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+sysdumpsTable.editEntry = function(editName) {
+    var form = $('sysdumpsForm');
+    form.elements['upload_name'].value = editName;
+
+    var req = newAjaxRequest('/mgmt/xmldata?p=dumpDetails&fileType=sysdump&dir=sysdumps', 'block');
+    req.send('name=' + editName);
+    var dump = req.responseXML.documentElement.firstChild;
+
+    setElementText('editDump_md5sum', dump.getAttribute('md5sum'));
+    setElementText('editDump_uploadStatus', dump.getAttribute('status-pretty'));
+    setElementText('editDump_uploadCase', dump.getAttribute('case'));
+    setElementText('editDump_uploadStart', dump.getAttribute('start-time'));
+    setElementText('editDump_uploadFinish', dump.getAttribute('finish-time'));
+    setElementText('editDump_uploadPercent', dump.getAttribute('percent') + '%');
+    setElementText('editDump_uploadDetails', dump.getAttribute('details'));
+    setElementText('editDump_uploadError', dump.getAttribute('error_message'));
+
+    $('editDump_download').href = dump.getAttribute('downloadHref')
+
+    // update the editing iv
+    this.editXMLElement = dump;
+};
+
+sysdumpsTable.updateHook = function() {
+    if (('edit' == this.editMode) && this.editXMLElement) {
+        status = this.editXMLElement.getAttribute('status');
+        if ('in progress' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', true);
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('finished' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', 'hide');
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', true);
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('failed' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', true);
+            enableElements('editDump_uploadError', true);
+        } else {
+            enableElements('editDump_uploadDiv', 'hide');
+        }
+    }
+}
+
+
+var generateLiveStatus;
+
+Y.on('domready', function() {
+    generateLiveStatus = new LiveStatus({
+        attachPoint: '#diagnosticSysdumpsForm'
+    }).render();
+});
+
+function generateSysdumpsOverlay() {
+    setTimeout(function() { generateLiveStatus.show('Generating system dump.'); }, 0);
+    $('diagnosticSysdumpsForm').submit();
+}
+
+// ]]>
+</script>

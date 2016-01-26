@@ -1,0 +1,78 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## reportPrepopLog.psp
+##
+## Presents a log file for a Prepop share.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, os, re, Nodes, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+def safetyCheck(val): {
+    return ('..' not in val)
+}
+
+logFileBase = '/var/opt/rcu'
+
+share = fields.get('share', '')
+logSelect = fields.get('log', 'initial-copy')
+logContent = ''
+
+if safetyCheck(share) and safetyCheck(logSelect): {
+    failSafety = False
+    if logSelect == 'dry-run': {
+        logFilePath = '%s/%s.%s.log' % (logFileBase, share, logSelect)
+    }
+    else: {
+        logFilePath = '%s/%s.%s.status' % (logFileBase, share, logSelect)
+    }
+    logFileExists = os.path.exists(logFilePath)
+    if logFileExists: {
+        logContent = file(logFilePath, 'r').read()
+    }
+} else: {
+    failSafety = True
+}
+%>
+
+<% self.beginPagelet() %>
+
+<h3><b><%= cgi.escape(logSelect) %></b> Log for Prepopulation Share <b><%= cgi.escape(share or 'unknown') %></b></h3>
+
+<%
+if logFileExists: {
+%>
+<div class="simpleLog">
+  <pre>
+    <%= cgi.escape(logContent) %>
+  </pre>
+</div>
+<%
+} else: {
+     if failSafety: {
+%>
+    <div>
+      Invalid character pattern found. Please remove these and try again.
+    </div>
+<%
+    } else: {
+%>
+    <div>
+      No log file found.
+    </div>
+    <% }
+}
+%>
+
+
+<% self.endPagelet() %>
+

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sport_ssl                                                 -->
+<!--   Module Root: /rbt/sport/ssl                                                -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_ssl.inc.c            -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/ssl/config/myconfig</name>                     -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sport_ssl" so-file-stem="md_ssl">
+    <config>
+        <name>/rbt/sport/ssl/config/backend/server_cn_match_first</name>
+        <description>Use Server CN before Alt-Names</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/global/late_start</name>
+      <description>Handle non-SSL data preceding SSL data over the same TCP connection</description>
+      <value type="bool">false</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/global/passive_key_derivation_enable</name>
+      <description>Control the Passive Key Derivation (client certs)</description>
+      <value type="bool">false</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/global/latency_blade_chaining_enable</name>
+      <description>Allow chaining latency blades when PKD is enabled</description>
+      <value type="bool">false</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/global/alert_as_eof</name>
+      <description>SSL alert as an end of data stream</description>
+      <value type="bool">false</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/global/proxy_support</name>
+      <description>Enable optimization for SSL proxies</description>
+      <value type="bool">false</value>
+    </config>
+
+    <!-- SSL Tunnel -->
+    <config>
+      <name>/rbt/sport/ssl/config/tunnel/session_cache_limit</name>
+      <description>Inner-SSL session cache limit</description>
+      <value type="uint32">20</value>
+    </config>
+
+    <!-- SSL Backend -->
+    <config>
+      <name>/rbt/sport/ssl/config/backend/null_cert_on_initial_hs</name>
+      <description>Accept null cert on initial handshake</description>
+      <value type="bool">true</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/backend/clone_client_hello</name>
+      <description>Clone the client hello message</description>
+      <value type="bool">false</value>
+    </config>
+
+    <config>
+      <name>/rbt/sport/ssl/config/backend/dont_bypass_future_on_cli_hs_fail</name>
+      <description>Whether sport will bypass future conns if a handshake fails</description>
+      <value type="bool">false</value>
+    </config>
+       
+    <!-- SSL Server Certs/Keys Global Exportable Flag -->
+
+    <action>
+        <name>/rbt/sport/ssl/action/server_certs/disable_server_certs_export</name>
+        <description>Disables exporting of Server Certs/Keys globally</description>
+        <action-func>mrs_disable_exporting_server_certs</action-func>
+        <parameter type="bool">disable_export</parameter>
+    </action>
+
+    <state>
+        <name>/rbt/sport/ssl/state/server_certs/global_exportable</name>
+        <description>Status of global exportable flag</description>
+        <value type="bool"/>
+        <get-func>mrs_get_global_exportable_flag</get-func>
+    </state>
+</node-list>

@@ -1,0 +1,25 @@
+function FileData_Pairs(x)
+{
+x.t("provide","high-level");
+x.t("appliance","log");
+x.t("steelhead","appliance");
+x.t("user","logs");
+x.t("user","system");
+x.t("high-level","view");
+x.t("network","activity");
+x.t("viewing","user");
+x.t("viewing","reports");
+x.t("viewing","logs");
+x.t("viewing","system");
+x.t("activity","view");
+x.t("chapter","viewing");
+x.t("reports","provide");
+x.t("reports","logs");
+x.t("logs","steelhead");
+x.t("logs","viewing");
+x.t("logs","chapter");
+x.t("view","user");
+x.t("view","network");
+x.t("system","logs");
+x.t("log","reports");
+}

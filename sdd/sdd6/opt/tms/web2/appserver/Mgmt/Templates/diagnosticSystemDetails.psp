@@ -1,0 +1,81 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Andrew Hao
+##
+## diagnosticSystemDetails.psp
+## This is the template for the System Details reports page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#sysDetailsTable_main #showModuleInfo {
+  margin: 1em 1em 1em 2em;
+  font-family: monospace;
+  white-space: pre;
+  width: 570px;
+}
+#sysDetailsTable_main td.error { color: #F00; } /* Red */
+#sysDetailsTable_main td.warning { color: #EA681D; } /* Yellow-orange */
+#sysDetailsTable_main td.ok { color: #3A3; } /* Green */
+#sysDetailsTable_main td.disabled { color: #AAA; } /* Grey */
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning
+    return ['/rbt/sport/sysdetail/state/system/*']
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+self.retargetCmcPolicyNodes()
+
+sysDetailsTable = ajaxentrytable.AjaxEntryTable('sysDetails',
+    url='/mgmt/xmldata?p=sysDetails',
+    emptyMessage='No system details to report.',
+    headerSpec=('Module', 'Status'),
+    rowSpec="""
+[AjaxEntryTable.tdAttrTreeEdit('name', 'name', null, false),
+ AjaxEntryTable.tdAttrStyle('status', 'statusTdClass')]""",
+    editDivOffset=0,
+    editDivContent="""
+<div id="sysDetailsEdit">
+  <div id="showModuleInfo"></div>
+</div>
+""")
+
+%>
+
+<% self.beginPagelet() %>
+
+<% if Nodes.present(mgmt, '/pm/monitor/process/sport/state') != 'running': { %>
+<p class="warning">
+  Some modules are not available when the
+  <a href="/mgmt/gui?p=setupAppliance_service">optimization service</a>
+  is not running.
+</p>
+<% } %>
+
+<%= sysDetailsTable.html(self) %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+/**
+ * Update editEntry div with module data.
+ */
+sysDetailsTable.editEntry = function(editName) {
+    var el = sysDetailsTable.editXMLElement;
+    setElementTextWithLines('showModuleInfo', el.getAttribute('info'));
+}
+
+//-->
+</script>

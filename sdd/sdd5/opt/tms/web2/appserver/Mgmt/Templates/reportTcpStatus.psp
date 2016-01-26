@@ -1,0 +1,140 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## TCP Memory report.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/tcp_mem_pressure_limits',
+            '/stats/actions/generate_report/tcp_mem_pressure']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    highstockOptions.yAxis[0].title.text = 'Usage (B)';
+    highstockOptions.yAxis[2].title.text = 'Pressure (%)';
+    highstockOptions.yAxis[2].max = 100;
+
+    highstockOptions.series = [{name: 'Max Threshold',
+                                type: 'area',
+                                stacking: 'normal',
+                                color: RBT.Reports2.RED,
+                                fillColor: RBT.Reports2.RED_TRANSPARENT,
+                                lineWidth: 0},
+                               {name: 'Cutoff Threshold',
+                                type: 'area',
+                                stacking: 'normal',
+                                color: RBT.Reports2.YELLOW,
+                                fillColor: RBT.Reports2.YELLOW_TRANSPARENT,
+                                lineWidth: 0},
+                               {name: 'Enable Threshold',
+                                type: 'area',
+                                stacking: 'normal',
+                                color: RBT.Reports2.GREEN,
+                                fillColor: RBT.Reports2.GREEN_TRANSPARENT,
+                                lineWidth: 0},
+                               {name: 'Memory Usage',
+                                color: RBT.Reports2.GRAY_DARK},
+                               {name: 'Memory Pressure',
+                                color: RBT.Reports2.BLUE,
+                                type: 'area',
+                                dataGrouping: {approximation: 'high'},
+                                yAxis: 2}];
+
+    // Make the navigator shadow the fourth series (Memory Usage).
+    highstockOptions.navigator.baseSeries = 3;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[3].color;
+
+    // Create the chart!
+    var chart = new
+        RBT.Reports2.TimeSeriesChartWithControls({
+            parent: '#timeSeriesChart',
+            dataUrl: '<%= Reports2.constructDataUrl("reportTcpMemory") %>',
+            dataFormatterFn: dataFormatter,
+            options: highstockOptions,
+            topPaneHeightPercent: 60,
+            tooltipFormatterFn: tooltipFormatter,
+            boundariesChangedFn: setReports2ChartWindow,
+            initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+            alwaysOnSeries: ['Max Threshold',
+                             'Cutoff Threshold',
+                             'Enable Threshold',
+                             'Memory Usage',
+                             'Memory Pressure'],
+            optionsModifierFn: setNavigatorMax
+        });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    if (seriesName == 'Memory Pressure') {
+        return RBT.Reports2.roundWithPadding(value, 1) + '%';
+    } else {
+        return RBT.Reports2.scale(value, 1, 'si', 'B');
+    }
+}
+
+// We need a custom tooltip formatter because the JSON values for the cutoff and
+// max thresholds are actually deltas, not absolute values.
+function tooltipFormatter(data) {
+    // The real cutoff threshold is the sum of the enable threshold and the JSON
+    // value of the cutoff threshold.  Likewise, the real max threshold is the
+    // sum of the real enable threshold and the JSON value of the max threshold.
+    data.points[1].y = data.points[2].y + data.points[1].y;
+    data.points[0].y = data.points[1].y + data.points[0].y;
+
+    // The rest of this function is basically a copy-paste of the default
+    // tooltip formatter in the framework.
+    var html = RBT.Reports2._formatDatetimeString(data.x);
+
+    for (var i = 0; i < data.points.length; i++) {
+        var color = data.points[i].series.color;
+
+        // Use the text-specific color variant (if one exists).
+        if (color in RBT.Reports2._TEXT_COLOR_MAP) {
+            color = RBT.Reports2._TEXT_COLOR_MAP[color];
+        }
+
+        html += '<br/>';
+        html += '<span style="color: ' + color + '; font-weight: bold">';
+        html +=   data.points[i].series.name + ':';
+        html += '</span>';
+        html += ' ';
+        html += dataFormatter(data.points[i].y, data.points[i].series.name);
+    }
+
+    return html;
+}
+
+// Set the y-axis max in the navigator to be the largest threshold value in the
+// data so that the data display in the navigator matches the plot area.
+function setNavigatorMax(options, response) {
+    var maxMax = RBT.Reports2.max(response[0].data);
+    var maxCutoff = RBT.Reports2.max(response[1].data);
+    var maxEnable = RBT.Reports2.max(response[2].data);
+    options.navigator.yAxis.max = maxMax + maxCutoff + maxEnable;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

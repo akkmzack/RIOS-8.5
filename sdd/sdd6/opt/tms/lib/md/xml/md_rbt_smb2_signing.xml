@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_smb2_signing                                        -->
+<!--   Module Root: /rbt/sport/smb2signing                                  -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_smb2_signing.c   -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/smb2signing/config/myconfig</name>             -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sport_smb2_signing">
+    <config>
+        <name>/rbt/sport/smb2signing/config/enable</name>
+        <description>Enable SMB2 Signing</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2signing/config/mode_type</name>
+        <description>SMB2 Signing mode</description>
+        <value type="string">delegation</value>
+        <value-choices>
+          <choice>transparent</choice>
+          <choice>delegation</choice>
+        </value-choices>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2signing/config/blacklist/timed_list_expiration</name>
+        <description>Black list timeout period in minute</description>
+        <value type="uint32" min="1">20</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2signing/config/native_krb</name>
+        <description>Toggle End-to-End Kerberos support for SMBv2 Signing</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2signing/config/eekrb_downgrade</name>
+        <description>Toggle End-to-End Kerberos downgrade support for SMBv2 Signing</description>
+        <value type="bool">true</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smb2signing/event/change/flags</name>
+        <description>SMB2 signing enable/disable event</description>
+        <parameter>change_smb_enable</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/smb2signing/event/blacklist_timeout_change</name>
+        <description>Blacklist timeout period change event</description>
+        <parameter>timeout_period</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/smb2signing/event/native_krb</name>
+        <description>SMB2 signing End-to-End Kerberos enable/disable event</description>
+        <parameter>sign2_eekrb_enable</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/smb2signing/event/eekrb_downgrade</name>
+        <description>SMB2 signing End-to-End Kerberos downgrade support enable/disable event</description>
+        <parameter>sign2_downgrade_enable</parameter>
+    </event>
+    <config>
+         <name>/rbt/sport/smb2signing/config/look_for_error_on_anon_conn</name>
+         <description>Error detection for anonymous connection</description>
+         <value type="bool">false</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smb2signing/event/look_for_error_on_anon_conn</name>
+        <description>Error detection for anonymous connection change event</description>
+        <parameter>look_for_error_on_anon_conn</parameter>
+    </event>
+    <config>
+         <name>/rbt/sport/smb2signing/config/gpupdate_support</name>
+         <description>Gpupdate optimization support</description>
+         <value type="bool">false</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smb2signing/event/gpupdate_support</name>
+        <description>Gpupdate optimization support event</description>
+        <parameter>gpupdate_support</parameter>
+    </event>
+    <external-state-wildcard>
+         <name>/rbt/sport/smb2signing/state/black_list/*</name>
+         <description>List of blocked connection in SMB2 Signing black list</description>
+         <value type="uint32"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+    <external-state>
+         <name>/rbt/sport/smb2signing/state/black_list/*/cli_addr</name>
+         <description>Client address of blocked connection in SMB2 Signing black list</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/smb2signing/state/black_list/*/srv_addr</name>
+         <description>Server address of blocked connection in SMB2 Signing black list</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/smb2signing/state/black_list/*/reason</name>
+         <description>Reason the connection is in the black list</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <passthrough>
+        <name>/rbt/sport/smb2signing/action/*</name>
+        <description>SMBv2 Signing Action to passthrough to sport</description>
+        <value type="string"/>
+        <passthrough-provider>sport</passthrough-provider>
+    </passthrough>
+</node-list>

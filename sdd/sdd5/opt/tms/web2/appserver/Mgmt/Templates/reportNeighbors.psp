@@ -1,0 +1,136 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## Connection Forwarding Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, Nodes, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('setupAdvNet_forwarding',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/neighbor',
+            '/rbt/sport/intercept/config/neighbor/name']
+</psp:method>
+
+<psp:method name="getNeighborOptions">
+    mgmt = self.request().session().value('mgmt')
+
+    options = []
+    for neighborName, neighborValue in Nodes.getTreeifiedSubtree(mgmt, '/rbt/sport/intercept/config/neighbor/name').iteritems():
+        neighborIP = neighborValue['main_address']
+
+        response = Nodes.action(mgmt, '/stats/actions/get/neighbor_subclass', ('ipaddr_str', 'string', neighborIP))
+        subclass = response.get('subclass', '0')
+
+        # Show this in the dropdown only if we get a valid subclass back.
+
+        if subclass != '0':
+            options.append((subclass, '%s (%s)' % (neighborName, neighborIP)))
+
+    options.sort(key=lambda opt: opt[1])
+    options.insert(0, ('0', 'All'))
+
+    return options
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'neighbor': FormUtils.NodeEntry(
+            name='neighbor',
+            label='Neighbor',
+            widget='select',
+            userPath='sh/web/reports/neighbor_ip',
+            userConfigAutoSave=True,
+            selectOptions=self.getNeighborOptions(),
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['neighbor'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Throughput (bps)';
+    highstockOptions.series = [
+        {name: 'Throughput',
+         type: 'area'}
+    ];
+
+    // Make the navigator shadow the only series (Throughput).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.colors[0];
+    highstockOptions.navigator.series.lineColor = highstockOptions.colors[0];
+    highstockOptions.navigator.series.type = 'area';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        customControlDiv: Y.one('div#reportControls'),
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        statsFn: forwardingStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['Throughput']
+    });
+});
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    var baseDataUrl = '<%= Reports2.constructDataUrl("reportNeighbors") %>';
+    var neighbor = Y.one('select[name="neighbor"]').get('value');
+    return addQueryStringParameter(baseDataUrl, 'neighbor', neighbor);
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl()
+    });
+}
+
+// A callback function that supplies the summary stats displayed in the legend.
+function forwardingStats(allSeriesData) {
+    var allStats = [];
+
+    // Integrate to change rate (bps) to total bits transfered between timestamps.
+    // Divide by 8 to convert bits to bytes.
+    var totalData = RBT.Reports2.integrate(allSeriesData[0]) / 8;
+    var totalDataString = 'Total: ' + RBT.Reports2.scale(totalData, 1, 'si', 'B');
+    allStats.push([totalDataString]);
+
+    return allStats;
+}
+
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'bps');
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

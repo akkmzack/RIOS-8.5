@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring General Service Settings</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.05.01.html#249507">Chapter 3	Configuring Optimization Features</a> : Configuring General Service Settings </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="249507">Configuring General Service Settings </a></div>
+      <div class="Body"><a name="249508">You can configure general optimization service settings in the Configure &gt; Optimization &gt; General Service </a>Settings page.</div>
+      <div class="Heading2"><a name="249509">Enabling Basic Deployment Options</a></div>
+      <div class="Body"><a name="249510">General Service Settings include controls to enable or disable in-path, out-of-path, failover support, and to </a>set connection limits and the maximum connection pooling size. </div>
+      <div class="Body"><a name="249517">If you have a Steelhead appliance that contains multiple bypass cards, the Management Console displays </a>options to enable in-path support for these ports. The number of these interface options depends on the number of pairs of LAN and WAN ports that you have enabled in your Steelhead appliance. </div>
+      <div class="Body"><a name="249521">The properties and values you set on this page depend on your deployment: for example, the following </a>deployment types would require different choices:</div>
+      <li class="Bullet"><span class="Bold"><a name="249526">Physical In-Path</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>The Steelhead appliance is physically in the direct path between the client and the server. The clients and servers continue to see client and server IP addresses. Physical in-path configurations are suitable for any location where the total bandwidth is within the limits of the installed Steelhead appliance. </li>
+      <li class="Bullet"><span class="Bold"><a name="497032">Virtual In-Path</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>The Steelhead appliance is virtually in the path between the client and the server. This differs from a physical in-path in that a packet redirection mechanism is used to direct packets to Steelhead appliances that are not in the physical path. Redirection mechanisms include WCCP, Layer-4 switches, and PBR. In this configuration, clients and servers continue to see client and server IP addresses.</li>
+      <li class="Bullet"><span class="Bold"><a name="497040">Out-of-Path</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>The Steelhead appliance is not in the direct path between the client and the server. Servers see the IP address of the server-side Steelhead appliance rather than the client IP address, which might impact security policies. An out-of-path configuration is suitable for data center locations where physically in-path or virtually in-path configurations are not possible.</li>
+      <div class="Body"><a name="249548">For an overview of in-path and out-of-path deployment options, see the </a><span class="book_title">Riverbed Deployment Guide</span>.</div>
+      <div class="Heading2"><a name="249551">Enabling Failover</a></div>
+      <div class="Body"><a name="249558">In the event of appliance failure, the Steelhead appliance enters bypass mode to avoid becoming a single </a>point of failure in your network. If you want optimization to continue in the event of appliance failure, you can deploy redundant appliances as failover buddies. </div>
+      <div class="Body"><a name="249562">For details on failover redundancy, see the </a><span class="book_title">Riverbed Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="249564">Physical In-Path Failover Deployment</a></div>
+      <div class="Body"><a name="249569">For a physical in-path failover deployment, you configure a pair of Steelhead appliances: one as a master </a>and the other as a backup. The master Steelhead appliance in the pair (usually the Steelhead appliance closest to the LAN) is active and the backup Steelhead appliance is passive. The master Steelhead appliance is active unless it fails for some reason. The backup is passive while the master is active and becomes active if either the master fails or the master reaches its connection limit and enters <span style="font-style: italic">admission control </span>status. A backup Steelhead appliance does not intercept traffic while the master appliance is active. It pings the master Steelhead appliance to make sure that it is alive and processing data. If the master Steelhead appliance fails, the backup takes over and starts processing all of the connections. When the master Steelhead appliance comes back up, it sends a message to the backup that it has recovered. The backup Steelhead appliance stops processing new connections (but continues to serve old ones until they end). </div>
+      <div class="Heading3"><a name="249598">Out-of-Path Failover Deployment</a></div>
+      <div class="Body"><a name="249602">For an out-of-path failover deployment, you deploy two server-side Steelhead appliances and add a fixed-</a>target rule to the client-side Steelhead appliance to define the master and backup target appliances. When both the master and backup Steelhead appliances are functioning properly, the connections traverse the master appliance. If the master Steelhead appliance fails, subsequent connections traverse the backup Steelhead appliance. </div>
+      <div class="Body"><a name="249619">The master Steelhead appliance uses an Out-of-Band (OOB) connection. The OOB connection is a single, </a>unique TCP connection that communicates internal information only; it does not contain optimized data. If the master Steelhead appliance becomes unavailable, it loses this OOB connection and the OOB connection times out in approximately 40-45 seconds. After the OOB connection times out, the client-side Steelhead appliance declares the master Steelhead appliance unavailable and connects to the backup Steelhead appliance. </div>
+      <div class="Body"><a name="249638">During the 40-45 second delay before the client-side Steelhead appliance declares a peer unavailable, it </a>passes through any incoming new connections; they are not blackholed. </div>
+      <div class="Body"><a name="249645">While the client-side Steelhead appliance is using the backup Steelhead appliance for optimization, it </a>attempts to connect to the master Steelhead appliance every 30 seconds. If the connection succeeds, the client-side Steelhead appliance reconnects to the master Steelhead appliance for any new connections. Existing connections remain on the backup Steelhead appliance for their duration.<span style="font-family: &quot;Times New Roman&quot;"> </span>This is the only time, (immediately after a recovery from a master failure), that connections are optimized by both the master Steelhead appliance and the backup.</div>
+      <div class="Body"><a name="249666">If both the master and backup Steelhead appliances become unreachable, the client-side Steelhead </a>appliance tries to connect to both appliances every 30 seconds. Any new connections are passed through the network unoptimized.</div>
+      <div class="Heading3"><a name="249668">Synchronizing Master and Backup Failover Pairs</a></div>
+      <div class="Body"><a name="249669">In addition to enabling failover and configuring buddy peering, you must synchronize the RiOS data stores </a>for the master-backup pairs to ensure optimal use of SDR for <span class="Emphasis">warm</span> data transfer. With warm transfers, only new or modified data is sent, dramatically increasing the rate of data transfer over the WAN. For information on synchronizing RiOS data stores for master-backup pairs, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceDatastore.html#250472', '');" title="Configuring the RiOS Data Store">Synchronizing Peer RiOS Data Stores</a></span>.</div>
+      <div class="Heading2"><a name="249674">Configuring Connection Limits</a></div>
+      <div class="Body"><a name="249675">In the General Service Settings page, you can also modify default settings for the maximum half-opened </a>connections from a single source IP address and the connection pool size. For details, pay careful attention to the configuration descriptions included in the following procedure.</div>
+      <div class="HeadingProcedure"><a name="249676">To configure general optimization service settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="249677">Choose Configure &gt; Optimization &gt; General Service Settings to display the General Service Settings </a>page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="249682">Under In-Path Settings, complete the configuration as described in the following table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.83456pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 146.05344pt">
+            <div class="CellHeading"><a name="503719">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 323.78112pt">
+            <div class="CellHeading"><a name="503721">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503723">Enable In-Path Support</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503725">Enables optimization on traffic that is in the direct path of the client, server, and </a>Steelhead appliance.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503731">Reset Existing Client Connections </a>on Start Up</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503736">Enables </a><span class="Emphasis">kickoff</span> globally. If you enable kickoff, connections that exist when the Steelhead service is started and restarted are disconnected. When the connections are retried they are optimized. </div>
+            <div class="CellBody"><a name="503740">Generally, connections are short-lived and kickoff is not necessary. It is suitable </a>for very challenging remote environments. In a remote branch-office with a T1 and 35 ms round-trip time, you would want connections to migrate to optimization gracefully, rather than risk interruption with kickoff.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="503744">RiOS v6.1 and later provides a way to reset pre-existing connections that </a>match an in-path rule and the rule has kickoff enabled. You can also reset a single pass-through or optimized connection in the Current Connections report, one connection at a time.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="503748">Do not enable kickoff for in-path Steelhead appliances that use auto-</a>discover or if you do not have a Steelhead appliance on the remote side of the network. If you do not set any in-path rules the default behavior is to auto-discover all connections. If kickoff is enabled, all connections that existed before the Steelhead appliance started are reset. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503756">Enable L4/PBR/WCCP </a>Interceptor Support </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503758">Enables optional, virtual in-path support on all the interfaces for networks that </a>use Layer-4 switches, PBR, WCCP, and Interceptor. External traffic redirection is supported only on the first in-path interface. The following redirection methods are available:</div>
+            <li class="CellBullet"><span class="Bold"><a name="503760">Layer-4 Switch</a></span><span class="Bold" style="font-weight: normal"> - </span>You enable Layer-4 switch support when you have multiple Steelhead appliances in your network, so that you can manage large bandwidth requirements.</li>
+            <li class="CellBullet"><span class="Bold"><a name="503765">Policy-Based Routing (PBR)</a></span><span class="Bold" style="font-weight: normal"> - </span>PBR allows you to define policies to route packets instead of relying on routing protocols. You enable PBR to redirect traffic that you want optimized by a Steelhead appliance that is not in the direct physical path between the client and server. </li>
+            <li class="CellBullet"><span class="Bold"><a name="503769">Web Cache Communication Protocol (WCCP)</a></span><span class="Bold" style="font-weight: normal"> - </span>If your network design requires you to use WCCP, a packet redirection mechanism directs packets to RiOS appliances that are not in the direct physical path to ensure that they are optimized.</li>
+            <div class="CellBody"><a name="503773">For details about configuring Layer-4 switch, PBR, and WCCP deployments, </a>see the <span class="book_title">Riverbed Deployment Guide</span>. </div>
+            <div class="CellBody"><a name="503780">If you enable this option on a Steelhead appliance model xx20 or xx50 that is </a>running RSP&#8212;even if no RSP slots are installed or enabled&#8212;you must do one of the following, otherwise the appliance does&nbsp;not correctly support Layer-4 routers, PBR, WCCP on the client side, or Interceptor appliances:</div>
+            <li class="CellBullet"><a name="503787">Configure subnet side rules to identify LAN-side traffic. </a></li>
+            <li class="CellBullet"><a name="503788">Disable RSP. You can install, start, stop, and restart RSP in the Configure &gt; </a>Branch Services &gt; RSP Service page. </li>
+            <div class="CellBody"><a name="503792">In the case of a </a><span class="Emphasis">client-side</span> Steelhead appliance model xx20 or xx50 in a <span class="Emphasis">WCCP</span> environment, the appliance does&nbsp;not optimize client-side traffic unless you configure subnet side rules. In virtual in-path configurations, all traffic flows in and out of one physical interface, and the default subnet side rule causes all traffic to appear to originate from the WAN side of the device. </div>
+            <div class="CellBody"><a name="503809"><img class="Default" src="images/icon_CSH.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" />The Cloud Steelhead does not provide L4/PBR/WCCP Interceptor </a>Support.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503811">Enable Optimizations on Interface </a>&lt;interface_name&gt;</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503813">Enables in-path support for additional bypass cards. </a></div>
+            <div class="CellBody"><a name="503814">If you have an appliance that contains multiple two-port, four-port, or six-port </a>bypass cards, the Management Console displays options to enable in-path support for these ports. The number of these interface options depends on the number of pairs of LAN and WAN ports that you have enabled in your Steelhead appliance. </div>
+            <div class="CellBody"><a name="503822">The interface names for the bypass cards are a combination of the slot number </a>and the port pairs (<span class="Bold" style="font-weight: normal">inpath&lt;slot&gt;_&lt;pair&gt;</span>, <span class="Bold" style="font-weight: normal">inpath&lt;slot&gt;_&lt;pair&gt;</span>): for example, if a four-port bypass card is located in <span class="Bold" style="font-weight: normal">slot 0</span> of your appliance, the interface names are: <span class="Bold" style="font-weight: normal">inpath0_0</span> and <span class="Bold" style="font-weight: normal">inpath0_1</span>. Alternatively, if the bypass card is located in <span class="Bold" style="font-weight: normal">slot 1</span> of your appliance, the interface names are: <span class="Bold" style="font-weight: normal">inpath1_0</span> and <span class="Bold" style="font-weight: normal">inpath1_1</span>. For details about installing additional bypass cards, see the <span class="book_title">Network Interface </span><span class="book_title">Card Installation Guide</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="249759">Under Out-of-Path Settings, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87623999999994pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 145.1736pt">
+            <div class="CellHeading"><a name="503832">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 323.70264pt">
+            <div class="CellHeading"><a name="503834">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503836">Enable Out-of-Path Support</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503841">Enables out-of-path support on a server-side Steelhead appliance, where only a </a>Steelhead appliance primary interface connects to the network. The Steelhead appliance can be connected anywhere in the LAN. There is no redirecting device in an out-of-path Steelhead appliance deployment. You configure fixed-target in-path rules for the client-side Steelhead appliance. The fixed-target in-path rules point to the primary IP address of the out-of-path Steelhead appliance. The out-of-path Steelhead appliance uses its primary IP address when communicating to the server. The remote Steelhead appliance must be deployed either in a physical or virtual in-path mode.</div>
+            <div class="CellBody"><a name="503863">If you set up an out-of-path configuration with failover support, you must set </a>fixed-target rules that specify the master and backup Steelhead appliances. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="249781">Under Connection Settings, complete the configuration as described in the following table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 144.76464pt">
+            <div class="CellHeading"><a name="503873">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.1116pt">
+            <div class="CellHeading"><a name="503875">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503877">Half-Open Connection Limit per </a>Source IP</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503880">Restricts half-opened connections on a source IP address initiating connections </a>(that is, the client machine). </div>
+            <div class="CellBody"><a name="503881">Set this feature to block a source IP address that is opening multiple </a>connections to invalid hosts or ports simultaneously (for example, a virus or a port scanner). </div>
+            <div class="CellBody"><a name="503882">This feature does not prevent a source IP address from connecting to valid </a>hosts at a normal rate. Thus, a source IP address could have more established connections than the limit. </div>
+            <div class="CellBody"><a name="503883">The default value is </a><span class="Bold" style="font-weight: normal">4096</span>.</div>
+            <div class="CellBody"><a name="503884">The appliance counts the number of half-opened connections for a source IP </a>address (connections that check if a server connection can be established before accepting the client connection). If the count is above the limit, new connections from the source IP address are passed through unoptimized. </div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="503885">If you have a client connecting to valid hosts or ports at a very high rate, </a>some of its connections might be passed through even though all of the connections are valid.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503887">Maximum Connection Pool Size</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503889">Specify the maximum number of TCP connections in a connection pool.</a></div>
+            <div class="CellBody"><a name="503891">Connection pooling enhances network performance by reusing active </a>connections instead of creating a new connection for every request. Connection pooling is useful for protocols which create a large number of short-lived TCP connections, such as HTTP. </div>
+            <div class="CellBody"><a name="503892">To optimize such protocols, a connection pool manager maintains a pool of idle </a>TCP connections, up to the maximum pool size. When a client requests a new connection to a previously visited server, the pool manager checks the pool for unused connections and returns one if available. Thus, the client and the Steelhead appliance do not have to wait for a three-way TCP handshake to finish across the WAN. If all connections currently in the pool are busy and the maximum pool size has not been reached, the new connection is created and added to the pool. When the pool reaches its maximum size, all new connection requests are queued until a connection in the pool becomes available or the connection attempt times out. </div>
+            <div class="CellBody"><a name="503896">The default value is </a><span class="Bold" style="font-weight: normal">20</span>. A value of 0 specifies no connection pool.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="503900">You must restart the Steelhead appliance after changing this setting.</a></div>
+            <div class="CellTip">
+              <span class="Bold">Tip: </span><a name="503901">Viewing the Connection Pooling report can help determine whether to </a>modify the default setting. If the report indicates an unacceptably low ratio of pool hits per total connection requests, increase the pool size.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="249819">Under Failover Settings, complete the configuration as described in the following table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 467.95536pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.2692pt">
+            <div class="CellHeading"><a name="503908">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.68616pt">
+            <div class="CellHeading"><a name="503910">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503912">Enable Failover Support</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503916">Configures a failover deployment on either a master or backup Steelhead </a>appliance. In the event of a failure in the master appliance, the backup appliance takes its place with a warm RiOS data store, and can begin delivering fully optimized performance immediately. </div>
+            <div class="CellBody"><a name="503924">The master and backup Steelhead appliances must be the same hardware </a>model.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503926">Current Appliance is</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503931">Select </a><span class="Bold" style="font-weight: normal">Master</span> or <span class="Bold" style="font-weight: normal">Backup</span> from the drop-down list. A master Steelhead appliance is the primary appliance; the backup Steelhead appliance is the appliance that automatically optimizes traffic if the master appliance fails. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503936">IP Address (peer in-path </a>interface)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="503941">Specify the IP address for the master or backup Steelhead appliance. You must </a>specify the in-path IP address (<span class="Bold" style="font-weight: normal">inpath0_0</span>) for the Steelhead appliance, not the primary interface IP address. </div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="503945">You must specify the </a><span class="Bold" style="font-weight: normal">inpath0_0</span> interface as the <span class="Bold" style="font-weight: normal">other appliance&#8217;s in-</span><span class="Bold" style="font-weight: normal">path IP address</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="431758">Optionally, under Packet Mode Optimization Settings, complete the configuration as described in the </a>following table. For details on packet-mode optimization, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'in-path-rules.04.2.html#328960', '');" title="In-Path Rules Overview">Creating In-Path Rules for Packet-Mode Optimization</a></span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 467.95536pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.2692pt">
+            <div class="CellHeading"><a name="504740">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.68616pt">
+            <div class="CellHeading"><a name="504742">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504744">Enable Packet Mode </a>Optimization</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504746">Performs </a><span class="Bold" style="font-weight: normal">packet-by-packet SDR bandwidth optimization on TCP-over-IPv6 </span><span class="Bold" style="font-weight: normal">and UDP-over-IPv4 connections. This feature uses fixed-target packet mode </span><span class="Bold" style="font-weight: normal">optimization in-path rules to optimize bandwidth for applications over any </span><span class="Bold" style="font-weight: normal">transport protocol.</span></div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="504753">Both </a></span>Steelhead appliance<span class="Bold" style="font-weight: normal">s must be running </span>RiOS<span class="Bold" style="font-weight: normal"> v7.0 or later.</span></div>
+            <div class="CellBody"><a name="504754">By default, packet-mode optimization is disabled.</a></div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="504755">Enabling this feature requires an optimization service restart.</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="431782">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="431783">Click </a><span style="font-weight: bold">Save</span> to save your settings permanently. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="249857">After applying the settings, you can verify whether changes have had the desired effect by reviewing related </a>reports. When you have verified appropriate changes, you can write the active configuration that is stored in memory to the active configuration file (or you can save it as any filename you choose). For details on saving configurations, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupConfig.html#281818', '');" title="Managing Configuration Files">Managing Configuration Files</a></span>.</div>
+      <div class="Heading4"><span class="Bold"><a name="455914">Related Topics</a></span></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceInpathRules.html#322503', '');" title="Configuring In-Path Rules" name="455947">Configuring In-Path Rules</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_peering.html#249892', '');" title="Enabling Peering and Configuring Peering Rules" name="455936">Enabling Peering and Configuring Peering Rules</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceDatastore.html#250341', '');" title="Configuring the RiOS Data Store" name="455922">Configuring the RiOS Data Store</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_ports.html#324802', '');" title="Configuring Service Ports" name="249877">Configuring Service Ports</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupHostInterfacesInpath.html#187987', '');" title="Modifying In-Path Interfaces" name="249881">Modifying In-Path Interfaces</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_forwarding.html#279521', '');" title="Configuring Connection Forwarding Features" name="471269">Configuring Connection Forwarding Features</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules" name="375977">Configuring Subnet Side Rules</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

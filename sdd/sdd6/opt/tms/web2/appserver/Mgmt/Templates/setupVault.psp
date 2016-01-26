@@ -1,0 +1,149 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupVault.psp
+## This is the template for the secure vault settings.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, RbtUtils, OSUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/secure_vault/action/change_password',]
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'unlockPassword': NodeEntry(
+            name='unlockVault_password',
+            widget='password',
+            label='Password'),
+        'lockPassword': NodeEntry(
+            name='vaultPassword_oldPassword',
+            widget='password',
+            label='Current Password',
+            hint='(leave blank if factory password)'),
+        'lockNewPassword': NodeEntry(
+            name='vaultPassword_newPassword',
+            widget='password',
+            label='New Password',
+            hint='(leave blank to reset factory password)',
+            inputOptional=True,
+            validate=('password', '[6]')),
+        'lockNewPasswordConfirm': NodeEntry(
+            name='vaultPassword_newPasswordConfirm',
+            widget='password',
+            label='New Password Confirm',
+            inputOptional=True,
+            validate=('password', '[6]')),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+if 'false' == Nodes.present(mgmt, '/secure_vault/state/initialized'): {
+    vaultState = 'uninitialized'
+} elif 'true' == Nodes.present(mgmt, '/secure_vault/state/rekey_needed'): {
+    vaultState = 'rekey'
+} elif 'true' == Nodes.present(mgmt, '/secure_vault/state/unlocked'): {
+    vaultState = 'open'
+} else: {
+    vaultState = 'locked'
+}
+   
+self.beginPagelet() 
+%>
+
+<form method="post"
+      action="/mgmt/gui?p=setupVault" id="unlockVault">
+  <div>
+    <input type="hidden" name="_action_" value="setupVault" />
+  </div>
+
+<%
+if 'uninitialized' == vaultState: {
+%>
+  <p>The Secure Vault is <b>uninitialized</b>.</p>
+<%
+} elif 'rekey' == vaultState: {
+%>
+  <p>The Secure Vault <b>needs to be rekeyed</b>.</p>
+<%
+} elif 'open' == vaultState: {
+%>
+  <p>The Secure Vault is currently <b>unlocked</b>.</p>
+<%
+} else: {
+%>
+  <p>The Secure Vault is currently <b>locked</b>.</p>
+<%
+}
+%>
+
+  <fieldset id="vaultUnlock" class="topLevel">
+    <legend>Unlock Secure Vault</legend>
+    <div class="midLevel">
+      <table>
+        <%= dialogEntries['unlockPassword'].html(self) %>
+      </table>
+    </div>
+    <div class="submitButtons">
+      <input type="submit"
+             name="unlockVault" value="Unlock Secure Vault"
+             onclick="return submitPrep(this);" />
+    </div>
+  </fieldset>
+</form>
+<form method="post"
+      action="/mgmt/gui?p=setupVault" id="changePassword">
+  <div>
+    <input type="hidden" name="_action_" value="setupVault" />
+  </div>
+  <fieldset id="vaultChangePassword">
+    <legend>Change Password</legend>
+<%
+if 'rekey' == vaultState: {
+%>
+      <div class="midLevel">
+If you wish to use a non-default password for the Secure Vault, the password must be re-entered below. If you accept using the default password, simply press <em>&ldquo;Change Password.&rdquo;</em> Taking action will clear the Secure Vault alarm. Please see <a title="Knowledge Base article 5592" href="https://support.riverbed.com/kb/solution.htm?Id=50170000000AQAM">Knowledge Base article 5592</a> for more details.
+      </div>
+<%
+}
+%>
+    <div class="midLevel">
+      <table>
+        <tbody id="lockPassword">
+          <%= dialogEntries['lockPassword'].html(self) %>
+        </tbody>
+        <tbody>
+          <%= dialogEntries['lockNewPassword'].html(self) %>
+          <%= dialogEntries['lockNewPasswordConfirm'].html(self) %>
+        </tbody>
+      </table>
+    </div>
+    <div class="submitButtons">
+      <%= FormUtils.formSubmitButtons(self, {'name': 'changeVaultPassword', 'value': 'Change Password'}) %>
+    </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+function vaultSetup() {
+    var vaultState = '<%= vaultState %>';
+    enableElements('vaultUnlock', 'locked' == vaultState);
+    enableElements('vaultChangePassword', ('open' == vaultState) || ('rekey' == vaultState));
+    enableElements('lockPassword', 'open' == vaultState);
+}
+onloadScript += 'vaultSetup(); ';
+// -->
+</script>

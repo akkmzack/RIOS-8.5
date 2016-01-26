@@ -1,0 +1,242 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## reportInitiatorStats.psp
+## This is the template for the EVA Initiator Stats report page.
+##
+%>
+
+<%@page imports="Nodes, RVBDUtils, ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:EVAInitiatorStatsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="EVAInitiatorStatsPagelet" %>
+<%@page indentType="braces" %>
+
+
+<psp:method name="css">
+    return '''
+table.reportParameters select {
+    margin-right: 20px;
+}
+'''
+</psp:method>
+
+
+<psp:method name="getInitiatorOptions">
+    options = [('0', 'All')]
+    session = self.session()
+    mgmt = session.value('mgmt')
+    fields = self.request().fields()
+    basePath = ''
+    if RVBDUtils.isCMC():
+        # Get selected appliance
+        app, app_prod, app_sn = Nodes.parseApplianceParam(fields.get('appliance', session.value('appliance', '')))
+        if app_sn:
+            # Setup the base node path for the state of the selected appliance
+            basePath = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+        else:
+            return options
+    dcs = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state' % basePath)
+    for dc in dcs:
+        initiators = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator' % (basePath, dc))
+        for initiator in initiators:
+            initiatorId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/subclass_id' % (basePath, dc, initiator))
+            if initiatorId:
+                options.append((initiatorId, '%s (%s)' % (initiator, initiatorId)))
+    return options
+</psp:method>
+
+<psp:method name="getLunOptions" params="iid">
+    options = [('0', 'All')]
+    session = self.session()
+    mgmt = session.value('mgmt')
+    fields = self.request().fields()
+    basePath = ''
+    if RVBDUtils.isCMC():
+        # Get selected appliance
+        app, app_prod, app_sn = Nodes.parseApplianceParam(fields.get('appliance', session.value('appliance', '')))
+        if app_sn:
+            # Setup the base node path for the state of the selected appliance
+            basePath = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+        else:
+            return options
+    dcs = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state' % basePath)
+    for dc in dcs:
+        initiators = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator' % (basePath, dc))
+        for initiator in initiators:
+            initiatorId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/subclass_id' % (basePath, dc, initiator))
+            if initiatorId != iid:
+                continue
+            luns = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/lun' % (basePath, dc, initiator))
+            for lun in luns:
+                lunId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/lun/%s/subclass_id' % (basePath, dc, initiator, lun))
+                if lunId:
+                    lun = lun.replace("\\/", "/")
+                    lun = lun.replace("\\\\", "\\")
+                    options.append((lunId, '%s (%s)' % (lun, lunId)))
+    return options
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(EVAInitiatorStatsPagelet, self).dialogEntries(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    initiatorOptions = self.getInitiatorOptions()
+    initiatorField = fields.get('iid', session.value('iid', '0'))
+    dialogEntries['iid'] = FormUtils.NodeEntry(
+        name = 'iid',
+        widget = 'select',
+        action = 'resetLunsSubmit(this.form);',
+        selectOptions = initiatorOptions,
+        value = initiatorField,
+        )
+    lunOptions = self.getLunOptions(initiatorField)
+    lunField = fields.get('lid', session.value('lid', '0'))
+    self.updateGfxParams(reportOpts, {'iid': initiatorField, 'lid': lunField})
+    dialogEntries['lid'] = FormUtils.NodeEntry(
+        name = 'lid',
+        widget = 'select',
+        action = 'this.form.submit();',
+        selectOptions = lunOptions,
+        value = lunField,
+        )
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'evaInitiatorStatsForm',
+    'reportSpecs': {
+        'evaInitiatorStatsIO': {
+            'tableName': 'evaInitiatorStatsIOTable',
+            'gfxId': 'evaInitiatorStatsIO',
+            'gfxDisplayId': 'evaInitiatorStatsIOGraphImg',
+            'order': 1
+        },
+        'evaInitiatorStatsIOPS': {
+            'tableName': 'evaInitiatorStatsIOPSTable',
+            'gfxId': 'evaInitiatorStatsIOPS',
+            'gfxDisplayId': 'evaInitiatorStatsIOPSGraphImg',
+            'order': 2
+        },
+        'evaInitiatorStatsLatency': {
+            'tableName': 'evaInitiatorStatsLatencyTable',
+            'gfxId': 'evaInitiatorStatsLatency',
+            'gfxDisplayId': 'evaInitiatorStatsLatencyGraphImg',
+            'order': 3
+        }
+    },
+    'onApplianceChange': '$("evaInitiatorStatsForm").submit()'
+}
+evaInitiatorStatsIOTable = ajaxentrytable.AjaxEntryTable(
+    'evaInitiatorStatsIO',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaInitiatorStatsIOPSTable = ajaxentrytable.AjaxEntryTable(
+    'evaInitiatorStatsIOPS',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaInitiatorStatsLatencyTable = ajaxentrytable.AjaxEntryTable(
+    'evaInitiatorStatsLatency',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+initiator = self.request().session().value('iid', '0')
+lun = self.request().session().value('lid', '0')
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+
+# only for EVA or Steelhead EX
+if not RVBDUtils.isCMC(): {
+    import eva
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('veRefreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<div id="evaInitiatorStatsIOGraphDiv" class="graphDiv">
+  <img id="evaInitiatorStatsIOGraphImg" src="" class="graphImg"
+    alt="Initiator I/O Data" />
+</div>
+<%= evaInitiatorStatsIOTable.html(self, cssClass="midLevel") %>
+
+<div id="evaInitiatorStatsIOPSGraphDiv" class="graphDiv">
+  <img id="evaInitiatorStatsIOPSGraphImg" src="" class="graphImg"
+    alt="Initiator IOPS Data" />
+</div>
+<%= evaInitiatorStatsIOPSTable.html(self, cssClass="midLevel") %>
+
+<div id="evaInitiatorStatsLatencyGraphDiv" class="graphDiv">
+  <img id="evaInitiatorStatsLatencyGraphImg" src="" class="graphImg"
+    alt="Initiator Latency Data" />
+</div>
+<%= evaInitiatorStatsLatencyTable.html(self, cssClass="midLevel") %>
+
+<form id="evaInitiatorStatsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <%= reportOpts.get('groupHdr', '') %>
+          <th>Initiator:</th>
+          <th>Lun:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+            <%= reportOpts.get('groupCol', '') %>
+            <%= dialogEntries['iid'].html(self, format='horiz') %>
+            <%= dialogEntries['lid'].html(self, format='horiz') %>
+            <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+<% self.endPagelet() %>
+<script type="text/javascript">
+// <![CDATA[
+function resetLunsSubmit(form) {
+    var lunSelect = Y.one('select[name="lid"]');
+    lunSelect.set('selectedIndex', 0);
+    form.submit();
+}
+// ]]>
+</script>

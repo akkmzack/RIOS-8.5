@@ -1,0 +1,208 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupSecurity.psp
+## This is the template for setting up authentication methods, ordering,
+## and remote servers.
+
+%>
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:selectOptions, PagePresentation:Pagelet, RBA" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="nodeEntries">
+    return {
+        # The following two NodeEntry's are wildcards.
+        'authMethods': FormUtils.NodeEntry(
+            path='/aaa/auth_method',
+            type='string'),
+        'alwaysFback': FormUtils.NodeEntry(
+            name='alwaysFback',
+            path='/aaa/authen_always_fback',
+            filter=lambda v: ('true' == v) and 'false' or 'true',
+            label='For RADIUS/TACACS+, fallback only when servers are unavailable',
+            widget='checkboxLeft',
+            type='bool'),
+        'mapOrder': FormUtils.NodeEntry(
+            action='updateUpdateables("authenticationMethodsForm");',
+            path='/aaa/author/map-order',
+            type='string',
+            selectOptions=(("remote-first", "Remote First"),
+                           ("remote-only", "Remote Only"),
+                           ("local-only", "Local Only")),
+            label='Authorization Policy'),
+        'defaultUser': FormUtils.NodeEntry(
+            path='/aaa/author/default-user',
+            type='string',
+            widget='select',
+            label='Default User'),
+        # defaultUserTextField is used on the CMC
+        'defaultUserTextField': FormUtils.NodeEntry(
+            path='/aaa/author/default-user',
+            type='string',
+            label='Default User')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries" params="authenticationMethods">
+    entries = {
+        'fallbackAuthenticationOrder': FormUtils.NodeEntry(
+            name='fallbackAuthenticationOrder',
+            value=','.join(authenticationMethods),
+            action='adjustWarning(); updateUpdateables("authenticationMethodsForm");',
+            selectOptions=(
+            ('local', 'Local Only'),
+            ('radius', 'RADIUS Only'),
+            ('tacacs+', 'TACACS+ Only'),
+            ('local,radius', 'Local; RADIUS'),
+            ('local,tacacs+', 'Local; TACACS+'),
+            ('radius,local', 'RADIUS; Local'),
+            ('radius,tacacs+', 'RADIUS; TACACS+'),
+            ('tacacs+,local', 'TACACS+; Local'),
+            ('tacacs+,radius', 'TACACS+; RADIUS'),
+            ('local,radius,tacacs+', 'Local; RADIUS; TACACS+'),
+            ('local,tacacs+,radius', 'Local; TACACS+; RADIUS'),
+            ('radius,local,tacacs+', 'RADIUS; Local; TACACS+'),
+            ('radius,tacacs+,local', 'RADIUS; TACACS+; Local'),
+            ('tacacs+,local,radius', 'TACACS+; Local; RADIUS'),
+            ('tacacs+,radius,local', 'TACACS+; RADIUS; Local')))
+    }
+    return entries
+</psp:method>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupRadius', 'setupTacacs') %>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+authenticationMethods = mgmt.getSubtree(pathPrefix + '/aaa/auth_method')
+# Authentication methods have an ordinal and a name.
+authenticationMethods = [(int(k[:k.find('/')]), v)
+                         for k, v in authenticationMethods.items()
+                         if -1 < k.find('/name')]
+# Sort on the ordinal.
+authenticationMethods.sort()
+# Keep only the name, which is one of local, radius, or tacacs+.
+authenticationMethods = [v for k, v in authenticationMethods]
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(authenticationMethods)
+
+self.addOnload('adjustWarning();')
+
+# CMC policies have no way to know the possible users so display a
+# text field instead of a select.  RBA users are also unable to obtain
+# a list of users because they don't have permission to iterate
+# /auth/passwd/user so use a text field for them too.
+if policyName or RBA.isRBAUser(self.session()): {
+    defaultUserNodeEntryKey = 'defaultUserTextField'
+}
+
+# Create the list of default users on SH or the CMC itself.
+else: {
+    defaultUserNodeEntryKey = 'defaultUser'
+    users = Nodes.getMgmtSetEntries(mgmt, pathPrefix + '/auth/passwd/user')
+    userNames = [x for x in users.keys() if 'true' == users[x].get('is_rbm')]
+    userNames.sort()
+    nodeEntries['defaultUser'].selectOptions = ['admin', 'monitor'] + userNames
+}
+%>
+
+<% self.beginPagelet() %>
+<form method="post"
+      id="authenticationMethodsForm"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Authentication Methods</legend>
+    <input type="hidden" name="_action_" value="setupSecurity_auth" />
+    <div class="midLevel">
+      <%= dialogEntries['fallbackAuthenticationOrder'].html(self, format='inline') %>
+      <span id="fallbackOrderSpan" class="hidden">Warning: no
+      <span id="serverTypes"></span> servers are configured.</span>
+    </div>
+    <div class="midLevel">
+      <%= nodeEntries['alwaysFback'].html(self) %>
+    </div>
+
+    <div class="midLevel" id="authorizationPolicyDiv">
+      <table>
+        <tbody>
+          <%= nodeEntries['mapOrder'].html(self) %>
+        </tbody>
+        <tbody id="defaultUserRow">
+          <%= nodeEntries[defaultUserNodeEntryKey].html(self) %>
+        </tbody>
+      </table>
+    </div>
+    <%= FormUtils.formSubmitButtons(self, {'name': 'applyAuthorizationPolicy',
+                                     'value': 'Apply'}) %>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    var authOrder = getFormElement(
+        $('authenticationMethodsForm'), 'fallbackAuthenticationOrder').value;
+    // Disable the authorizationPolicyDiv for "local only" authorization,
+    // but enable for all others. BugId: 38744
+    if (div == 'authorizationPolicyDiv') {
+        return 'local' != authOrder;
+    }
+    // Disable default user for "remote only" authorization, but enable it for all others.
+    if (div == 'defaultUserRow') {
+        var authPolicy = getFormElement($('authenticationMethodsForm'), 
+              "<%= nodeEntries['mapOrder'].elementName(self) %>").value;
+        return authPolicy != 'remote-only';
+    }
+
+}
+addUpdateable('display', displayControl, 'authorizationPolicyDiv');
+addUpdateable('enable',  displayControl, 'defaultUserRow');
+
+
+function adjustWarning() {
+    var authenticationMethods =
+        getFormElement('authenticationMethodsForm', 'fallbackAuthenticationOrder').value;
+    var numRadiusServers = <%= str(len(Nodes.getMgmtLocalChildrenNames(
+        mgmt, '/radius/server'))) %>;
+    var numTacacsServers = <%= str(len(Nodes.getMgmtLocalChildrenNames(
+        mgmt, '/tacacs/server'))) %>;
+    var servers = [];
+
+    // If we don't authenticate locally, but we do via radius,
+    // but no radius servers are configured, then authentication
+    // will be impossible.
+    if (-1 == authenticationMethods.indexOf('local')
+    &&  -1 < authenticationMethods.indexOf('radius')
+    &&  !numRadiusServers) {
+        servers.push('RADIUS');
+    }
+    // If we don't authenticate locally, but we do via tacacs+,
+    // but no tacacs+ servers are configured, then authentication
+    // will be impossible.
+    if (-1 == authenticationMethods.indexOf('local')
+    &&  -1 < authenticationMethods.indexOf('tacacs+')
+    &&  !numTacacsServers) {
+        servers.push('TACACS+');
+    }
+    // If it is a policy page do not show warning on CMC. Checks to see whether RADIUS or TACACS 
+    // server is configured will be done during the policy push
+    <% if not policyType: { %>
+        // If authentication is impossible, show a warning.
+        if (servers.length) {
+            setElementText('serverTypes', servers.join(' or '));
+            adjustElementClass('fallbackOrderSpan', 'hint', 'hidden');
+        } else {
+            setElementText('serverTypes', '');
+            adjustElementClass('fallbackOrderSpan', 'hidden', 'hint');
+        }
+    <% } %>
+}
+
+// -->
+</script>

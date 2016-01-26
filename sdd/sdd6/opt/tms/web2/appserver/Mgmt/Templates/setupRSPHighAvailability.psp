@@ -1,0 +1,512 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# Manage RSP High-Availability (HA) features
+# Author: Andrew Hao
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, time, rsp" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#slotHAStatusTable_main {
+  width: 100%;
+}
+div#recurInterval { display: inline; }
+#recurOptions {
+  margin-top: 5px;
+}
+#recurOptions #recurInterval .units {
+  margin-top: 15px;
+}
+#transferSlotsTable_main {
+  width: 100%;
+}
+#connectionTestButton { margin: 2px 0; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'incomingEnable': FormUtils.NodeEntry(
+            name='enable',
+            widget='checkboxLeft',
+            label='Accept Incoming HA Transfers',
+            path='/rbt/rsp2/config/incoming_ha_enable')
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    # If there's an HA password, insert bogus password in HA Password fields
+    mgmt = self.session().value('mgmt')
+    haPassword = Nodes.present(mgmt, '/rbt/rsp2/config/ha_password')
+
+    return {
+        'incomingPassword': FormUtils.NodeEntry(
+            name='password',
+            widget='password',
+            label='HA Password',
+            value=haPassword and FormUtils.bogusPassword,
+            validate='password',
+            tooltip='Used to decrypt slot images that are received from HA peers.  Remote hosts must supply this password to initiate HA transfers.'),
+        'incomingPasswordConfirm': FormUtils.NodeEntry(
+            name='passwordConfirm',
+            widget='password',
+            label='Confirm HA Password',
+            value=haPassword and FormUtils.bogusPassword,
+            validate='password'),
+        'remoteHost': FormUtils.NodeEntry(
+            name='remoteHost',
+            label='Remote host',
+            validate='hostnameOrIp'), # XXX/ahao confirm
+        'remoteSecretKey': FormUtils.NodeEntry(
+            name='password',
+            label='HA Password',
+            validate='nonempty',
+            widget='password',
+            tooltip='Used to encrypt slot images before they are sent to the peer.  This must match the remote host\'s incoming HA password.'),
+        'syncScheduleEnable': FormUtils.NodeEntry(
+            name='schedule',
+            label='Schedule as Future Transfer Job',
+            widget='checkboxLeft',
+            enableDiv='scheduleOptions'),
+        'syncScheduleDate': FormUtils.NodeEntry(
+            name='date',
+            label='Date',
+            hint='YYYY/MM/DD',
+            value=time.strftime('%Y/%m/%d'),
+            validate='date',
+            widgetClass='date'),
+        'syncScheduleTime': FormUtils.NodeEntry(
+            name='time',
+            label='Time',
+            labelClass='labelPaddedBoth',
+            validate='time',
+            hint='HH:MM:SS',
+            value=time.strftime('%H:%M:%S'),
+            widgetClass='time'),
+        'syncRecurringEnable': FormUtils.NodeEntry(
+            name='recurring',
+            label='Repeats every:',
+            labelClass='labelPaddedBoth',
+            widget='checkboxLeft',
+            enableDiv='recurInterval'),
+        'syncRecurringDays': FormUtils.NodeEntry(
+            name='days',
+            units='days',
+            value='0',
+            validate='uint32',
+            widgetClass='xsmall'),
+        'syncRecurringHours': FormUtils.NodeEntry(
+            name='hours',
+            units='hours',
+            value='0',
+            validate='uint32',
+            widgetClass='xsmall'),
+        'syncRecurringMinutes': FormUtils.NodeEntry(
+            name='minutes',
+            units='minutes',
+            value='0',
+            validate='uint32',
+            widgetClass='xsmall'),
+    }
+</psp:method>
+
+<%
+    mgmt = self.session().value('mgmt')
+    rspInstalled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/image/state/installed')
+    rspPublicName = rsp.publicName()
+
+    # If RSP is not installed, the entire RSP packages page is invalid.
+    if not rspInstalled: {
+        self.beginPagelet()
+        self.writeln('''<p><a href="/mgmt/gui?p=setupRSPService">%s must be installed</a>
+before configuring High Availability sync jobs.</p>''' % rspPublicName)
+        self.endPagelet()
+        return
+    }
+
+    # Check if RSP is supported in the current disk layout.
+    rspDiskLayout = Nodes.present(mgmt, '/rbt/rsp2/state/disk_layout/supported', 'true') == 'true'
+    if not rspDiskLayout: {
+        self.beginPagelet()
+        self.writeln('<p>VSP is not supported in the current ' \
+                     '<a href="/mgmt/gui?p=setupDiskManagement">disk layout</a>.</p>')
+        self.endPagelet()
+        return
+    }
+%>
+
+<% self.beginPagelet() %>
+
+<script type="text/javascript">
+/**
+ * Like tdAttr() but if transferId is non-blank, then the text is replaced
+ * with a "Cancel Transfer" button.
+ *
+ * @method tdAttrCancelTransfer
+ * @static
+ *
+ * @param attributeName Name of the attribute to use to populate this column.
+ *
+ * @return {TODO}
+ */
+AjaxEntryTable.tdAttrCancelTransfer = function(attributeName) {
+    return function(entryTable, tr, element) {
+        if (element.getAttribute('transferId') == '') { // Same as tdAttr()
+            var td = document.createElement('td');
+            var nodeContent = element.getAttribute(attributeName);
+            if (nodeContent == null)
+                nodeContent = '';
+            td.appendChild(document.createTextNode(nodeContent));
+            tr.appendChild(td);
+        }
+        else { // Populate with a "Cancel Transfer" button.
+            var td = document.createElement('td');
+
+            var nodeContent = element.getAttribute(attributeName);
+            if (nodeContent == null)
+                nodeContent = '';
+            td.appendChild(document.createTextNode(nodeContent + ' ')); // space separate the "Cancel" button.
+            tr.appendChild(td);
+
+            var button = document.createElement('input');
+            button.setAttribute('type', 'button');
+            button.setAttribute('value', 'Cancel');
+            button.onclick = function() {
+                cancelTransfer(element.getAttribute('transferId'));
+            }
+            td.appendChild(button);
+            tr.appendChild(td);
+        }
+    }
+}
+</script>
+
+<%
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+slotHAStatusTable = ajaxentrytable.AjaxEntryTable('slotHAStatus',
+    url='/mgmt/xmldata?p=rspSlotHaStatus',
+    titleText='Recent Transfer Activity',
+    headerSpec=(
+        'Slot',
+        'Direction',
+        'Remote Peer',
+        'Slot Size',
+        'Last Transfer Time',
+        'Last Transfer Duration',
+        'Status'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('direction'),
+ AjaxEntryTable.tdAttr('remotePeer'),
+ AjaxEntryTable.tdAttr('slotSizeStr'),
+ AjaxEntryTable.tdAttr('lastTransferTime'),
+ AjaxEntryTable.tdAttrCancelTransfer('lastTransferDuration'),
+ AjaxEntryTable.tdAttrStyle('status', 'statusClass')]
+""",
+    emptyMessage='No %s HA Transfer Activity.' % rspPublicName,
+    updateInterval=5)
+
+transferSetTable = ajaxentrytable.AjaxEntryTable('transferSlots',
+    url='/mgmt/xmldata?p=rspSlots&installedOnly=true',
+    headerSpec=('', 'Slot', 'Name', 'Description'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedSlot_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('packageName'),
+ AjaxEntryTable.tdAttr('packageDescription')]
+""",
+    emptyMessage='No %s Slots.' % rspPublicName)
+%>
+
+<div id="recentActivityLiveStatusAttachPoint" class="liveStatusAttachPoint">
+  <%= slotHAStatusTable.html(self, 'topLevel') %>
+</div>
+
+<div id="liveStatusAttachPoint" style="position: relative">
+
+  <form id="incomingHA" method="post" action="<%= self.thisPageletRequest() %>">
+    <div class="topLevel">
+      <input type="hidden" name="_action_" value="setupRspHaIncoming" />
+      <fieldset>
+        <legend>Incoming HA Transfers</legend>
+        <%= nodeEntries['incomingEnable'].html(self, format='block') %>
+        <table id="incomingHASettings">
+          <%= dialogEntries['incomingPassword'].html(self) %>
+          <%= dialogEntries['incomingPasswordConfirm'].html(self) %>
+        </table>
+        <%= FormUtils.formSubmitButtons(self, {'name': 'incomingSettingsTrigger',
+                                         'id': 'incomingSettingsTrigger',
+                                         'value': 'Apply',
+                                         'onclick': 'onIncomingClick(); return false;'}) %>
+      </fieldset>
+    </div>
+  </form>
+
+  <form id="outgoingHA" method="post" action="<%= self.thisPageletRequest() %>">
+    <div>
+      <input type="hidden" name="_action_" value="setupRspHaOutgoing" />
+      <fieldset>
+        <legend>Outgoing HA Transfers</legend>
+
+        <div id="outgoingHATransfersContent">
+            <div class="midLevel">
+              <table>
+                <%= dialogEntries['remoteHost'].html(self) %>
+                <%= dialogEntries['remoteSecretKey'].html(self) %>
+                <tr>
+                  <td></td>
+                  <td>
+                    <%= FormUtils.renderButton(self, {
+                            'id': 'connectionTestButton',
+                            'name': 'connectionTest',
+                            'value': 'Test Connection',
+                            'onclick': 'performConnectionTest(this); return false;' }) %>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="textContainer topLevel">Select the slots to be replicated on the remote host:</div>
+            <%= transferSetTable.html(self, 'midLevel') %>
+            <div id="scheduleLater" class="topLevel">
+              <%= dialogEntries['syncScheduleEnable'].html(self, format='block') %>
+              <div id="scheduleOptions" class="indent">
+                <%= dialogEntries['syncScheduleDate'].html(self, format='inline') %>
+                <%= dialogEntries['syncScheduleTime'].html(self, format='inline') %>
+                <div id="recurOptions">
+                  <%= dialogEntries['syncRecurringEnable'].html(self, format='inline') %>
+                  <div id="recurInterval">
+                    <%= dialogEntries['syncRecurringDays'].html(self, format='inline') %>
+                    <%= dialogEntries['syncRecurringHours'].html(self, format='inline') %>
+                    <%= dialogEntries['syncRecurringMinutes'].html(self, format='inline') %>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <%= FormUtils.formSubmitButtons(self, {
+                    'name': 'outgoingSettings',
+                    'value': 'Apply',
+                    'onclick': 'submitOutgoingForm(this); return false;' }) %>
+        </div>
+        <div class="midLevel textContainer hidden" id="outgoingNoSlotsInstalledMessage">
+            To perform an Outgoing HA Transfer, you must first have a <%= rspPublicName %>
+            package installed on the <a href='gui?p=setupRSPSlots'><%= rspPublicName %> Slots page.</a>
+        </div>
+      </fieldset>
+    </div>
+  </form>
+</div>
+
+[ <a href="/mgmt/gui?p=setupAdministrationJobs">View scheduled <%= rspPublicName %> HA transfer jobs</a> ]
+
+<!-- ModalDialog: Changing HA password -->
+<div id="acceptHaIncomingConfirmation" style="width: 34em;" class="hidden">
+  <div class="midLevel">
+    <p>
+      Changing the HA password will restart the HA service, which will interrupt
+      all HA transfers that are currently in progress.
+    </p>
+    <%= FormUtils.formSubmitButtons(self,
+        {'name': 'incomingSettings',
+         'value': 'Continue',
+         'onclick': 'submitHaPasswordForm(); return false;'},
+        {'name': 'cancel',
+         'value': 'Cancel',
+         'onclick': 'haPasswordDialog.hide(); return false;'}) %>
+  </div>
+</div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// ModalDialog widget that confirms an HA password change while incoming enabled.
+var haPasswordDialogEl = Y.one('#acceptHaIncomingConfirmation');
+var haPasswordDialog = null;
+
+Y.on('domready', function() {
+    haPasswordDialog = new ModalDialog(
+        'acceptHaIncomingConfirmation',
+        POPUP_AFFINITY_UPPER_LEFT,
+        1000);
+    // transfersLiveStatus provides feedback for 1) connection test
+    // and 2) immediate outgoing HA transfer.
+    transfersLiveStatus = new LiveStatus({
+        attachPoint: '#liveStatusAttachPoint'
+    }).render();
+
+    // recentActivityLiveStatus provides feedback for canceling HA transfers.
+    recentActivityLiveStatus = new LiveStatus({
+        attachPoint: '#recentActivityLiveStatusAttachPoint'
+    }).render();
+});
+
+// Onclick action to incoming HA form button.
+// If incoming HA is enabled and the HA password has changed,
+// defer the form submit and pop up a confirmation dialog.
+function onIncomingClick() {
+    var formEl = Y.one('#incomingHA');
+    var incomingEnabled = formEl.one('input[name=enable]').get('checked') &&
+        <%= Nodes.present(mgmt, '/rbt/rsp2/config/incoming_ha_enable') %>;
+    var password = formEl.one('input[name=password]').get('value');
+    var passwordChanged = (password != BOGUS_PASSWORD);
+
+    if (incomingEnabled && passwordChanged) {
+        haPasswordDialog.setPositionEl(Y.one('#incomingSettingsTrigger'));
+        haPasswordDialog.show();
+    } else {
+        submitHaPasswordForm();
+    }
+};
+
+// Submits the incoming HA form.
+function submitHaPasswordForm() {
+    var form = $('incomingHA');
+    form.submit();
+};
+
+// LiveStatus object used for connection tests and synchronous transfers
+var transfersLiveStatus = null;
+// recentActivityLiveStatus object used for canceling HA transfers.
+var recentActivityLiveStatus = null;
+
+// true if an outgoing transfer operation is currently running
+var transferInProgress = false;
+
+/**
+ * Performs an asynchronous connection test.
+ * This causes the LiveStatus overlay to pop up.
+ *
+ * @param buttonEl Submit button
+ */
+function performConnectionTest(buttonEl) {
+
+    // grab the fields before transfersLiveStatus disables the form.
+    var formFields = collectFormFields(buttonEl.form);
+
+    // show status message
+    transfersLiveStatus.show('Performing connection test.', false);
+
+    // perform the connection test
+    var args = {
+        host: formFields['remoteHost'],
+        password: formFields['password']
+    };
+
+    performRemoteCall('rspHaConnectionTest', args, function(responseEl) {
+        if (responseEl.getAttribute('status') == 'success') {
+            // Show success message for 1.5s, then hide.
+            transfersLiveStatus.show('Successfully connected to ' + args.host + '.', false);
+            Y.later(1500, transfersLiveStatus, transfersLiveStatus.hide);
+        }
+        else {
+            transfersLiveStatus.show(responseEl.getAttribute('errorMsg'), true);
+        }
+    });
+}
+
+/**
+ * Submit the outgoing HA form. A scheduled transfer will submit the form
+ * as usual. An immediate transfer will asynchronously perform the action
+ * and update its status in the LiveStatus widget.
+ *
+ * @param buttonEl Submit button
+ */
+function submitOutgoingForm(buttonEl) {
+
+    var formEl = buttonEl.form;
+    var formFields = collectFormFields(formEl);
+    transferInProgress = true;
+
+    // if we are scheduling a transfer, POST the form like we normally do
+    if (formEl.elements['schedule'].checked == true) {
+        transferInProgress = false;
+        transfersLiveStatus.hide(true);
+        formEl.submit();
+    }
+
+    // if this is an immediate transfer, call the blocking trigger
+    // action asynchronously and show the status
+    else {
+
+        // show the in-progress status message
+        transfersLiveStatus.show('Transferring slots.  ' +
+            'The speed of this operation depends on the size of the VMs ' +
+            'and the throughput of the remote Steelhead connection.', false);
+
+        // Trigger the transfer.  If it succeeds, refresh the page.
+        // Otherwise, show the error message.
+        delete formFields['_action_'];
+        performRemoteCall('rspHaTriggerClone', formFields, function(responseEl) {
+            transferInProgress = false;
+            if (responseEl.getAttribute('status') == 'success') {
+                transfersLiveStatus.hide(true);
+                window.location.reload(true);
+            }
+            else {
+                transfersLiveStatus.show(responseEl.getAttribute('errorMsg'), true);
+            }
+        });
+    }
+}
+
+// Display a warning if the user tries to navigate away while an outgoing
+// transfer operation is running.
+setBeforeUnload(function() {
+    if (transferInProgress) {
+        return 'Navigating away from this page may interrupt the transfer operation.';
+    }
+});
+
+transferSlotsTable.postPopulateTableHook = function() {
+    if (transferSlotsTable.rowList.length == 0) {
+        // There are no installed slots, so hide the normal Outgoing HA Transfers content.
+        Y.one('#outgoingHATransfersContent').addClass('hidden');
+        Y.one('#outgoingNoSlotsInstalledMessage').removeClass('hidden');
+    }
+}
+
+/**
+ * Cancels an "in progress" HA transfer.
+ * This causes a LiveStatus overlay to pop up over the Recent Activity AET.
+ *
+ * @param transferId The transfer ID for this transfer, which maps to the
+ *   /rbt/rsp2/state/ha_transfer/<transferId>/* nodes.
+ */
+function cancelTransfer(transferId) {
+    recentActivityLiveStatus.show('Canceling HA transfer.', false);
+
+    // perform the connection test
+    var args = {
+        transferId: transferId
+    };
+
+    performRemoteCall('rspHaCancelTransfer', args, function(responseEl) {
+        if (responseEl.getAttribute('status') == 'success') {
+            recentActivityLiveStatus.show('Canceled.', false);
+            // It takes a little bit for the slotHAStatusTable.sendUpdateRequest()
+            // call to actually remove the "Cancel Transfer" button, so the
+            // overlay stays for 1.5 more seconds.
+            Y.later(1500, recentActivityLiveStatus, recentActivityLiveStatus.hide);
+        }
+        else {
+            recentActivityLiveStatus.show(responseEl.getAttribute('errorMsg'), true);
+        }
+        transferInProgress = false;
+        slotHAStatusTable.sendUpdateRequest(); // will remove the "Cancel Transfer" button
+    });
+}
+
+
+// ]]>
+</script>

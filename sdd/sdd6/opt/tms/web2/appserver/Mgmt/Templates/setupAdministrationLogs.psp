@@ -1,0 +1,298 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupAdministrationLogs.psp
+##
+## Logging Configuration Settings
+##
+## Log Server Table
+##
+## Log Actions
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, Nodes, FormUtils, OSUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isGW" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="nodeEntries">
+    # In addition to the db nodes below, we need permissions for
+    # the following wildcards:
+    # '/logging/syslog/action/host/*'
+
+    severityOptions = [('emerg', 'Emergency'),
+                       ('alert', 'Alert'),
+                       ('crit', 'Critical'),
+                       ('err', 'Error'),
+                       ('warning', 'Warning'),
+                       ('notice', 'Notice'),
+                       ('info', 'Info')]
+
+    mgmt = self.session().value('mgmt')
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+    if isGW():
+        lppPath = '/rbt/gw/web/prefs/config/log/lines_per_page'
+    else:
+        lppPath = '/rbt/prefs/web/log/lines_per_page'
+
+    # "Debug" only appears when it is the current option. See BugID: 44584
+    if Nodes.present(self.session().value('mgmt'), '/logging/syslog/action/' \
+    'file/\\/var\\/log\\/messages/selector/0/priority') == 'debug':
+        severityOptions.append(('debug', 'Debug'))
+
+    return {
+        'localSeverity': FormUtils.NodeEntry(
+            path='/logging/syslog/action/file/\\/var\\/log\\/messages/selector/0/priority',
+            selectOptions=severityOptions,
+            label='Minimum Severity',
+            labelClass='label-fixed-small',
+            hint='(applies only to system log)'),
+        # The rotationCriteria radio buttons select between
+        # thresholdInterval and thresholdSize, below.
+        'rotationCriteria': FormUtils.NodeEntry(
+            path='/logging/rotation/global/criteria/type',
+            widget='radio',
+            label={'interval': 'Time:', 'size': 'Disk Space:'},
+            enableDiv={
+                'interval': 'thresholdIntervalContainer',
+                'size': 'thresholdSizeContainer',
+            }),
+        'thresholdInterval': FormUtils.NodeEntry(
+            path='/logging/rotation/global/criteria/threshold_interval',
+            type='duration_sec',
+            widget='select',
+            selectOptions=(('86400', 'Day'),
+                           ('604800', 'Week'),
+                           ('2592000', 'Month'))),
+        'thresholdSize': FormUtils.NodeEntry(
+            path='/logging/rotation/global/criteria/threshold_size',
+            name='thresholdSize',
+            type='uint64',
+            validate=('intInRange', '[1, 9999]'),
+            widgetClass='small',
+            filter=lambda x: x and (str(int(x) // (1024 * 1024))) or '',
+            units='MBytes'),
+        'keepNumber': FormUtils.NodeEntry(
+            path='/logging/rotation/global/keep_number',
+            type='uint32',
+            widgetClass='small',
+            label='Maximum Number of Log Files',
+            validate=('intInRange', '[1, 2000]')),
+        'linesPerPage': FormUtils.NodeEntry(
+             path=lppPath,
+             type='uint16',
+             widgetClass='small',
+             label='Lines Per Log Page',
+             validate=('intInRange', '[10, 1024]')),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    mgmt = self.session().value('mgmt')
+    # For per-process logging filters. See the LoggingImprovementsDesign
+    # TWiki page for details.
+    currentFilters = Nodes.getMgmtLocalChildrenNames(mgmt,
+        pathPrefix + '/logging/syslog/config/filter/process')
+    # filterOptionCandidates <-
+    #   [(process: {'description': prettyName, ...}), ...]
+    # for all the processes that could have filters.
+    filterOptionCandidates = Nodes.getMgmtSetEntries(mgmt,
+        pathPrefix + '/logging/syslog/state/filter/process').items()
+    # filterOptions <- [(prettyName, process), ...]
+    # excluding processes that already have filters in place.
+    # Place prettyName first so we can sort on it.
+    filterOptions = [(details.get('description') or process, process)
+         for process, details in filterOptionCandidates
+         if process not in currentFilters]
+    filterOptions.sort()
+    # Invert the tuples to read (process, prettyName), as expected by
+    # NodeEntry selectOptions, and prepend an empty name for the default.
+    filterOptions = tuple([(process, '%s -- %s' % (process, prettyName))
+                           for prettyName, process in filterOptions]) \
+                    or (('', '--'),)
+    return {
+        # hostname and hostSeverity correspond to
+        # '/logging/syslog/action/host/<hostname>'
+        'hostname': FormUtils.NodeEntry(
+            name='addLogServer_Host',
+            type='string',
+            widgetClass='hostname',
+            widget='text',
+            labelClass='label',
+            label='Server IP',
+            validate='hostnameOrIp'),
+        'hostSeverity': FormUtils.NodeEntry(
+            name='addLogServer_Severity',
+            type='string',
+            widget='select',
+            selectOptions=(
+                ('emerg', 'Emergency'),
+                ('alert', 'Alert'),
+                ('crit', 'Critical'),
+                ('err', 'Error'),
+                ('warning', 'Warning'),
+                ('notice', 'Notice'),
+                ('info', 'Info')
+            ),
+            value='notice',
+            labelClass='label',
+            label='Minimum Severity'),
+        'process': FormUtils.NodeEntry(
+            name='addFilter_Process',
+            selectOptions=filterOptions,
+            label='Process',
+            labelClass='label-fixed-small'),
+        'filter': FormUtils.NodeEntry(
+            name='addFilter_Level',
+            selectOptions=(
+                ('emerg', 'Emergency'),
+                ('alert', 'Alert'),
+                ('crit', 'Critical'),
+                ('err', 'Error'),
+                ('warning', 'Warning'),
+                ('notice', 'Notice'),
+                ('info', 'Info')
+            ),
+            label='Minimum Severity',
+            labelClass='label-fixed-small',
+            hint='(applies only to system log)'),
+    }
+
+</psp:method>
+
+<%
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+%>
+
+<% self.beginPagelet() %>
+
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Logging Configuration</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['localSeverity'].html(self) %>
+        <%= nodeEntries['keepNumber'].html(self) %>
+        <%= nodeEntries['linesPerPage'].html(self) %>
+      </table>
+    </div>
+    <div class="midLevel">
+      <p class="nodeEntry">Rotate Based On:</p>
+      <div class="indent">
+        <div class="nodeEntry">
+          <%= nodeEntries['rotationCriteria'].html(self, value='interval', format='inline', labelClass='labelPaddedLeft labelPaddedRight') %>
+          <div id="thresholdIntervalContainer" style="display: inline"><%= nodeEntries['thresholdInterval'].html(self, format='inline') %></div>
+        </div>
+        <div class="nodeEntry">
+          <%= nodeEntries['rotationCriteria'].html(self, value='size', format='inline', labelClass='labelPaddedLeft labelPaddedRight') %>
+          <div id="thresholdSizeContainer" style="display: inline"><%= nodeEntries['thresholdSize'].html(self, format='inline') %></div>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+  <div>
+    <input type="hidden" name="_action_" value="logsAction" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+logserverTable = ajaxentrytable.AjaxEntryTable('logservers',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=logserverXmldata'),
+    titleText='Remote Log Servers',
+    headerSpec=('', 'Remote Log Server', 'Minimum Severity'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('serverIp', 'logserver_'),
+ AjaxEntryTable.tdAttr('serverIp'),
+ AjaxEntryTable.tdAttr('priority')]""",
+    emptyMessage='No remote log servers.',
+    removeName='removeLogservers',
+    removeButtonText='Remove Selected',
+    removePrefix='logserver_',
+    addButtonText='Add a New Log Server')
+
+logserverTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    ''' + dialogEntries['hostname'].html(self) + '''
+    ''' + dialogEntries['hostSeverity'].html(self) + '''
+  </table>
+</div>
+''' + FormUtils.formSubmitButtons(self, {'name': 'addRemote', 'value': 'Add'})
+
+filtersTable = ajaxentrytable.AjaxEntryTable('filters',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=perProcessLogging'),
+    titleText='Per-Process Logging',
+    headerSpec=('', 'Description', 'Process', 'Minimum Severity'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('process', 'filter_'),
+ AjaxEntryTable.tdAttr('prettyName'),
+ AjaxEntryTable.tdAttr('process'),
+ AjaxEntryTable.tdAttr('level')]""",
+    emptyMessage='No per-process logging filters.',
+    removeName='removeFilters',
+    removeButtonText='Remove Selected',
+    removePrefix='filter_',
+    addButtonText='Add a New Process Logging Filter')
+
+filtersTable.addDivContent = '''
+<div class="midLevel">
+<p id="filtersTable_noOptionsExplanation" class="hidden">
+  It is not possible to add another filter without first removing a filter,
+  because all processes already have filters.
+</p>
+</div>
+<div id="filtersTable_addElements">
+  <div class="midLevel">
+    <table>
+      ''' + dialogEntries['process'].html(self) + '''
+      ''' + dialogEntries['filter'].html(self) + '''
+    </table>
+  </div>
+''' + FormUtils.formSubmitButtons(self, {'name': 'addFilter', 'value': 'Add'}) + '''
+</div>
+'''
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="logsAction" />
+    <%= logserverTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% if not policyType: { %>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="logRotateForm">
+  <fieldset class="topLevel">
+    <legend>Log Actions</legend>
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="logRotate" />
+      <input type="submit" name="rotate" value="Rotate Logs" />
+    </div>
+  </fieldset>
+</form>
+<% } %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="filtersTable_form">
+  <div>
+    <input type="hidden" name="_action_" value="logsAction" />
+    <%= filtersTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% self.endPagelet() %>

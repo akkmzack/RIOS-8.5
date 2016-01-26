@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>In-Path Rules Overview</title>
+    <link rel="StyleSheet" href="css/in-path-rules.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="in-path-rules.04.1.html#322414">Chapter 2	Configuring In-Path Rules</a> : In-Path Rules Overview</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="322414">In-Path Rules Overview</a></div>
+      <div class="Body"><a name="322415">In-path rules are used only when a connection is </a><span style="font-style: italic">initiated</span>. Because connections are usually initiated by clients, in-path rules are configured for the initiating, or client-side Steelhead appliance. In-path rules determine Steelhead appliance behavior with SYN packets.</div>
+      <div class="Body"><a name="322425">In-path rules are an ordered list of fields a Steelhead appliance uses to match with SYN packet fields (for </a>example, source or destination subnet, IP address, VLAN, or TCP port). Each in-path rule has an <span style="font-style: italic">action</span> field. When a Steelhead appliance finds a matching in-path rule for a SYN packet, the Steelhead appliance treats the packet according to the action specified in the in-path rule. </div>
+      <div class="Body"><a name="322432">In-path rules are used only in the following scenarios:</a></div>
+      <li class="Bullet"><a name="322433"> TCP SYN packet arrives on the LAN interface of physical in-path deployments. </a></li>
+      <li class="Bullet"><a name="322434"> TCP SYN packet arrives on the WAN0_0 interface of virtual in-path deployments. </a></li>
+      <div class="Body"><a name="322435">Both of these scenarios are associated with the first, or </a><span style="font-style: italic">initiating</span>, SYN packet of the connection. Because most connections are initiated by the client, you configure your in-path rules on the client-side Steelhead appliance. In-path rules have no effect on connections that are already established, regardless of whether the connections are being optimized.</div>
+      <div class="Body"><a name="322439">In-path rule configurations differ depending on the action: for example, both the fixed-target and the auto-</a>discovery actions allow you to choose what type of optimization is applied, what type of data reduction is used, what type of latency optimization is applied, and so on. </div>
+      <div class="Body"><a name="364448">RiOS</a><span class="Bold" style="font-weight: normal"> v7.0 and later includes fixed-target, packet-mode optimization in-path rules. The </span>Steelhead appliance<span class="Bold" style="font-weight: normal"> </span><span class="Bold" style="font-weight: normal">treats the packets for packet mode optimization rules differently from the in-path rules described in this </span><span class="Bold" style="font-weight: normal">overview. For details, see </span><span class="xref" style="font-weight: normal"><a href="javascript:WWHClickedPopup('cx_test', 'in-path-rules.04.2.html#328960', '');" title="In-Path Rules Overview">Creating In-Path Rules for Packet-Mode Optimization</a></span><span class="Bold" style="color: #000000; font-style: normal; font-weight: normal">.</span></div>
+      <div class="Body"><a name="328972">You can configure optional settings to support a variety of deployment needs, including:</a></div>
+      <li class="Bullet"><span class="Bold"><a name="328973">Optimization Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Optimize connections using scalable data reduction, compression, both, or none.</li>
+      <li class="Bullet"><span class="Bold"><a name="328975">VLAN Tags</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Apply a rule to a specific VLAN or all VLANs. </li>
+      <li class="Bullet"><span class="Bold"><a name="328976">Preoptimization Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Special handling required for Oracle Forms over SSL support.</li>
+      <li class="Bullet"><span class="Bold"><a name="328977">Latency Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Set to normal, none, or HTTP to support HTTP traffic. Special handling required for Oracle Forms over SSL support.</li>
+      <li class="Bullet"><span class="Bold"><a name="328978">Neural Framing Requirements</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Specify never, always, TCP Hints, or Dynamic.</li>
+      <li class="Bullet"><span class="Bold"><a name="328979">WAN Visibility</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Preserve TCP/IP address or port information. </li>
+      <div class="Heading2"><a name="328960">Creating In-Path Rules for Packet-Mode Optimization</a></div>
+      <div class="Body"><a name="328902">RiOS v7.0 and later </a><span class="Bold" style="font-weight: normal">performs packet-by-packet SDR bandwidth optimization on TCP-over-IPv6 and UDP-</span><span class="Bold" style="font-weight: normal">over-IPv4 connections using fixed-target, packet-mode optimization in-path rules. This type of in-path rule </span><span class="Bold" style="font-weight: normal">optimizes bandwidth for applications over any transport protocol. </span></div>
+      <div class="Body"><a name="328918">When you create an in-path rule to intercept the TCP/IP or UDP connection, the traffic flows enter the </a>Steelhead appliance. The Steelhead does not terminate the connection, but instead rearranges the packet headers and payload for SDR optimization. Next, it provides SDR optimization and sends the packets through an IPv4 channel to the peer Steelhead over a TCP connection. The peer Steelhead decodes the packet and routes it to the destined server. The optimized packets are sent either through a shared or dedicated channel to the peer, depending on which in-path rule the packet flow was matched against.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;2&#8209;1. </span><span class="Bold"><a name="328922">A Fixed-Target Packet-Mode Optimization Rule Creates an Inner IPv4 Channel Between the </a></span>Steelhead Appliance<span class="Bold">s</span><img class="Default" src="images/ipbladeoverview.gif" width="614" height="92" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="328923">When you create a fixed-target packet-mode optimization rule, you define the inner channel characteristics </a></span><span class="Bold" style="font-weight: normal">using the following controls: source and destination subnet, source destination port or port labels, and </span><span class="Bold" style="font-weight: normal">DSCP marking. </span></div>
+      <div class="Body"><a name="335538">Packet-by-packet optimization supports the following topologies:</a></div>
+      <li class="Bullet"><a name="335558">Physical in-path</a></li>
+      <li class="Bullet"><a name="335569">Virtual in-path</a></li>
+      <li class="BulletSubBullet2"><a name="343513">WCCP/PBR for UDP</a></li>
+      <li class="BulletSubBullet2"><a name="343514">PBR for TCP/IPv6</a></li>
+      <li class="Bullet"><a name="335576">Master/backup (both Steelhead appliances must be running RiOS v7.0 or later)</a></li>
+      <div class="Body"><a name="336062">Packet-by-packet optimization does not support the following topologies:</a></div>
+      <li class="Bullet"><a name="336076">Out-of-path</a></li>
+      <li class="Bullet"><a name="336083">Serial cluster</a></li>
+      <li class="Bullet"><a name="336090">Interceptor integration</a></li>
+      <div class="Body"><a name="335611">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceInpathRules.html#322503', '');" title="Configuring In-Path Rules">Configuring In-Path Rules</a></span>. For design considerations and best practices, see the <span class="book_title">Riverbed </span><span class="book_title">Deployment Guide</span>.</div>
+      <div class="Body"><a name="335549">&nbsp;</a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

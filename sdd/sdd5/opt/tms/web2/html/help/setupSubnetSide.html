@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Subnet Side Rules</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#279838">Chapter 6	Configuring Network Integration Features</a> : Configuring Subnet Side Rules </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="279838">Configuring Subnet Side Rules </a></div>
+      <div class="Body"><a name="835173">You configure subnet side rules in the Configure &gt; Networking &gt; Subnet Side Rules page.</a></div>
+      <div class="Body"><a name="835176">Subnet side rules are used in a virtual in-path deployment to support Flow Export, to support a client-side </a>Steelhead appliance, or to exempt certain subnets from QoS enforcement.</div>
+      <div class="Body"><a name="835181">Subnet side rules let you configure subnets as LAN-side subnets or WAN-Side subnets for a virtual in-path </a>Steelhead appliance. The subnet side rules determine whether traffic originated from the LAN or the WAN-Side of the Steelhead appliance based on the source subnet. You must configure subnets on each Steelhead appliance<span style="font-family: &quot;Arial Narrow&quot;"> </span>in a virtual in-path configuration, as the subnets for each will likely be unique.</div>
+      <div class="Body"><a name="835191">With subnet side rules in place</a></div>
+      <li class="Bullet"><a name="835195">LAN-bound traffic that traverses the WAN interface of the Steelhead appliance is exempt from QoS </a>enforcement. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'advanced-networking.08.08.html#455433', '');" title="QoS Overview">Bypassing LAN Traffic</a></span>. </li>
+      <li class="Bullet"><a name="835202">Client-side Steelhead appliances configured for virtual in-path deployment can optimize traffic from </a>client-side connections. Otherwise, the appliance does&nbsp;not optimize traffic from client-side connections. In virtual in-path configurations, all traffic flows in and out of one physical interface, and the default subnet side rule causes all traffic to appear to originate from the WAN side of the device. </li>
+      <li class="Bullet" style="color: #000000; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><a name="835204">Flow export collectors such as NetFlow analyze nonoptimized or passed through traffic correctly. </a>Otherwise, the Steelhead appliance cannot discern whether the traffic is traveling from the LAN to the WAN or in the opposite direction. This can result in over-reporting traffic in a particular direction or for a particular interface.</li>
+      <div class="Body"><a name="835208">FakeIndex is necessary for correct optimized traffic reporting. The fake index feature is enabled by default </a>if you enable the Flow Export option on the Configure &gt; Networking &gt; Flow Statistics page For details, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="HeadingProcedure"><a name="386090">To add subnet side rules</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="375673">Choose Configure &gt; Networking &gt; Subnet Side Rules to display the Subnet Side Rules page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="793546">Complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="794742">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="794744">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794746">Add a Subnet Side Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794748">Displays the controls to create a subnet side rule. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794750">Insert Rule At</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794752">Select Start, End, or a rule number from the drop-down list.</a></div>
+            <div class="CellBody"><a name="794756">Steelhead appliances evaluate rules in numerical order starting with rule 1. If </a>the conditions set in the rule match, then the rule is applied, and the system moves on to the next packet. If the conditions set in the rule do not match, the system consults the next rule. For example, if the conditions of rule 1 do not match, rule 2 is consulted. If rule 2 matches the conditions, it is applied, and no further rules are consulted. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794758">Subnet</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794760">Specify the subnet. Use the following format:</a></div>
+            <div class="CellBody"><a name="794761">&lt;IP address&gt;/&lt;subnet mask&gt;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794763">Subnet is on the LAN side of this </a>appliance</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794765">In virtual in-path configurations, all traffic is flowing in and out of one physical </a>interface. Select to specify that the subnet is on the LAN side of the device. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794767">Subnet is on the WAN side of this </a>appliance</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794769">In virtual in-path configurations, all traffic is flowing in and out of one physical </a>interface. Select to specify that the subnet is on the WAN side of the device. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794771">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794773">Adds the rule to the subnet map table. The Management Console redisplays the </a>subnet map table and applies your changes to the running configuration, which is stored in memory.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794775">Remove Subnet Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794777">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Subnet Rules</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794779">Move Subnet Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="794781">Moves the selected rules. Click the arrow next to the desired rule position; the </a>rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="385375">You cannot delete the default rule, Default, which optimizes all remaining WAN side traffic that has not </a>been selected by another rule. This rule is always listed last.</div>
+      <div class="Heading4"><a name="324995">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_netflow.html#512262', '');" title="Configuring Flow Statistics" name="512258">Configuring Flow Statistics</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'advanced-networking.08.07.html#280154', '');" title="Applying QoS Policies" name="512259">Applying QoS Policies</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

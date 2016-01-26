@@ -1,0 +1,323 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## reportPFSShares.psp
+##
+## Display the PFS shares.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="pageletNodes">
+    return ['/rbt/rcu/pfs/status', '/rbt/rcu/pfs_share']
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    mgmt = self.session().value('mgmt')
+    if not self.session().value('debug', None) and 'false' == Nodes.present(mgmt, '/rbt/rcu/state/valid_model'):
+        return False
+    if not super(self.__class__, self).pageIsReadable():
+        return False
+    return True
+</psp:method>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupPFS_settings',
+        'setupPFS_shares',
+        'reportPFSStatistics',
+    )
+%>
+
+<%
+mgmt = self.session().value('mgmt')
+hostname = Nodes.present(mgmt, '/system/hostname')
+
+# A shorthand way to display a bunch of label/span pairs in a common tbody.
+def reportItems(tag, *labelIdPairs): {
+    html = '<tbody %s>' % (tag and (' id="%s"' % tag) or '')
+    for label, id in labelIdPairs: {
+        html += '<tr><td class="label-fixed">%s:</td><td><span id="%s"></span></td></tr>' % (label, id)
+    }
+    html += '</tbody>\n'
+    return html
+}
+
+pfsSharesReportTable = ajaxentrytable.AjaxEntryTable('pfsSharesReport',
+    headerSpec=('Local Name', 'Sharing', 'Syncing', 'Status', 'Last Sync Time', 'Last Sync Status'),
+    rowSpec="""
+[AjaxEntryTable.tdClick('local_name', displayShareClick),
+ AjaxEntryTable.tdAttr('sharing'),
+ AjaxEntryTable.tdAttr('syncing'),
+ AjaxEntryTable.tdChildAttr('status', 'status', 'col_status'),
+ AjaxEntryTable.tdChildAttr('status', 'last_sync_time'),
+ AjaxEntryTable.tdChildAttr('status', 'last_sync_status', 'col_syncStatus')]""",
+    emptyMessage='No PFS shares have been configured.')
+%>
+
+<% self.beginPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+var displayShareName = null;
+
+function displayShareClick(el) {
+    displayShareName = el.getAttribute('local_name');
+    enableElements('div_shareDisplay', true);
+    fillShareDisplay();
+    return false;
+}
+
+// -->
+</script>
+
+
+<form method="post"
+      action="/mgmt/gui?p=reportPFSShares"
+      id="pfsSharesReportForm">
+
+  <div id="div_pfsSharesReportTable" class="hidden">
+    <%= pfsSharesReportTable.html(self, cssClass="topLevel") %>
+  </div>
+
+  <div id="div_shareDisplay" class="hidden">
+    <h3>Status and Setting for Proxy Share <b>\\\\<%= hostname %>\\<span id="shareName"></span></b></h3>
+
+    <h3>Current Status</h3>
+    <div class="indent">
+      <table>
+	<%= reportItems(None, 
+	                ('Current Status', 'share_currentStatus')) %>
+        <%= reportItems('shareSection_errorMessage', 
+	                ('Error Message', 'share_errorMessage')) %>
+	<%= reportItems('shareSection_lastSync', 
+	                ('Last Successful Sync', 'share_lastSyncTime'), 
+	                ('Last Sync Status', 'share_lastSyncStatus')) %>
+      </table>
+    </div>
+
+    <h3>Configuration Settings</h3>
+    <div class="indent">
+      <table>
+        <%= reportItems(None,
+			('Version', 'share_version'),
+			('Comment', 'share_comment'),
+			('Mode', 'share_mode')) %>
+	<%= reportItems('shareSection_v2items',
+			('Server Name and Port', 'share_server')) %>
+	<%= reportItems(None,
+			('Remote Path', 'share_remotePath'),
+			('Sharing Enabled', 'share_sharing')) %>
+	<%= reportItems('shareSection_v3items',
+			('User Account Login', 'share_serverAcct')) %>
+	<%= reportItems(None,
+			('Syncing Enabled', 'share_syncing')) %>
+	<%= reportItems('shareSection_fullIncSync',
+			('Incremental Sync Date, Time, Interval', 'share_incSync'),
+			('Full Sync Date, Time, Interval', 'share_fullSync')) %>
+	<%= reportItems('shareSection_plainSync',
+			('Sync Date, Time, Interval', 'share_plainSync')) %>
+      </table>
+    </div>
+
+    <h3>Actions and Statistics</h3>
+    <div class="indent">
+      <table>
+        <%= reportItems(None,
+			('Current Action', 'share_action')) %>
+	<%= reportItems('shareSection_initCopy',
+			('Current File', 'share_initialFile'),
+			('Files Received', 'share_initialFiles'),
+			('Directories Received', 'share_initialDirs'),
+			('Bytes Received', 'share_initialBytes')) %>
+	<%= reportItems('shareSection_syncSend',
+			('Sending', 'share_syncSendFile'),
+			('Files Sent', 'share_syncSendFiles'),
+			('Directories Sent', 'share_syncSendDirs'),
+			('Bytes Sent', 'share_syncSendBytes')) %>
+	<%= reportItems('shareSection_syncReceive',
+			('Receiving', 'share_syncReceiveFile'),
+			('Files Sent', 'share_syncReceiveFiles'),
+			('Directories Sent', 'share_syncReceiveDirs'),
+			('Bytes Sent', 'share_syncReceiveBytes')) %>
+	<%= reportItems('shareSection_verify',
+			('Comparing File', 'share_syncVerifyFile'),
+			('Different Objects', 'share_syncVerifyDiffs')) %>
+	<%= reportItems('shareSection_totals',
+			 ('Files Processed', 'share_syncTotalFiles'),
+			 ('Directories Processed', 'share_syncTotalDirs'),
+			 ('Different Objects', 'share_syncTotalDiffs'),
+			 ('Bytes Transferred', 'share_syncTotalBytes')) %>
+      </table>
+    </div>
+
+    <h4>View Logs</h4>
+    <div class="indent">
+      <a href="" id="viewLogsInitialCopy">Initial Copy</a>
+      &nbsp;&nbsp;&nbsp;&nbsp;
+      <a href="" id="viewLogsLastSync">Last Sync</a>
+      &nbsp;&nbsp;&nbsp;&nbsp;
+      <a href="" id="viewLogsVerify">Verify</a>
+    </div>
+  </div>
+
+  <div id="div_noPfsSharesReportTable" class="hidden">
+    <p>
+      Proxy File Service is currently disabled.
+    </p>
+  </div>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+// This performs the auto update.
+var pfsSharesUpdater = new AjaxUpdater('/mgmt/xmldata?p=pfsShares');
+pfsSharesUpdater.update = function(request) {
+    if (!request.responseXML) {
+        return;
+    }
+    var doc = request.responseXML.documentElement.firstChild;
+    if ('error' != doc.tagName) {
+        var status = doc.getAttribute('pfs-status');
+        var enabled = ('PFS stopped' == status) || ('PFS started' == status);
+        $('div_pfsSharesReportTable').style.display = (enabled) ? 'block' : 'none';
+	$('div_shareDisplay').style.display = (enabled) ? 'block' : 'none';
+        $('div_noPfsSharesReportTable').style.display = (enabled) ? 'none' : 'block';
+        if (enabled) {
+            pfsSharesReportTable.updateXMLData(doc);
+	    if (displayShareName) {
+	        fillShareDisplay();
+            }
+        }
+    }
+}
+
+// Update a share row from the received xml.
+pfsSharesReportTable.updateRow = function(oldEl, newEl, row) {
+    var tds = row.getElementsByTagName('td');
+    if (oldEl.getAttribute('local_name') != newEl.getAttribute('local_name')) {
+        return false;
+    }
+    var statusEl = newEl.getElementsByTagName('status').item(0);
+    tds.item(1).firstChild.data = newEl.getAttribute('sharing');
+    tds.item(2).firstChild.data = newEl.getAttribute('syncing');
+    tds.item(3).firstChild.data = statusEl.getAttribute('status');
+    tds.item(4).firstChild.data = statusEl.getAttribute('last_sync_time');
+    tds.item(5).firstChild.data = statusEl.getAttribute('last_sync_status');
+    return true;
+}
+
+function fillShareDisplay() {
+    var share = pfsSharesReportTable.getEntryElement('local_name', displayShareName);
+    if (!share) {
+        displayShareName = null;
+        enableElements('div_shareDisplay', 'hide');
+        return;
+    }
+
+    var status = share.getElementsByTagName('status').item(0);
+    var stats = share.getElementsByTagName('stats').item(0);
+
+    setElementText('shareName', share.getAttribute('local_name'));
+    setElementText('share_currentStatus', status.getAttribute('status'));
+
+    var statusErr = 'Share has error' == status.getAttribute('status');
+    $('shareSection_errorMessage').style.display = statusErr ? '' : 'none';
+    setElementText('share_errorMessage', status.getAttribute('error_msg'));
+
+    var standalone = ('standalone' == share.getAttribute('mode'));
+    var trulyStandalone = standalone && ('' == share.getAttribute('remote_path'));
+
+    $('shareSection_lastSync').style.display = (trulyStandalone) ? 'none' : '';
+    setElementText('share_lastSyncTime', status.getAttribute('last_sync_time'));
+    setElementText('share_lastSyncStatus', status.getAttribute('last_sync_status'));
+
+    setElementText('share_version', share.getAttribute('version'));
+    setElementText('share_comment', share.getAttribute('comment'));
+    setElementText('share_mode', share.getAttribute('mode'));
+
+    $('shareSection_v2items').style.display = ('2' == share.getAttribute('version')) ? '' : 'none';
+    setElementText('share_server', share.getAttribute('server_name') + ':' + share.getAttribute('port'));
+
+    setElementText('share_remotePath', share.getAttribute('remote_path'));
+    setElementText('share_sharing', share.getAttribute('sharing'));
+
+    $('shareSection_v3items').style.display = ('3' == share.getAttribute('version')) ? '' : 'none';
+    setElementText('share_serverAcct', share.getAttribute('server_acct'));
+
+    setElementText('share_syncing', share.getAttribute('syncing'));
+
+    $('shareSection_fullIncSync').style.display = (standalone) ? 'none' : '';
+    $('shareSection_plainSync').style.display = (standalone && !trulyStandalone) ? '' : 'none';
+    var fullSync = share.getAttribute('fullSyncStartDate') + ' ' +
+                   share.getAttribute('fullSyncStartTime') + ', ' +
+                   share.getAttribute('fullSyncInterval') + ' ' +
+                   share.getAttribute('fullSyncUnits');
+    var incSync = share.getAttribute('incSyncStartDate') + ' ' +
+                  share.getAttribute('incSyncStartTime') + ', ' +
+                  share.getAttribute('incSyncInterval') + ' ' +
+                  share.getAttribute('incSyncUnits');
+    setElementText('share_plainSync', fullSync);
+    setElementText('share_fullSync', fullSync);
+    setElementText('share_incSync', incSync);
+
+    var action = stats.getAttribute('action');
+    setElementText('share_action', action);
+
+    var report_initCopy = 'GET_INITIAL_COPY' == action;
+    var report_syncSend = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                          'local' == share.getAttribute('mode');
+    var report_syncReceive = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                              'local' != share.getAttribute('mode');
+    var report_verify = 'VERIFY_SHARE' == action;
+
+    var stats_filesProcessed = stats.getAttribute('files_processed');
+    var stats_directoriesProcessed = stats.getAttribute('directories_processed');
+    var stats_objectsDifferent = stats.getAttribute('objects_different');
+    var stats_bytesTransferred = stats.getAttribute('bytes_transferred');
+
+    $('shareSection_initCopy').style.display = (report_initCopy) ? '' : 'none';
+    $('shareSection_syncSend').style.display = (report_syncSend) ? '' : 'none';
+    $('shareSection_syncReceive').style.display = (report_syncReceive) ? '' : 'none';
+    $('shareSection_verify').style.display = (report_verify) ? '' : 'none';
+    $('shareSection_totals').style.display = (stats_filesProcessed || stats_directoriesProcessed || stats_objectsDifferent || stats_bytesTransferred) ? '' : 'none';
+
+    setElementText('share_initialFile', stats.getAttribute('receiving') || '');
+    setElementText('share_initialFiles', stats.getAttribute('files_received') || '');
+    setElementText('share_initialDirs', stats.getAttribute('directories_received') || '');
+    setElementText('share_initialBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('share_syncSendFile', stats.getAttribute('sending') || '');
+    setElementText('share_syncSendFiles', stats.getAttribute('files_sent') || '');
+    setElementText('share_syncSendDirs', stats.getAttribute('directories_sent') || '');
+    setElementText('share_syncSendBytes', stats.getAttribute('bytes_sent') || '');
+
+    setElementText('share_syncReceiveFile', stats.getAttribute('receiving') || '');
+    setElementText('share_syncReceiveFiles', stats.getAttribute('files_received') || '');
+    setElementText('share_syncReceiveDirs', stats.getAttribute('directories_received') || '');
+    setElementText('share_syncReceiveBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('share_syncVerifyFile', stats.getAttribute('comparing') || '');
+    setElementText('share_syncVerifyDiffs', stats.getAttribute('objects_different') || '');
+
+    setElementText('share_syncTotalFiles',  stats_filesProcessed || '');
+    setElementText('share_syncTotalDirs',  stats_directoriesProcessed || '');
+    setElementText('share_syncTotalDiffs', stats_objectsDifferent || '');
+    setElementText('share_syncTotalBytes',  stats_bytesTransferred || '');
+
+    // view log buttons
+    var base = '/mgmt/gui?p=reportPFSLog&amp;share=';
+    $('viewLogsInitialCopy').href = base + displayShareName + '&amp;log=initial-copy';
+    $('viewLogsLastSync').href =  base + displayShareName + '&amp;log=last-sync';
+    $('viewLogsVerify').href =  base + displayShareName + '&amp;log=verify';
+}
+
+
+// -->
+</script>

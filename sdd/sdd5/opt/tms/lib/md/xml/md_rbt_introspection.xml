@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_introspection                                       -->
+<!--   Module Root: /rbt/introspection                                      -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--  .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_introspection.cpp-->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/introspection/config/myconfig</name>                 -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_introspection">
+    <config>
+        <name>/rbt/introspection/config/enable</name>
+        <description>Enable introspection queries</description>
+        <role-primitive permission="read-write">/role_primitive/acceleration/sport_introspection</role-primitive>
+        <value type="bool">true</value>
+    </config>
+
+    <state-wildcard>
+        <name>/rbt/introspection/state/result/*</name>
+        <description>Result from Queries</description>
+        <value type="uint32"/>
+        <get-func>mr_introspection_result_get</get-func>
+        <iterate-func>mr_introspection_result_iterate</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/introspection/state/result/*/result</name>
+        <description>Result from queries</description>
+        <value type="string"/>
+        <get-func>mr_introspection_result_get</get-func>
+        <get-func-arg>result</get-func-arg>
+    </state>
+
+    <state-wildcard>
+        <name>/rbt/introspection/state/sport/filter/*</name>
+        <description>Type of the Filter</description>
+        <value type="string"/>
+        <get-func>mr_introspection_filter_get</get-func>
+        <iterate-func>mr_introspection_filter_iterate</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/introspection/state/sport/filter/*/type</name>
+        <description>Type of the filter</description>
+        <value type="string"/>
+        <get-func>mr_introspection_filter_get</get-func>
+        <get-func-arg>type</get-func-arg>
+    </state>
+ </node-list>

@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Flow Statistics</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#512262">Chapter 6	Configuring Network Integration Features</a> : Configuring Flow Statistics </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="512262">Configuring Flow Statistics </a></div>
+      <div class="Body"><a name="749493">You enable and configure flow statistic settings in the Configure &gt; Networking &gt; Flow Statistics page. You </a>can also enable flow export to an external collector and to a CascadeFlow collector. CascadeFlow collectors can aggregate information about QoS configuration and other application statistics to send to a Cascade Enterprise Profiler appliance. The Enterprise Profiler summarizes and displays the QoS configuration statistics. </div>
+      <div class="Body"><a name="749578">By default, flow export is disabled.</a></div>
+      <div class="Body"><a name="749500">External collectors use information about network data flows to report trends such as the top users, peak </a>usage times, traffic accounting, security, and traffic routing. You can export preoptimization and post-optimization data to an external collector. </div>
+      <div class="Body"><a name="723270">The Top Talkers feature enables a report that details the hosts, applications, and host and application pairs </a>that are either sending or receiving the most data on the network. Top Talkers does not use a NetFlow Collector.</div>
+      <div class="Heading2"><a name="301875">Enabling Flow Export</a></div>
+      <div class="Body"><a name="736829">Steelhead appliances support NetFlow v5.0, CascadeFlow, NetFlow v9, and CascadeFlow-compatible. Flow </a>export requires these components:</div>
+      <li class="Bullet"><span class="Bold"><a name="279964">Exporter -</a></span><span style="font-size: 9.0pt"> </span>When you enable flow export support, the Steelhead appliance exports data about the individual flows that it sees as they traverse the network.</li>
+      <li class="Bullet"><span class="Bold"><a name="279968">Collector</a></span><span style="font-size: 9.0pt"> - </span>A server or appliance designed to aggregate data sent to it by the Steelhead appliance and other exporters.</li>
+      <li class="Bullet"><span class="Bold"><a name="279970">Analyzer</a></span><span style="font-size: 9.0pt"> - </span>A collection of tools used to analyze the data and provide relevant data summaries and graphs. NetFlow analyzers are available for free or from commercial sources. Analyzers are often provided in conjunction with the collectors.</li>
+      <div class="Body"><a name="279971">Before you enable flow export in your network, consider the following:</a></div>
+      <li class="Bullet"><a name="279972">Flow data typically consumes less than 1% of link bandwidth. Take care with low bandwidth links to </a>ensure that flow export does not consume too much bandwidth and thereby impacting application performance.</li>
+      <li class="Bullet"><a name="279973">You can reduce the amount of bandwidth consumption by applying filters that only export the most </a>critical information needed for your reports.</li>
+      <div class="Heading3"><a name="279974">Flow Export in Virtual In-Path Deployments</a></div>
+      <div class="Body"><a name="279975">For virtual in-path deployments such as WCCP or PBR, because the traffic is arriving and leaving from the </a>same WAN interface, when the Steelhead appliance exports data to a flow export collector, all traffic has the WAN interface index. This is the correct behavior because the input interface is the same as the output interface.</div>
+      <div class="Body"><a name="279982">For details about configuring flow export in a virtual in-path deployment, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules">Configuring Subnet Side Rules</a></span>.</div>
+      <div class="Body"><a name="279984">To distinguish between LAN-to-WAN and WAN-to-LAN traffic in virtual in-path deployments, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="HeadingProcedure"><a name="280001">To enable flow statistic settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="280002">Choose Configure &gt; Networking &gt; Flow Statistics to display the Flow Statistics page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="280007">Under Flow Statistics Settings, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="837344">   </a></div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="837315">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="837317">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837319">Enable Application Visibility</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837321">Continuously collects detailed application-level statistics for both passthrough </a>and optimized traffic. The Application Visibility and Application Statistics reports display these statistics. This statistic collection is disabled by default. </div>
+            <div class="CellBody"><a name="837322">To view the reports, choose Reports &gt; Networking &gt; Application Statistics or </a>Application Visibility.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837324">Enable WAN Throughput </a>Statistics</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837326">Continuously collects WAN throughput statistics, which the WAN Throughput </a>report displays. This statistic collection is enabled by default; however, you can disable the collection to save processing power.</div>
+            <div class="CellBody"><a name="837327">To view the WAN throughput statistics, choose Reports &gt; Networking &gt; WAN </a>Throughput.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837329">Enable Top Talkers</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837331">Continuously collects statistics for the most active traffic flows. A traffic flow </a>consists of data sent and received from a single source IP address and port number to a single destination IP address and port number over the same protocol.</div>
+            <div class="CellBody"><a name="837333">The most active, heaviest users of WAN bandwidth are called the </a><span style="font-style: italic">Top Talkers</span>. A flow collector identifies the top consumers of the available WAN capacity (the top 50 by default) and displays them in the Top Talkers report. Collecting statistics on the Top Talkers provides visibility into WAN traffic without applying an in-path rule to enable a WAN visibility mode. </div>
+            <div class="CellBody"><a name="837334">You can analyze the Top Talkers for accounting, security, troubleshooting, and </a>capacity planning purposes. You can also export the complete list in CSV format. </div>
+            <div class="CellBody"><a name="837335">The collector gathers statistics on the Top Talkers based on the proportion of </a>WAN bandwidth consumed by the top hosts, applications, and host and application pair conversations. The statistics track pass-through or optimized traffic, or both. Data includes TCP or UDP traffic, or both (configurable in the Top Talkers report page).</div>
+            <div class="CellBody"><a name="837336">A NetFlow collector is not required for this feature. </a></div>
+            <div class="CellBody"><a name="837337">Optionally, select a time period to adjust the collection interval: </a></div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837338">24-hour Report Period</a></span> - For a five-minute granularity (the default setting).</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837339">48-hour Report Period</a></span> - For a ten-minute granularity.</li>
+            <div class="CellBody"><a name="837340">The system also uses the time period to collect SNMP Top Talker statistics. For </a>top talkers displayed in the Top Talker report and SNMP Top Talker statistics, the system updates the Top Talker data ranks either every 300 seconds (for a 24- hour reporting period), or 600 seconds (for a 48-hour reporting period).</div>
+            <div class="CellBody"><a name="837341">The system saves a maximum of 300 Top Talker data snapshots, and aggregates </a>these to calculate the top talkers for the 24- or 48-hour reporting period.</div>
+            <div class="CellBody"><a name="837342">The system never clears top talker data at the time of polling; however, every </a>300 or 600 seconds, it replaces the oldest Top Talker data snapshot of the 300 with the new data snapshot.</div>
+            <div class="CellBody"><a name="837343">After you change the reporting period, it takes the system one day to update the </a>Top Talker rankings to reflect the new reporting period. In the interim, the data used to calculate the Top Talkers still includes data snapshots from the original reporting period. This delay applies to Top Talker report queries and SNMP Top Talker statistics.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="280047">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="280048">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="715059">To enable flow export settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="715060">Choose Configure &gt; Networking &gt; Flow Statistics to display the Flow Statistics page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="714997">Under Flow Export Settings, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="838251">   </a></div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="838191">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="838193">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838195">Enable Flow Export</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838200">Enables the Steelhead appliance to export network statistics about the </a>individual flows that it sees as they traverse the network. By default, this setting is disabled.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838202">Enable QoS and Application </a>Statistics to CascadeFlow Collectors</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838204">Sends application-level statistics from all sites to a CascadeFlow collector on a </a>Cascade appliance. Cascade appliances provide central reporting capabilities. The collector aggregates QoS and application statistics to provide visibility using detailed records specific to flows traversing the Steelhead appliance.</div>
+            <div class="CellBody"><a name="838214">The Steelhead appliance sends the Cascade appliances an enhanced version of </a>NetFlow called CascadeFlow. CascadeFlow includes:</div>
+            <li class="CellBullet"><a name="838215">NetFlow v9 extensions for round-trip time measurements that enable you to </a>understand volumes of traffic across your WAN and end-to-end response time.</li>
+            <li class="CellBullet"><a name="838219">extensions that enable a Cascade Express appliance to properly measure and </a>report on the benefits of optimization.</li>
+            <div class="CellBody"><a name="838220">After the statistics are aggregated on a Cascade appliance, you can use its </a>central reporting capabilities to:</div>
+            <li class="CellBullet"><a name="838221">analyze overall WAN use, such as traffic generated by application, most </a>active sites, and so on.</li>
+            <li class="CellBullet"><a name="838222">troubleshoot a particular application by viewing how much bandwidth it </a>received, checking for any retransmissions, interference from other applications, and so on.</li>
+            <li class="CellBullet"><a name="838223">compare actual application use against your outbound QoS policy </a>configuration to analyze whether your policies are effective. For example, if your QoS policy determines that Citrix should get a minimum of 10 percent of the link, and the application statistics reveal that Citrix performance is unreliable and always stuck at 10 percent, you might want to increase that minimum guarantee. </li>
+            <div class="CellBody"><a name="838227">You must enable outbound QoS on the Steelhead appliance, add a CascadeFlow </a>collector, and enable REST API access before sending QoS configuration statistics to an Enterprise Profiler. </div>
+            <div class="CellBody"><a name="838231">To enable QoS, choose Configure &gt; Networking &gt; Outbound Qos (Basic or </a>Advanced). You cannot export statistics for inbound QoS. </div>
+            <div class="CellBody"><a name="838232">The collectors appear in the Flow Collector list at the bottom of the Configure &gt; </a>Networking &gt; Flow Statistics page. </div>
+            <div class="CellBody"><a name="838233">To enable REST API access, choose Configure &gt; Security &gt; REST API Access.</a></div>
+            <div class="CellBody"><a name="838234">The CascadeFlow collector collects read-only statistics on both pass-through </a>and optimized traffic. When you use CascadeFlow, the Steelhead appliance sends four flow records for each optimized TCP session: ingress and egress for the inner-channel connection, and ingress and egress for the outer-channel connection. A pass-through connection still sends four flow records, even though there are no separate inner- and outer-channel connections. In either case, the Cascade Express appliance merges these flow records together with flow data collected for the same flow from other devices.</div>
+            <div class="CellBody"><a name="838241">For details, see the </a><span class="book_title">Riverbed Cascade Product Suite Deployment Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838243">Active Flow Timeout</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838245">Optionally, specify the amount of time, in seconds, the collector retains the list </a>of active traffic flows. The default value is 1800 seconds. </div>
+            <div class="CellBody"><a name="838246">You can set the time-out period even if the Top Talkers option is enabled.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838248">Inactive Flow Timeout</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838250">Optionally, specify the amount of time, in seconds, the collector retains the list </a>of inactive traffic flows. The default value is 15 seconds. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="715136">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="715137">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="280049">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules" name="280053">Configuring Subnet Side Rules</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'reportTopTalkers.html#297910', '');" title="Viewing Top Talkers Reports" name="280057">Viewing Top Talkers Reports</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'reportAppStats.html#882980', '');" title="Viewing Application Statistics Reports" name="715150">Viewing Application Statistics Reports</a></span></li>
+      <div class="HeadingProcedure"><a name="280058">To add a Flow collector</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="280060">Under Flow Collectors, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="837679">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="837681">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837683">Add a New Flow Collector</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837685">Displays the controls to add a Flow collector.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837687">Collector IP Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837689">Specify the IP address for the Flow collector.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837691">Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837693">Specify the UDP port the Flow collector is listening on. The default value is </a><span class="Bold" style="font-weight: normal">2055</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837695">Version </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837697">Select one of these versions from the drop-down list:</a></div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837698">CascadeFlow</a></span> - Use with Cascade Profiler v8.4 or later. </li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837699">CascadeFlow-compatible</a></span> - Use with Cascade Profiler v8.3.2 or earlier, and select the LAN Address check box. </li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837700">NetFlow</a></span> <span style="font-weight: bold">v9</span> - Enables both ingress and egress flow records.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="837701">NetFlow v5</a></span> - Enables ingress flow records.    </li>
+            <div class="CellBody"><a name="837704">For details on using NetFlow records with Cascade, see the </a><span class="book_title">Riverbed Cascade </span><span class="book_title">Product Suite Deployment Guide</span>.</div>
+            <div class="CellBody"><a name="837706">CascadeFlow and CascadeFlow-compatible are enhanced versions of flow </a>export to the Cascade Product Suite. These versions allow automatic discovery and interface grouping for Steelhead appliances in a Riverbed Cascade Enterprise Profiler appliance or a Cascade Gateway appliance and support WAN and optimization reports in Cascade appliances. For details, see the <span class="book_title">Cascade Profiler and Cascade Express User&#8217;s Guide</span> and the <span class="book_title">Cascade Sensor and </span><span class="book_title">Cascade Gateway User&#8217;s Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837729">Packet Source Interface</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837731">Select the interface to use as the source IP address of the flow packets (</a><span class="Bold" style="font-weight: normal">Primary, </span><span class="Bold" style="font-weight: normal">Aux, or MIP</span>) from the drop-down list. NetFlow records sent from the Steelhead appliance appear to be sent from the IP address of the selected interface. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837736">LAN Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837738">Causes the TCP/IP addresses and ports reported for optimized flows to contain </a>the original client and server IP addresses and not those of the Steelhead appliance. The default setting displays the IP addresses of the original client and server without the IP address of the Steelhead appliances.</div>
+            <div class="CellBody"><a name="837745">This setting is unavailable with NetFlow v9, because the optimized flows are </a>always sent out with both the original client server IP addresses and the IP addresses used by the Steelhead appliance.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837750">Capture Interface/Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837752">Specify the traffic type to export to the flow collector. Select one of these types </a>from the drop-down list:</div>
+            <li class="CellBullet"><span class="Bold"><a name="837753">All</a></span> - <span class="Bold" style="font-weight: normal">Exports both optimized and nonoptimized traffic.</span> </li>
+            <li class="CellBullet"><span class="Bold"><a name="837754">Optimized</a></span> - Exports optimized traffic.</li>
+            <li class="CellBullet"><span class="Bold"><a name="837755">Optimized</a></span> - <span class="Bold" style="font-weight: normal">Exports optimized LAN or WAN traffic when WCCP is </span><span class="Bold" style="font-weight: normal">enabled.</span></li>
+            <li class="CellBullet"><span class="Bold"><a name="837756">Passthrough</a></span> - <span class="Bold" style="font-weight: normal">Exports pass-through traffic. </span></li>
+            <li class="CellBullet"><span class="Bold"><a name="837757">None</a></span> - Disables traffic flow export. </li>
+            <div class="CellBody"><a name="837758">The default is All for LAN and WAN interfaces, for all four collectors. The </a>default for the other interfaces (Primary, rios_lan, and rios_wan) is None. You cannot select a MIP interface.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837760">Enable Filter</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837762">(CascadeFlow and NetFlow v9 only) Filter flow reports by IP and subnets or </a>IP:ports included in the Filter list. When disabled, reports include all IP addresses and subnets.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837764">Filter</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837766">(CascadeFlow and NetFlow v9 only) Specify the IP and subnet or IP:port to </a>include in the report, one entry per line, up to 25 filters maximum.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837768">Add </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837770">Adds the collector to the Collector list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837772">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="837774">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="280151">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="280152">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="749707">Troubleshooting</a></div>
+      <div class="Body"><a name="749709">To troubleshoot your flow export settings:</a></div>
+      <li class="Bullet"><a name="749713">Make sure the port configuration matches on the Steelhead appliance and the listening port of the </a>collector. </li>
+      <li class="Bullet"><a name="751335">Ensure that you can reach the collector from the Steelhead appliance (for example, &#8211;i aux 1.1.1.1 where </a>1.1.1.1 is the NetFlow collector and aux is the Packet Source Interface).</li>
+      <li class="Bullet"><a name="749718">Verify that your capture settings are on the correct interface and that traffic is flowing through it.</a></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

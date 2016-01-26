@@ -1,0 +1,2022 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# This page governs RSP3 slots.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, RVBDUtils:isSH, RVBDUtils:isCMC, rsp3, cgi, json, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupRSP3Inventory', 'setupRSP3Datastores', 'setupRSP3Backups', 'reportRSP3VM')
+%>
+
+<psp:method name="css">
+    return '''
+/* Match width of fieldset */
+p.textContainer { width: 530px; }
+p.textContainer a { text-decoration: underline; }
+fieldset.operation { width: 430px; }
+
+/* Styles for various statuses in the table */
+td.slotEnabled,
+td.watchdogHealthy,
+td.powerOn {
+  color: #3A3;
+}
+
+p.firstParagraph { margin: 0px; }
+#slotTable_main { width: 100%; }
+
+/*  This is used to control the width of the first table column which typically
+    contains the labels. The widgets in the second column will line up. */
+div#remoteDiv table > tbody > tr > td:first-child,
+div#backupDiv table > tbody > tr > td:first-child,
+div#localDiv table > tbody > tr > td:first-child {
+    width: 90px;
+}
+
+div#slotEdit_emptySlot div.entry {
+  margin: 0.4em 0;
+}
+td#vmwareToolsTd {
+  padding-top: 2px;
+}
+th.diskSize, td.diskSize {
+  text-align: right;
+}
+div#slotDiskAttachOptionsPane select {
+  margin-right: 10px;
+}
+span.memorySpace {
+  margin-right: 10px
+}
+span#wdHeartbeatPort {
+  margin-left: 5px;
+}
+div#slotVniTable_main {
+  width: 400px;
+}
+div#slotEdit_sso fieldset {
+  width: 430px;
+  padding-bottom: 10px;
+}
+div#slotSSOUsersTable_main {
+  width: 456px;
+  margin-top: 20px;
+}
+fieldset#installIntoSlot {
+  width: 700px;
+}
+span.selectedEntryDetails {
+  padding-left: 8px;
+}
+label {
+  white-space: nowrap;
+}
+ul.unsupportedDevices {
+  padding-left: 10px;
+}
+div#newSlotNameDiv {
+  margin-bottom: 12px;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning.
+    return ['/rbt/rsp3/config/rbm',
+            '/rbt/eva/main/config/licensed']
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        # Slot Installation NodeEntries
+        'newSlotName': FormUtils.NodeEntry(
+            name='newSlotName',
+            validate='name',
+            label='Slot Name',
+            tooltip='Only empty slots can be renamed, so ensure that the slot is ' \
+                    'named appropriately before starting the installation.'),
+        'slotInstallSource': FormUtils.NodeEntry(
+            name='slotInstallSource',
+            widget='radio',
+            value='local',
+            label={'local': 'Install OVA from ' \
+                            '<a href="/mgmt/gui?p=setupRSP3Inventory">Inventory</a> ' \
+                            'to VM Datastore',
+                   'remote': 'Install VM from ' \
+                             '<a href="/mgmt/gui?p=setupRSP3Datastores">Remote VM Datastore</a>',
+                   'backup': 'Restore <a href="/mgmt/gui?p=setupRSP3Backups">Backup File</a>'},
+            enableDiv={'local': 'localDiv',
+                       'remote': 'remoteDiv',
+                       'backup': 'backupDiv'}),
+        'selectedOva': FormUtils.NodeEntry(
+            name='selectedOva',
+            widget='select',
+            label='OVA',
+            action="setElementText('ovaRequirements', ovaRequirements[this.value]); toggleOvaWarnings(this.value)",
+            hint='<span id="ovaRequirements" class="selectedEntryDetails" />'),
+        'installOvaTo': FormUtils.NodeEntry(
+            name='installOvaTo',
+            widget='select',
+            action="updateUpdateables(this.form); setElementText('dsDetails', dsInfo[this.value])",
+            label='VM Datastore',
+            hint='<span id="dsDetails" class="selectedEntryDetails" />'),
+        'selectRemoteVm': FormUtils.NodeEntry(
+            name='selectRemoteVm',
+            widget='select',
+            label='Remote VM',
+            action="setElementText('vmRequirements', vmRequirements[this.value])",
+            hint='<span id="vmRequirements" class="selectedEntryDetails" />'),
+        'selectBackupFile': FormUtils.NodeEntry(
+            name='selectBackupFile',
+            widget='select',
+            label='Backup File',
+            action="setElementText('backupRequirements', backupRequirements[this.value]);",
+            hint='<span id="backupRequirements" class="selectedEntryDetails" />'),
+        'swapDiskOva': FormUtils.NodeEntry(
+            name='swapDiskOva',
+            widget='checkboxLeft',
+            tooltip="The swap disk will be twice the size of the VM's memory requirement. "\
+                    "This may increase performance for VMs on remote datastores.  After "\
+                    "installation the guest OS must be configured manually to use the local "\
+                    "swap disk.",
+            label='Create Local Swap Disk'),
+        'swapDiskVm': FormUtils.NodeEntry(
+            name='swapDiskVm',
+            widget='checkboxLeft',
+            tooltip="The swap disk will be twice the size of the VM's memory requirement. "\
+                    "This may increase performance for VMs on remote datastores.  After "\
+                    "installation the guest OS must be configured manually to use the local "\
+                    "swap disk.",
+            label='Create Local Swap Disk'),
+        # Slot Operations NodeEntries
+        'selectedBackup_slotOperation': FormUtils.NodeEntry(
+            name='selectedBackup_slotOperation',
+            widget='select',
+            label='Backup File',
+            selectOptions=(('', '--'))),
+        # VM Settings NodeEntries
+        'slotEditCpus': FormUtils.NodeEntry(
+            name='slotEditCpus',
+            label='Number of CPUs',
+            validate='uint32',
+            widgetClass='xsmall'),
+        'slotEditMemory': FormUtils.NodeEntry(
+            name='slotEditMemory',
+            label='Memory Footprint',
+            validate='uint32',
+            widgetClass='small',
+            units='MB'),
+        # Watchdog NodeEntries
+        'slotEditWatchdogTimeout': FormUtils.NodeEntry(
+            name='slotEditWatchdogTimeout',
+            validate='uint32',
+            units='seconds',
+            widgetClass='small',
+            label='Watchdog Timeout'),
+        'slotEditWatchdogGracePeriod': FormUtils.NodeEntry(
+            name='slotEditWatchdogGracePeriod',
+            validate='uint32',
+            label='Startup Grace Period',
+            widgetClass='small',
+            units='seconds'),
+        'slotEditWatchdogVniPolicy': FormUtils.NodeEntry(
+            name='slotEditWatchdogVniPolicy',
+            widget='select',
+            selectOptions=(('block', 'Block on failure'),
+                           ('bypass', 'Bypass on failure')),
+            label='VNI Policy on Failure'),
+        'slotEditWatchdogReboot': FormUtils.NodeEntry(
+            name='slotEditWatchdogReboot',
+            widget='checkbox',
+            label='Reboot VM on Failure'),
+        'slotEditWatchdogPingUse': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingUse',
+            widget='checkboxLeft',
+            label='Enable Ping Monitoring',
+            enableDiv='pingSettings'),
+        'slotEditWatchdogHeartbeatUse': FormUtils.NodeEntry(
+            name='slotEditWatchdogHeartbeatUse',
+            widget='checkboxLeft',
+            label='Enable Heartbeat Monitoring',
+            enableDiv='heartbeatSettings'),
+        'slotEditWatchdogPingIp': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingIp',
+            validate='ipv4addr',
+            inputOptional=True,
+            label='Ping Watchdog IP'),
+        'slotEditWatchdogPingInterval': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingInterval',
+            validate='uint32',
+            widgetClass='small',
+            units='seconds',
+            label='Ping Watchdog Interval'),
+        # Disk Table NodeEntries
+        'slotDiskName': FormUtils.NodeEntry(
+            name='slotDiskName',
+            validate='name', # XXX/ahao ???
+            label='Disk Name'),
+        'slotDiskSize': FormUtils.NodeEntry(
+            name='slotDiskSize',
+            label='Disk Size',
+            validate='uint64',
+            units='MB',
+            widgetClass='small'),
+        'slotEditDiskAdapter': FormUtils.NodeEntry(
+            name='slotEditDiskAdapter',
+            widget='select',
+            label='Disk Adapter',
+            selectOptions=(('ide', 'IDE'),
+                           ('scsi', 'SCSI')),
+            action='updateControllerDeviceOptions()'),
+        'slotEditAttachDiskController': FormUtils.NodeEntry(
+            name='slotEditAttachDiskController',
+            widget='select',
+            label='Controller'),
+        'slotEditAttachDiskDevice': FormUtils.NodeEntry(
+            name='slotEditAttachDiskDevice',
+            widget='select',
+            label='Device'),
+        # VNI Table NodeEntries
+        'slotEditVniType': FormUtils.NodeEntry(
+            name='slotEditVniType',
+            widget='select',
+            label='VNI Type',
+            selectOptions=(('mgmt-aux', 'Management (aux)'),
+                           ('mgmt-pri', 'Management (primary)'),
+                           ('opt-lan',  'Optimization (LAN)'),
+                           ('opt-wan',  'Optimization (WAN)'),
+                           ('opt-vip',  'Optimization (Virtual In-Path)'),
+                           ('opt-fwd',  'Optimization (Forwarder)'))),
+        # Single Sign-On NodeEntries
+        'slotEditSSOProtocol': FormUtils.NodeEntry(
+            name='slotEditSSOProtocol',
+            widget='select',
+            selectOptions=('http', 'https')),
+        'slotEditSSOHost': FormUtils.NodeEntry(
+            name='slotEditSSOHost',
+            widgetClass='ipaddr',
+            validate='hostnameOrIp'),
+        'slotEditSSOPort': FormUtils.NodeEntry(
+            name='slotEditSSOPort',
+            widgetClass='port',
+            validate='port'),
+        'slotEditSSODefaultUserEnable': FormUtils.NodeEntry(
+            name='slotEditSSODefaultUserEnable',
+            widget='checkboxLeft',
+            label='Enable Default User',
+            enableDiv='ssoDefaultUserEnabledDiv'),
+        'slotEditSSODefaultUserName': FormUtils.NodeEntry(
+            name='slotEditSSODefaultUserName',
+            validate='name',
+            label='Username'),
+        'slotEditSSODefaultUserPassword': FormUtils.NodeEntry(
+            name='slotEditSSODefaultUserPassword',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'slotEditSSODefaultUserPasswordConfirm': FormUtils.NodeEntry(
+            name='slotEditSSODefaultUserPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+        'slotEditSSOAddUserName': FormUtils.NodeEntry(
+            name='slotEditSSOAddUserName',
+            validate='name',
+            label='Username'),
+        'slotEditSSOAddUserPassword': FormUtils.NodeEntry(
+            name='slotEditSSOAddUserPassword',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'slotEditSSOAddUserPasswordConfirm': FormUtils.NodeEntry(
+            name='slotEditSSOAddUserPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+        'slotEditSSOEditUserPassword': FormUtils.NodeEntry(
+            name='slotEditSSOEditUserPassword',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'slotEditSSOEditUserPasswordConfirm': FormUtils.NodeEntry(
+            name='slotEditSSOEditUserPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+# If there is no VE license then the user cannot install VMs from
+# remote datastores
+veLicensed = Nodes.present(mgmt, '/rbt/eva/main/config/licensed', 'false')
+%>
+
+<% self.beginPagelet() %>
+
+<%
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+if veLicensed == 'false': {
+    dialogEntries['slotInstallSource'].tooltip = {
+        'remote': 'This option requires a Granite license.'
+    }
+}
+
+# Compile list of OVAs, sorted by name, for selection
+ovaOptions = []
+ovaVMX4 = {}
+ovaVMX6 = {}
+ovaUnsupported = {}
+ovaRequirements = {}
+ovaDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/rsp3/state/package')
+for ova in sorted(ovaDetails.keys(), cmp=FormUtils.alphanumericCompare): {
+    if type(ovaDetails[ova]) is str or \
+      ovaDetails[ova]['valid'] == 'false': {
+        continue
+    }
+    installedSize = rsp3.prettyBytes(ovaDetails[ova]['approx_installed_size'])
+    memory = rsp3.prettyBytes(int(ovaDetails[ova]['memory']) * 1024 * 1024)
+    cpus = ovaDetails[ova]['cpus']
+    info = '(Disk: %s, Memory: %s, CPUs: %s)' % (installedSize, memory, cpus)
+    ovaOptions.append(ova)
+    ovaRequirements[ova] = info
+
+    if ovaDetails[ova]['vmx_version_four'] == 'true': {
+        ovaVMX4[ova] = ''
+    } elif ovaDetails[ova]['vmx_version_six'] == 'true': {
+        ovaVMX6[ova] = ''
+    }
+
+    if ovaDetails[ova]['unsupported_devices']: {
+        ovaUnsupported[ova] = ovaDetails[ova]['unsupported_devices'].split(',')
+    }
+}
+dialogEntries['selectedOva'].selectOptions = ovaOptions or [['', 'No OVAs']]
+
+# Compile list of Datastores, sorted by name, for selection
+datastoreOptions = []
+dsInfo = {}
+
+# Make a dict of datastore nodes but we can only drill into the nodes
+# of datastores that are 'ready' (not offline)
+datastoreNames = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/rsp3/state/datastore')
+dsDetails = {}
+for ds in datastoreNames: {
+    if Nodes.present(mgmt, '/rbt/rsp3/state/datastore/%s/ready' % ds) == 'true': {
+        dsDetails[ds] = Nodes.getTreeifiedSubtree(mgmt, '/rbt/rsp3/state/datastore/' + ds)
+    }
+}
+
+for ds in rsp3.sortDatastoreNames(dsDetails): {
+    free = rsp3.prettyBytes(dsDetails[ds]['free_space'], 1)
+    capacity = rsp3.prettyBytes(dsDetails[ds]['capacity'], 1)
+    dsType = (dsDetails[ds]['remote'] == 'true') and 'remote' or 'local'
+    value = "%s/%s" % (ds, dsType)
+    info = '(Free: %s, Total: %s)' % (free, capacity)
+    datastoreOptions.append((value, ds))
+    dsInfo[value] = info
+}
+dialogEntries['installOvaTo'].selectOptions = datastoreOptions
+
+# Compile list of VMs, sorted by VM name, installed on remote datastores for selection
+vmOptions = []
+vmRequirements = {}
+vmDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/rsp3/state/vm_inventory')
+for ds in vmDetails.keys(): {
+    vmList = vmDetails[ds]
+
+    # We need this check to bypass the default test nodes from the RSP guys.
+    # Their nodes have childless datastores (no attributes) so 'vmList' ends
+    # up being just a string and we crash. The second check is to filter out
+    # the VMs in the local datastore.
+    if not hasattr(vmList, 'keys') or dsDetails[ds]['remote'] == 'false': {
+        continue
+    }
+
+    for vm in vmList.keys(): {
+        # The 'memory' and 'cpus' nodes don't exist yet
+        # Bug 78731 - Add more metadata for VMs under the vm_inventory subtree
+        memory = rsp3.prettyBytes(vmList[vm].get('memory', '0'))
+        cpus = vmList[vm].get('cpus', '0')
+        vmName = vm.split(':')
+        vmName = len(vmName) == 2 and vmName[1] or vmName[0]
+        info = '(Memory: %s, CPUs: %s)' % (memory, cpus)
+        vmOptions.append((vm, vmName))
+        vmRequirements[vm] = info
+    }
+}
+dialogEntries['selectRemoteVm'].selectOptions = sorted(vmOptions, key=lambda vmName: vmName[1]) \
+                                                or [['', 'No VMs']]
+
+# Compile list of backup files, sorted by name, for selection
+backupOptions = []
+backupSlotName = {}
+backupRequirements = {}
+backupDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/rsp3/state/backup')
+for backup in sorted(backupDetails.keys()): {
+
+    # We need this check to skip over invalid backup files because we
+    # get a string instead of a dict in those cases
+    if not hasattr(backupDetails[backup], 'keys'): {
+        continue
+    }
+
+    installedSize = rsp3.prettyBytes(backupDetails[backup]['installed_size'])
+
+    # The 'memory' and 'cpus' nodes don't exist yet
+    memory = rsp3.prettyBytes(backupDetails[backup].get('memory', '0'))
+    cpus = backupDetails[backup].get('cpus', '0')
+    info = '(Disk: %s, Memory: %s, CPUs: %s)' % (installedSize, memory, cpus)
+    backupOptions.append(backup)
+    backupRequirements[backup] = info
+
+    # Lookup table for mapping backup filename -> slotname
+    backupSlotName[backup] = backupDetails[backup]['slot_name']
+}
+dialogEntries['selectBackupFile'].selectOptions = backupOptions or [['', 'No Backups']]
+
+# RSP Backup restore
+# For each slot, get a list of valid backup files.
+backupList = Nodes.getMgmtSetEntries(mgmt, '/rbt/rsp3/state/backup')
+
+# Create mapping from slot name to a list of backup files
+backupSlots = {}
+for backupName, backupData in backupList.iteritems(): {
+    slotName = backupData.get('slot_name', '')
+
+    # Get the current list of backups for this slot by looking
+    # up the slotName as the key. If the key doesn't exist,
+    # insert an empty array there.
+    backups = backupSlots.setdefault(slotName, [])
+
+    # Add this backup to the bucket.
+    backups.append(backupName)
+}
+
+# Sort each (backup) file list.
+for fileList in backupSlots.itervalues(): {
+    fileList.sort(FormUtils.alphanumericCompare)
+}
+
+slotVniTable = ajaxentrytable.AjaxEntryTable('slotVni',
+    titleText='Virtual Network Interfaces',
+    headerSpec=(('Name', '', 'sortAttrib("name")'),
+                ('Type', '', 'sortAttrib("typePretty")')),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('typePretty')]
+""",
+    emptyMessage='No Virtual Network Interfaces.')
+
+slotVniTable.editDivContent = '''
+  <input type="hidden" name="editVniName" />
+  <div class="midLevel">
+    %s
+  </div>
+  %s
+''' % (dialogEntries['slotEditVniType'].html(self, format='block'),
+       FormUtils.formSubmitButtons(self, {'name': 'changeVniType',
+                                          'value': 'Change VNI Type'}))
+
+# The slot's VM disks.
+slotDiskTable = ajaxentrytable.AjaxEntryTable('slotDisk',
+    titleText='Disks',
+    headerSpec=('',
+                ('Name', '', 'sortAttrib("name")'),
+                ('Attached', '', 'sortAttrib("attached")'),
+                ('Adapter', '', 'sortAttrib("adapter")'),
+                ('Bus', '', 'sortAttrib("bus")'),
+                ('Size', 'diskSize', 'sortAttrib("size")')),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('checkboxName', 'selectedSlotDisk_'),
+ AjaxEntryTable.td([diskEditOrSwap()]),
+ AjaxEntryTable.tdAttr('attachedPretty'),
+ AjaxEntryTable.tdAttr('adapter'),
+ AjaxEntryTable.tdAttr('bus'),
+ AjaxEntryTable.tdAttr('sizePretty', 'diskSize')]
+""",
+    emptyMessage='No disks.',
+    addButtonText='Create a Disk',
+    removeName='removeDisk',
+    removeButtonText='Delete Selected Disks',
+    removeButtonAction='showDeleteDiskConfirmation')
+
+slotDiskTable.addDivContent = """
+  <div id="diskAddPane" class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+  %s
+""" % (dialogEntries['slotDiskName'].html(self),
+       dialogEntries['slotDiskSize'].html(self),
+       FormUtils.formSubmitButtons(self, {'name': 'createDisk',
+                                    'value': 'Create Disk'}))
+
+slotDiskTable.editDivContent = """
+  <input type="hidden" name="editDiskName" />
+  <div id="slotDiskAttachPane" class="midLevel">
+    <p>Disk is currently <span id="slotDiskAttachStatus">&nbsp;</span>.</p>
+    <div id="slotDiskAttachOptionsPane">
+      %s %s %s
+    </div>
+    %s
+  </div>
+""" % (dialogEntries['slotEditDiskAdapter'].html(self, format='inline'),
+       dialogEntries['slotEditAttachDiskController'].html(self, format='inline'),
+       dialogEntries['slotEditAttachDiskDevice'].html(self, format='inline'),
+       FormUtils.formSubmitButtons(self, {'name': 'attachDisk',
+                                          'value': 'Attach Disk'}))
+
+# The slot's Single Sign-On users.
+slotSSOUsersTable = ajaxentrytable.AjaxEntryTable('slotSSOUsers',
+    titleText='Users',
+    headerSpec=('', 'User'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedSlotSSOUser_'),
+ AjaxEntryTable.tdEdit('name', 'name')]
+""",
+    emptyMessage='No users.',
+    addButtonText='Add User',
+    removeName='removeSSOUser',
+    removeButtonText='Delete Selected Users')
+
+slotSSOUsersTable.addDivContent = """
+  <div id="ssoUserAddPane" class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+  %s
+""" % (dialogEntries['slotEditSSOAddUserName'].html(self),
+       dialogEntries['slotEditSSOAddUserPassword'].html(self),
+       dialogEntries['slotEditSSOAddUserPasswordConfirm'].html(self),
+       FormUtils.formSubmitButtons(self, {'name': 'addSSOUser',
+                                          'value': 'Add User'}))
+
+slotSSOUsersTable.editDivContent = """
+  <div id="ssoUserEditPane" class="midLevel">
+    <input type="hidden" name="slotEditSSOEditUserName" />
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+  %s
+""" % (dialogEntries['slotEditSSOEditUserPassword'].html(self),
+       dialogEntries['slotEditSSOEditUserPasswordConfirm'].html(self),
+       FormUtils.formSubmitButtons(self, {'name': 'editSSOUser',
+                                          'value': 'Change Password'}))
+
+# Different columns on SH vs. CMC. CMC policy gets a crippled version of the table.
+if isSH(): {
+    slotTableHeaderSpec = \
+        ('Slot', 'Status', 'Power', 'Watchdog', 'Name', 'Version', 'Description', 'Datastore')
+    slotTableRowSpec = """[
+        AjaxEntryTable.tdEdit('name', 'name'),
+        AjaxEntryTable.tdAttrStyle('slotStatus', 'slotStatusClass'),
+        AjaxEntryTable.tdAttrStyle('powerState', 'powerStateClass'),
+        AjaxEntryTable.tdAttrStyle('watchdogStatus', 'watchdogStatusClass'),
+        AjaxEntryTable.tdAttr('packageName'),
+        AjaxEntryTable.tdAttr('packageVersion'),
+        AjaxEntryTable.tdAttr('packageDescription'),
+        AjaxEntryTable.tdAttr('packageDatastore')]"""
+}
+elif isCMC(): {
+    slotTableHeaderSpec = ('Slot', 'Name', 'Description')
+    slotTableRowSpec = """[
+        AjaxEntryTable.tdEdit('name', 'name'),
+        AjaxEntryTable.tdAttr('packageName'),
+        AjaxEntryTable.tdAttr('packageDescription')]"""
+}
+
+slotTable = ajaxentrytable.AjaxEntryTable('slot',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=rsp3Slots'),
+    headerSpec=slotTableHeaderSpec,
+    rowSpec=slotTableRowSpec,
+    emptyMessage='No slots.')
+
+# Different tabs in the slot table edit div.
+if isSH(): {
+    slotTableTabControlParams = [
+        ('operations', 'Slot Operations', 'slotEdit_operationsSH'),
+        ('params', 'VM Settings', 'slotEdit_params'),
+        ('watchdog', 'Watchdog Settings', 'slotEdit_watchdog'),
+        ('vnis', 'VNIs', 'slotEdit_vniTable'),
+        ('disks', 'Disks', 'slotEdit_diskTable'),
+        ('sso', 'Single Sign-On', 'slotEdit_sso'),
+    ]
+}
+elif isCMC(): {
+    slotTableTabControlParams = [
+        ('params', 'VM Settings', 'slotEdit_params'),
+        ('watchdog', 'Watchdog Settings', 'slotEdit_watchdog'),
+        ('vnis', 'VNIs', 'slotEdit_vniTable'),
+        ('operations', 'Slot Operations', 'slotEdit_operationsCMC'),
+    ]
+}
+
+
+slotTable.editDivContent = '''
+  <input type="hidden" name="slotName" />
+  <input type="hidden" name="newBackupSlotName" />
+
+  <p style="display: %(cmcDisplay)s" class="textContainer">
+      In order to push a slot configuration and dataflow, the slot policy must be configured to
+      reflect the slot names and installed packages that are present on the Steelhead. Pushing
+      this policy does not actually rename slots or install packages on the Steelhead;
+      those operations are performed from the <a href="/mgmt/gui?p=setupRSP3Appliances">RSP Appliances page</a>.
+  </p>
+
+  <!-- Slot Install Pane (partially installed) -->
+  <div id="slotEdit_vmInstallationFailed" class="midLevel">
+    <fieldset class="operation">
+      <legend>Installation Failed</legend>
+      <div class="midLevel">
+        The most recently attempted slot installation has failed.
+        If you want to perform another operation then this slot has to be reset.
+      </div>
+      <div class="midLevel">
+        %(uninstallWithForceSlotButton)s
+      </div>
+    </fieldset>
+  </div>
+
+  <!-- Slot Install Pane (installing) -->
+  <div id="slotEdit_vmInstalling" class="midLevel">
+    <fieldset class="operation">
+      <legend>Slot Operation In Progress</legend>
+      <div class="midLevel">
+        A slot installation is currently in progress.
+        Please wait a few moments then refresh your browser.
+      </div>
+    </fieldset>
+  </div>
+
+  <!-- Slot Install Pane (uninstalling) -->
+  <div id="slotEdit_vmUninstalling" class="midLevel">
+    <fieldset class="operation">
+      <legend>Slot Operation In Progress</legend>
+      <div class="midLevel">
+        This slot is currently being uninstalled.
+        Please wait a few moments then refresh your browser.
+      </div>
+    </fieldset>
+  </div>
+
+  <!-- Slot Install Pane (empty slot) -->
+  <div id="slotEdit_emptySlot" class="midLevel">
+
+    <fieldset id="installIntoSlot">
+      <legend>Install Into Slot</legend>
+      <div class="midLevel">
+
+        <div id="newSlotNameDiv">
+          %(newSlotName)s
+        </div>
+
+        %(sourceLocal)s
+        <div id="localDiv" class="indent">
+          <table>
+            %(selectedOva)s
+            <tr id="ovaVMX4Message">
+              <td/>
+              <td class="nodeEntry">
+                <span class="warning">This VMX-04 VM will be converted to VMX-07 format.</span>
+                <span id="ovaVMX4MessageTooltip" class="yui3-tooltip-trigger">Why?</span>
+              </td>
+            </tr>
+            <tr id="ovaVMX6Message">
+              <td/>
+              <td class="nodeEntry">
+                <span class="warning">This VMX-06 VM will be converted to VMX-07 format.</span>
+                <span id="ovaVMX6MessageTooltip" class="yui3-tooltip-trigger">Why?</span>
+              </td>
+            </tr>
+            <tr id="ovaUnsupportedMessage">
+              <td/>
+              <td class="nodeEntry">
+                <span class="warning">This VM contains unsupported devices that will be removed.</span>
+                <span id="ovaUnsupportedMessageTooltip" class="yui3-tooltip-trigger">Why?</span>
+              </td>
+            </tr>
+            %(installOvaTo)s
+          </table>
+          <div id="swapDiskOvaDiv" class="indent">
+            %(swapDiskOva)s
+          </div>
+        </div>
+
+        <div id="remoteDatastoreDiv">
+          %(sourceRemote)s
+          <div id="remoteDiv" class="indent">
+            <table>
+              %(selectRemoteVm)s
+            </table>
+            %(swapDiskVm)s
+          </div>
+        </div>
+
+        %(sourceBackup)s
+        <div id="backupDiv" class="indent">
+          <table>
+            %(selectBackupFile)s
+          </table>
+        </div>
+
+        <div>
+          <div id="installPackageButton">%(slotInstallButton)s</div>
+          <div id="restoreBackupButton">%(backupRestoreButton)s</div>
+        </div>
+
+        <div style="display: %(cmcDisplay)s">
+          %(slotInstallButtonCMC)s
+        </div>
+
+      </div>
+    </fieldset>
+  </div>
+
+  <!-- Slot Edit Pane -->
+  <div id="slotEdit_installedSlot" class="midLevel">
+
+    <!-- Radio Tabs -->
+    <div class="tabControl" id="rspSlotTabs">
+    <div class="grayBorder">
+
+      %(tabControl)s
+
+      <!-- Operations Pane (SH) -->
+      <div id="slotEdit_operationsSH" style="display: %(cmcHide)s">
+
+        <!-- Slot Operation Buttons -->
+        <fieldset class="operation">
+          <legend>Slot &amp; VM Operations</legend>
+          <div class="submitButtons">
+            <span id="enableSlotButtonSpan">
+              %(enableSlotButton)s
+            </span>
+            <span id="disableSlotButtonSpan">
+              %(disableSlotButton)s
+            </span>
+            <span id="startVmButtonSpan">
+              %(startVmButton)s
+            </span>
+            <span id="restartVmButtonSpan">
+              %(restartVmButton)s
+            </span>
+          </div>
+        </fieldset>
+
+        <fieldset id="uninstallSlotFieldset" class="operation">
+          <legend>Uninstall Slot</legend>
+          <p id="uninstallSlotTextVmEnabled">
+            The slot must be disabled before uninstalling the slot.
+          </p>
+          <div id="uninstallSlotButtonDiv">
+            %(uninstallSlotButton)s
+          </div>
+        </fieldset>
+
+        <fieldset id="restoreBackupFieldset" class="operation">
+          <legend>Restore VSP Backup</legend>
+          <p id="restoreBackupTextVmEnabled">
+            The slot must be disabled before restoring a slot backup.
+          </p>
+          <div id="restoreBackupWidgetsDiv">
+            %(selectedBackup_slotOperation)s
+            %(restoreBackupButton)s
+          </div>
+          <p id="restoreBackupTextBackupsPage">
+            Create or schedule a VSP backup for this slot on the
+            <a href="/mgmt/gui?p=setupRSP3Backups">VSP Backups</a> page.
+          </p>
+        </fieldset>
+
+        <fieldset id="singleSignonFieldset" class="operation">
+          <legend>Single Sign-On</legend>
+          <p id="singleSignonTextLocked">
+            Single Sign-On is inaccessible because the secure vault is locked.
+          </p>
+          <p id="singleSignonTextUnsupported">
+            This VM does not have a web interface supported by Single Sign-On.
+          </p>
+          <p id="singleSignonTextUnconfigured">
+            This slot has not been configured for Single Sign-On.
+          </p>
+          <p id="singleSignonTextUnauthorized">
+            You are not authorized to launch this VM's web interface.
+          </p>
+          <p id="singleSignonUrl">
+            <a href="" title="Launch VM Web Interface">Launch VM Web Interface</a> (opens in a new tab/window)
+          </p>
+        </fieldset>
+      </div>
+
+      <!-- VM Settings Pane -->
+      <div id="slotEdit_params" class="midLevel">
+        <p id="vmSettingsVmEnabled">
+          The slot must be disabled before changing VM settings.
+        </p>
+        <div id="vmSettingsVmDisabled">
+          <table>
+            <tbody id="vmStatus" style="%(vmStatusStyle)s">
+              %(cpus)s
+              <tr>
+                <td id="vmwareToolsTd">VMware Tools:</td>
+                <td><span id="vmwareTools">&nbsp;</span></td>
+              </tr>
+              %(memory)s
+            </tbody>
+          </table>
+          %(updateSlotButton1)s
+        </div>
+      </div>
+
+      <!-- Watchdog Settings Pane -->
+      <div id="slotEdit_watchdog" class="midLevel">
+        <div>
+          <table id="watchdogGroup">
+            %(watchdogTimeout)s
+            %(watchdogGracePeriod)s
+            %(watchdogVniPolicy)s
+            %(watchdogReboot)s
+          </table>
+          <!-- Ping Monitoring Settings -->
+          <div id="pingGroup">
+            %(watchdogPingUse)s
+            <div id="pingSettings" class="indent">
+              <table>
+               %(watchdogPingIp)s
+               %(watchdogPingInterval)s
+              </table>
+            </div>
+          </div>
+          <!-- Heartbeat Monitoring Settings -->
+          <div id="heartbeatGroup">
+            %(watchdogHeartbeatUse)s
+            <div id="heartbeatSettings" class="indent">
+              <table>
+                <tr>
+                  <td>Heartbeat Port:</td>
+                  <td><span id="wdHeartbeatPort">&nbsp;</span></td>
+                </tr>
+              </table>
+            </div>
+          </div>
+          %(updateSlotButton2)s
+        </div>
+      </div>
+
+      <!-- VNI Table Pane -->
+      <div id="slotEdit_vniTable" class="midLevel">
+        <p id="vniSettingsVmEnabled">
+          The slot must be disabled before changing VNI types.
+        </p>
+        <div id="vniSettingsVmDisabled">
+          <!-- VNI table -->
+          <div id="slotVniTable_div" class="midLevel">
+            %(vniTable)s
+          </div>
+          <p>
+            Configure the data flow settings for optimization VNIs on the
+            <a href="/mgmt/gui?p=setupRSP3Dataflow">VSP Data Flow</a> page.
+          </p>
+        </div>
+      </div>
+
+      <!-- Disks Pane -->
+      <div id="slotEdit_diskTable" class="midLevel" style="display: %(cmcHide)s">
+        <p id="diskSettingsVmEnabled">
+          The slot must be disabled before managing disks.
+        </p>
+        <div id="diskSettingsVmDisabled">
+          <div id="slotDiskTable_div" class="midLevel">
+            %(diskTable)s
+          </div>
+          <p>
+            This VM's datastore (<span id="slotEditVmDatastoreName"></span>) has
+            <span id="slotEditVmDatastoreFreeSpace"></span> of free space.
+          </p>
+        </div>
+      </div>
+
+      <!-- Single Sign-On Pane -->
+      <div id="slotEdit_sso" class="midLevel">
+        <div id="slotEdit_sso_secureVaultLocked">
+          <p>
+            The Secure Vault needs to be unlocked.  See the
+            <a href="/mgmt/gui?p=setupVault">Secure Vault Page</a> to unlock it.
+          </p>
+        </div>
+        <div id="slotEdit_sso_unsupportedVm">
+          <p>
+            This VM does not have a web interface supported by Single Sign-On.
+          </p>
+        </div>
+        <div id="slotEdit_sso_normal">
+          <fieldset>
+            <legend>Web Interface URL</legend>
+            <p>
+              After the VM has been configured and its web interface is accessible,
+              enter the protocol, hostname/IP, and port details here.
+            </p>
+            %(ssoProtocol)s :// %(ssoHost)s : %(ssoPort)s
+          </fieldset>
+          <fieldset>
+            <legend>Default User</legend>
+            %(ssoDefaultUserEnable)s
+            <div id="ssoDefaultUserEnabledDiv" class="indent">
+              <table>
+                %(ssoDefaultUserName)s
+                %(ssoDefaultUserPassword)s
+                %(ssoDefaultUserPasswordConfirm)s
+              </table>
+            </div>
+          </fieldset>
+          %(updateSlotButton3)s
+          %(ssoUsersTable)s
+        </div>
+      </div>
+
+      <!-- Operations Pane (CMC) -->
+      <div id="slotEdit_operationsCMC" style="display: %(shHide)s">
+        <fieldset class="operation">
+          <legend>Clear Slot Configuration</legend>
+          <p>
+            This slot&#39;s configuration (including VNIs) will be removed from the policy.
+            Note that pushing this policy will not actually uninstall the package on the
+            Steelhead; that operation is performed from the
+            <a href="/mgmt/gui?p=setupRSP3Appliances">VSP Appliances page</a>.
+          </p>
+          %(clearSlotButtonCMC)s
+        </fieldset>
+      </div>
+    </div>
+    </div>
+  </div>
+''' % {'tabControl': FormUtils.radioTabControl(
+                         self,
+                         'slotEditTabs',
+                         *slotTableTabControlParams),
+       'cpus': dialogEntries['slotEditCpus'].html(self),
+       'memory': dialogEntries['slotEditMemory'].html(self),
+       'watchdogTimeout': dialogEntries['slotEditWatchdogTimeout'].html(self),
+       'watchdogGracePeriod': dialogEntries['slotEditWatchdogGracePeriod'].html(self),
+       'watchdogVniPolicy': dialogEntries['slotEditWatchdogVniPolicy'].html(self),
+       'watchdogReboot': dialogEntries['slotEditWatchdogReboot'].html(self),
+       'watchdogPingUse': dialogEntries['slotEditWatchdogPingUse'].html(self, format='block'),
+       'watchdogPingIp': dialogEntries['slotEditWatchdogPingIp'].html(self),
+       'watchdogPingInterval': dialogEntries['slotEditWatchdogPingInterval'].html(self),
+       'watchdogHeartbeatUse': dialogEntries['slotEditWatchdogHeartbeatUse'].html(self, format='block'),
+       'diskTable': slotDiskTable.html(self, 'midLevel'),
+       'vniTable': slotVniTable.html(self, 'midLevel'),
+       'updateSlotButton1': FormUtils.formSubmitButtons(self, {'name': 'updateSlot',
+                                                               'value': 'Apply'}),
+       'updateSlotButton2': FormUtils.formSubmitButtons(self, {'name': 'updateSlot',
+                                                               'value': 'Apply'}),
+       'updateSlotButton3': FormUtils.formSubmitButtons(self, {'name': 'updateSlot',
+                                                               'value': 'Apply'}),
+       'enableSlotButton': FormUtils.renderButton(self, {'name': 'enableSlot',
+                                                         'value': 'Enable Slot',
+                                                         'id': 'enableSlotButton'}),
+       'disableSlotButton': FormUtils.renderButton(self, {'name': 'disableSlot',
+                                                          'value': 'Disable Slot',
+                                                          'id': 'disableSlotButton',
+                                                          'onclick': 'return disableSlotConfirm()'}),
+       'startVmButton': FormUtils.renderButton(self, {'name': 'startVm',
+                                                      'value': 'Start VM',
+                                                      'id': 'startVmButton'}),
+       'restartVmButton': FormUtils.renderButton(self, {'name': 'restartVm',
+                                                        'value': 'Restart VM',
+                                                        'id': 'restartVmButton',
+                                                        'onclick': 'return restartVmConfirm()'}),
+       'restoreBackupButton': FormUtils.formSubmitButtons(self, {'id': 'restoreOpButton',
+                                                                 'name': 'restoreBackup_slotOperation',
+                                                                 'value': 'Restore Backup',
+                                                                 'onclick': 'return restoreConfirm();'}),
+       'uninstallSlotButton': FormUtils.formSubmitButtons(self, {'id': 'uninstallOpButton',
+                                                                 'name': 'uninstallSlot',
+                                                                 'value': 'Uninstall Slot',
+                                                                 'onclick': 'return showUninstallConfirm();'}),
+       'uninstallWithForceSlotButton': FormUtils.formSubmitButtons(self, {'id': 'uninstallWithForceOpButton',
+                                                                          'name': 'uninstallWForceSlot',
+                                                                          'value': 'Reset Slot',
+                                                                          'onclick': 'return uninstallWithForceSlot();'}),
+       'clearSlotButtonCMC': FormUtils.formSubmitButtons(self, {'id': 'uninstallOpButtonCMC',
+                                                                'name': 'uninstallSlot',
+                                                                'value': 'Clear Slot'}),
+       'newSlotName': dialogEntries['newSlotName'].html(self, format='block'),
+       'sourceLocal': dialogEntries['slotInstallSource'].html(self, format='block', value='local'),
+       'sourceRemote': dialogEntries['slotInstallSource'].html(self, format='block', value='remote'),
+       'sourceBackup': dialogEntries['slotInstallSource'].html(self, format='block', value='backup'),
+
+       'selectedOva': dialogEntries['selectedOva'].html(self),
+       'installOvaTo': dialogEntries['installOvaTo'].html(self),
+       'selectRemoteVm': dialogEntries['selectRemoteVm'].html(self),
+       'selectBackupFile': dialogEntries['selectBackupFile'].html(self),
+       'swapDiskOva': dialogEntries['swapDiskOva'].html(self),
+       'swapDiskVm': dialogEntries['swapDiskVm'].html(self),
+
+       'selectedBackup_slotOperation': dialogEntries['selectedBackup_slotOperation'].html(self, format='block'),
+       'slotInstallButton': FormUtils.formSubmitButtons(self, {'name': 'installSlot',
+                                                               'value': 'Install',
+                                                               'filter': 'installButtonFilter',
+                                                               'onclick': 'return checkForInstallOperation(this);'}),
+       'backupRestoreButton': FormUtils.formSubmitButtons(self, {'name': 'restoreBackup_emptySlot',
+                                                                 'value': 'Restore',
+                                                                 'filter': 'restoreButtonFilter',
+                                                                 'onclick': 'return checkForRestoreOperation(this);'}),
+       'slotInstallButtonCMC': FormUtils.formSubmitButtons(self, {'name': 'installSlot', 'value': 'Configure Slot'}),
+       'shDisplay': isSH() and 'block' or 'none',
+       'cmcDisplay': isCMC() and 'block' or 'none',
+       'shHide': isSH() and 'none' or '',
+       'cmcHide': isCMC() and 'none' or '',
+       'vmStatusStyle': isCMC() and 'display: none' or '',
+
+       # Single Sign-On
+       'ssoProtocol': dialogEntries['slotEditSSOProtocol'].html(self, format='inline'),
+       'ssoHost': dialogEntries['slotEditSSOHost'].html(self, format='inline'),
+       'ssoPort': dialogEntries['slotEditSSOPort'].html(self, format='inline'),
+       'ssoUsersTable': slotSSOUsersTable.html(self, 'midLevel'),
+       'ssoDefaultUserEnable': dialogEntries['slotEditSSODefaultUserEnable'].html(self),
+       'ssoDefaultUserName': dialogEntries['slotEditSSODefaultUserName'].html(self),
+       'ssoDefaultUserPassword': dialogEntries['slotEditSSODefaultUserPassword'].html(self),
+       'ssoDefaultUserPasswordConfirm': dialogEntries['slotEditSSODefaultUserPasswordConfirm'].html(self),
+}
+
+# Memory for slotting VMs
+memTotal = int(Nodes.present(mgmt, '/rbt/rsp3/state/total_memory', '0')) * 1024 * 1024
+memFree = int(Nodes.present(mgmt, '/rbt/rsp3/state/free_memory', '0')) * 1024 * 1024
+memUsed = memTotal - memFree
+%>
+
+<% if isCMC(): { %>
+<p>
+  <em>Note:</em> The slot names and installed packages should match the
+  configuration of the Steelheads that are affected by this policy.
+</p>
+<% } %>
+
+<div class="rsp3Info">
+  <span class="memorySpace">Memory:</span>
+  <span><%= rsp3.stringifyUsedFreeTotal(memUsed, memFree, memTotal) %></span>
+</div>
+
+<form id="slotsForm"
+      method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>"
+      onsubmit="slotsSubmit(this);"
+      class="liveStatusAttachPoint" >
+  <div>
+    <%= slotTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupRsp3Slots" />
+    <input type="hidden" name="deleteVmFiles" value="true" />
+    <input type="hidden" name="isLocalDatastore" value="true" />
+    <input type="hidden" name="isForcefulUninstall" value="false" />
+  </div>
+</form>
+
+<!-- Uninstall confirmation dialog -->
+<div id="uninstallConfirm" style="display: none; width: 400px; ">
+  <div id="uninstallLocal">
+    <p class="firstParagraph">
+      Uninstalling the slot will delete the VM. Consider
+      <a href="/mgmt/gui?p=setupRSP3Backups">backing up</a>
+      the slot before proceeding.
+    </p>
+  </div>
+  <div id="uninstallRemote">
+    <p class="firstParagraph">
+      When uninstalling a slot containing a remote VM, the VM can be deleted
+      or its files can be saved for future use.
+    </p>
+    <p>
+      <input type="checkbox" name="confirmDeleteVmFiles" class="checkbox" />
+      <label class="labelPaddedLeft">
+        Delete VM Files
+      </label>
+    </p>
+  </div>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var uninstallConfirmDialog = null;
+
+var slotInstallLiveStatus = null;
+var slotUninstallLiveStatus = null;
+var backupRestoreLiveStatus = null;
+
+var ovaVMX4MessageTooltip = null;
+var ovaVMX6MessageTooltip = null;
+var ovaUnsupportedMessageTooltip = null;
+
+Y.on('domready', function() {
+    uninstallConfirmDialog = new RBT.Dialog({
+                        alignNode: Y.one('#uninstallOpButton'),
+                        buttons: [{label: 'Uninstall Slot', clickFn: uninstallSlot},
+                                  {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                        srcNode: '#uninstallConfirm'
+                    }).render();
+
+    slotInstallLiveStatus = new LiveStatus({attachPoint: '#slotsForm'}).render();
+    slotUninstallLiveStatus = new LiveStatus({attachPoint: '#slotsForm'}).render();
+    backupRestoreLiveStatus = new LiveStatus({attachPoint: '#slotsForm'}).render();
+
+    ovaVMX4MessageTooltip = new RBT.Tooltip({
+        alignNode: '#ovaVMX4MessageTooltip',
+        content: '<p>' +
+                   'This VM is designated to run on virtualization hosts that ' +
+                   'support the VMX-04 hardware family. The virtualization ' +
+                   'host on this appliance only supports VMX-07.' +
+                 '</p>' +
+                 '<p>' +
+                   'This VM can be converted to run on this host, but afterwards ' +
+                   'it can never be exported to run on a VMX-04 host.' +
+                 '</p>'
+    }).render();
+
+    ovaVMX6MessageTooltip = new RBT.Tooltip({
+        alignNode: '#ovaVMX6MessageTooltip',
+        content: '<p>' +
+                   'This VM is designated to run on virtualization hosts that ' +
+                   'support the VMX-06 hardware family. The virtualization ' +
+                   'host on this appliance only supports VMX-07.' +
+                 '</p>' +
+                 '<p>' +
+                   'This VM can be converted to run on this host, but afterwards ' +
+                   'it can never be exported to run on a VMX-06 host.' +
+                 '</p>'
+    }).render();
+});
+
+Y.one('#ovaVMX4MessageTooltip').on('mouseover', function() {
+    ovaVMX4MessageTooltip.show();
+});
+
+Y.one('#ovaVMX4MessageTooltip').on('mouseout', function() {
+    ovaVMX4MessageTooltip.hide();
+});
+
+Y.one('#ovaVMX6MessageTooltip').on('mouseover', function() {
+    ovaVMX6MessageTooltip.show();
+});
+
+Y.one('#ovaVMX6MessageTooltip').on('mouseout', function() {
+    ovaVMX6MessageTooltip.hide();
+});
+
+Y.one('#ovaUnsupportedMessageTooltip').on('mouseover', function() {
+    var ova = Y.one('select[name="selectedOva"]').get('value');
+    var devices = ovaUnsupported[ova];
+    var devicesHTML = '';
+
+    for (var i = 0; i < devices.length; i++) {
+        devicesHTML += '<li>' + devices[i] + '</li>';
+    }
+
+    var content = '<p>' +
+                    'This VM contains one or more devices that are not ' +
+                    'supported by VSP:' +
+                  '</p>' +
+                  '<ul class="unsupportedDevices">' +
+                    devicesHTML +
+                  '</ul>' +
+                  '<p>' +
+                    'These devices will be automatically removed from the VM ' +
+                    'during installation.' +
+                  '</p>';
+
+    ovaUnsupportedMessageTooltip = new RBT.Tooltip({
+        alignNode: '#ovaUnsupportedMessageTooltip',
+        content: content
+    }).render();
+
+    ovaUnsupportedMessageTooltip.show();
+});
+
+Y.one('#ovaUnsupportedMessageTooltip').on('mouseout', function() {
+    ovaUnsupportedMessageTooltip.hide();
+});
+
+// Filter function for determining the enabled state of the Install button.
+function installButtonFilter(buttonEl, isValid) {
+    // If the form is already failing validation (because the Slot Name
+    // field is failing validation), then pass that result through.
+    if (!isValid) {
+        return false;
+    }
+
+    var form = $('slotsForm');
+    var radio = radioValue(form, 'slotInstallSource');
+    switch (radio) {
+        case 'local':
+            return (getFormElement(form, 'selectedOva').value != '');
+        case 'remote':
+            return (getFormElement(form, 'selectRemoteVm').value != '');
+        default:
+            return false;
+    }
+}
+
+// Filter function for determining the enabled state of the Restore button.
+function restoreButtonFilter(buttonEl, isValid) {
+    // If the form is already failing validation (because the Slot Name
+    // field is failing validation), then pass that result through.
+    if (!isValid) {
+        return false;
+    }
+
+    var form = $('slotsForm');
+    var radio = radioValue(form, 'slotInstallSource');
+    if (radio == 'backup') {
+        return (getFormElement(form, 'selectBackupFile').value != '');
+    }
+}
+
+// An AET callback that determines if a row in the disks table should contain
+// a link (to open the row) or just text (for a swap disk).
+function diskEditOrSwap() {
+    var nonSwapDiskEdit = AjaxEntryTable.edit('name', 'name');
+
+    return function(entryTable, parent, element) {
+        if (element.getAttribute('swap') == 'true') {
+            var textNode = document.createTextNode(element.getAttribute('name'));
+            var spanEl = document.createElement('span');
+            spanEl.appendChild(textNode);
+            new RBT.Tooltip({
+                triggerNode: spanEl,
+                content: 'Swap disks cannot be detached or deleted.'
+            }).render();
+            parent.appendChild(spanEl);
+        } else {
+            nonSwapDiskEdit(entryTable, parent, element);
+        }
+    }
+}
+
+function showDeleteDiskConfirmation() {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+    var content = 'Performing this operation will permanently delete the ' +
+                  'selected disks.';
+
+    // Local datastore?
+    if (el.getAttribute('packageDatastore') == '<%=rsp3.rsp_local_datastore_name%>') {
+        content += ' Consider <a href="/mgmt/gui?p=setupRSP3Backups">backing up</a> ' +
+                   'this slot before proceeding.';
+    }
+
+    new RBT.Dialog({alignNode: $('slotDiskTable_button_remove'),
+                    buttons: [{label: 'Delete Selected Disks', clickFn: deleteDisks},
+                              {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                    content: content}).render();
+}
+
+function deleteDisks() {
+    AjaxEntryTable.submitCommandField(slotDiskTable.tableId, 'removeDisk', 'removeDisk');
+}
+
+// Show/hide the various OVA warning messages that apply to VMX-04 and VMX-06
+// VMs and VMs containing unsupported devices.
+function toggleOvaWarnings(ova) {
+    enableElements('ovaVMX4Message', ((ova in ovaVMX4) ? true : 'hide'));
+    enableElements('ovaVMX6Message', ((ova in ovaVMX6) ? true : 'hide'));
+    enableElements('ovaUnsupportedMessage', ((ova in ovaUnsupported) ? true : 'hide'));
+}
+
+function showUninstallConfirm() {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+
+    // Local datastore?
+    if (el.getAttribute('packageDatastore') == '<%=rsp3.rsp_local_datastore_name%>') {
+        enableElements('uninstallLocal', 'show');
+        enableElements('uninstallRemote', 'hide');
+        Y.one('input[name="isLocalDatastore"]').set('value', 'true');
+    } else {
+        enableElements('uninstallLocal', 'hide');
+        enableElements('uninstallRemote', 'show');
+
+        Y.one('input[name="confirmDeleteVmFiles"]').set('checked', false);
+        Y.one('input[name="isLocalDatastore"]').set('value', 'false');
+    }
+
+    uninstallConfirmDialog.show();
+    return false;
+}
+
+function uninstallSlot() {
+    var confirmDeleteVmFiles = Y.one('input[name="confirmDeleteVmFiles"]').get('checked');
+    Y.one('input[name="deleteVmFiles"]').set('value', confirmDeleteVmFiles);
+    this.hide();
+    setTimeout('showSlotUninstallLiveStatus()', 0);
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'uninstallSlot', 'uninstallSlot');
+}
+
+function disableSlotConfirm() {
+    new RBT.Dialog({
+        alignNode: Y.one('#disableSlotButton'),
+        buttons: [{label: 'Disable Slot', clickFn: disableSlot},
+                  {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+        content: 'Disabling the slot will power off the VM, ' +
+                 'which may interrupt network services or network traffic.'
+    }).render();
+
+    return false;
+}
+
+function disableSlot() {
+    this.hide();
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'disableSlot', 'disableSlot');
+}
+
+function restartVmConfirm() {
+    new RBT.Dialog({
+        alignNode: Y.one('#restartVmButton'),
+        buttons: [{label: 'Restart VM', clickFn: restartVm},
+                  {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+        content: 'Restarting the VM will power off and power on the VM, ' +
+                 'which may interrupt network services or network traffic.'
+    }).render();
+
+    return false;
+}
+
+function restartVm() {
+    this.hide();
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'restartVm', 'restartVm');
+}
+
+function uninstallWithForceSlot() {
+    Y.one('input[name="isForcefulUninstall"]').set('value', 'true');
+    Y.one('input[name="deleteVmFiles"]').set('value', 'true');
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'uninstallSlot', 'uninstallSlot');
+}
+
+function restoreConfirm() {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+
+    // Local datastore?
+    if (el.getAttribute('packageDatastore') == '<%=rsp3.rsp_local_datastore_name%>') {
+        var content = '<p class="firstParagraph">'
+                    + 'This operation will first uninstall the VM in this slot '
+                    + 'and then restore the selected backup file. </p>';
+        var vmConfirm = new RBT.Dialog({
+                    alignNode: Y.one('input[name="restoreBackup_slotOperation"]'),
+                    buttons: [{label: 'Uninstall then Restore',
+                            clickFn: restoreNonEmptySlot},
+                            {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                    content: content
+                    }).render();
+    } else {
+        var content = '<p class="firstParagraph">'
+                    + 'The VM in this slot is stored on a remote datastore '
+                    + 'so it has to be uninstalled before the selected '
+                    + 'backup file can be restored. </p>';
+        var vmConfirm = new RBT.Dialog({
+                    alignNode: Y.one('input[name="restoreBackup_slotOperation"]'),
+                    buttons: [{label: 'OK', clickFn: RBT.Dialog.dismiss}],
+                    content: content
+                    }).render();
+    }
+
+    return false;
+}
+
+function restoreNonEmptySlot() {
+    var form = $('slotsForm');
+
+    setFormValue(form, 'newBackupSlotName', slotTable.editName);
+    this.hide();
+    setTimeout('showBackupRestoreLiveStatus()', 0);
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'restoreBackup_slotOperation',
+                                    'restoreBackup_slotOperation');
+}
+
+function getSlotNameFromVmName(vmName) {
+    var vmArray = vmName.split(':');
+
+    if (vmArray.length == 2) {
+        return vmArray[1];
+    }
+    return vmArray[0];
+}
+
+/**
+ * Check for various warning/error conditions (e.g. wrong slot name) before
+ * performing the actual install.
+ *
+ * @param submitElement
+ *   The submit element of the form.
+ */
+function checkForInstallOperation(submitElement) {
+    var form = $('slotsForm');
+    var radio = radioValue(form, 'slotInstallSource');
+
+    if (radio == 'local') {
+        if (getFormElement(form, 'selectedOva').value == '') {
+            return false;
+        } else {
+            setTimeout('showSlotInstallLiveStatus()', 0);
+            return true;
+        }
+    }
+
+    // No remote VM selected then abort
+    if (getFormElement(form, 'selectRemoteVm').value == '') {
+        return false;
+    }
+
+    // Install VM on a remote datastore
+    var newSlotName = submitElement.form['newSlotName'].value;
+    var vmName = submitElement.form['selectRemoteVm'].value;
+    var requiredSlotName = getSlotNameFromVmName (vmName);
+
+    if (slotTable.editName == requiredSlotName) {
+        if (newSlotName != requiredSlotName) {
+            var content = 'This virtual machine must be installed into a ' +
+                          'slot named "' + requiredSlotName + '" so this ' +
+                          'slot cannot be renamed to "' + newSlotName + '".';
+            var vmConfirm = new RBT.Dialog({
+                        alignNode: Y.one('input[name="installSlot"]'),
+                        buttons: [{label: 'Install Without Renaming',
+                                 clickFn: remoteInstallRenamedSlot},
+                                 {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                        content: content
+                        }).render();
+            return false;
+        }
+        setTimeout('showSlotInstallLiveStatus()', 0);
+        return true;
+    }
+
+    // Let's see if the VMs slot name matches one already in use,
+    // if so we abort. We can get the list of existing slot names by
+    // walking the slot table's DOM
+    var slotDom = slotTable.docElement;
+    for (child = slotDom.firstChild; child; child = child.nextSibling) {
+        var slotName = child.getAttribute ('name');
+
+        if (requiredSlotName == slotName) {
+            var content = 'This virtual machine must be installed into the ' +
+                          'existing slot named "' + requiredSlotName + '".';
+            var vmConfirm = new RBT.Dialog({
+                        alignNode: Y.one('input[name="installSlot"]'),
+                        buttons: [{label: 'OK', clickFn: RBT.Dialog.dismiss}],
+                        content: content
+                        }).render();
+            return false;
+        }
+    }
+
+    if (newSlotName == requiredSlotName) {
+        setTimeout('showSlotInstallLiveStatus()', 0);
+        return true;
+    }
+
+    // We can proceed with install after the slot is renamed
+    var content = 'This slot will be renamed to "' + requiredSlotName +
+                  '" when this virtual machine is installed.';
+    var vmConfirm = new RBT.Dialog({
+                alignNode: Y.one('input[name="installSlot"]'),
+                buttons: [{label: 'Rename & Install', clickFn: remoteInstallRenamedSlot},
+                          {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                content: content
+                }).render();
+    return false;
+}
+
+/**
+ *  Executes the install operation to a remote datastore on the current
+ *  empty slot after it is renamed.
+ */
+function remoteInstallRenamedSlot() {
+    var form = $('slotsForm');
+    var vm = form['selectRemoteVm'].value;
+    var requiredSlotName = getSlotNameFromVmName(vm);
+
+    setFormValue(form, 'newSlotName', requiredSlotName);
+    this.hide();
+    setTimeout('showSlotInstallLiveStatus()', 0);
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'installSlot', 'installSlot');
+}
+
+/**
+ *  Executes the install operation on the current empty slot after it is renamed.
+ */
+function installRenamedSlot() {
+    this.hide();
+    setTimeout('showSlotInstallLiveStatus()', 0);
+    AjaxEntryTable.submitCommandField(slotTable.tableId, 'installSlot', 'installSlot');
+}
+
+/**
+ * When attempting to restore a backup file we have to make sure the
+ * current slot's name matches the backup file's slotname. Returns
+ * 'true' if the operation can go forward, 'false' otherwise.
+ *
+ * @param submitElement
+ *   The submit element of the form.
+ */
+function checkForRestoreOperation(submitElement) {
+    var backupFilename = submitElement.form['selectBackupFile'].value;
+    var backupSlotName = backupToSlotName[backupFilename];
+
+    // No backup file selected then abort
+    if (getFormElement(submitElement.form, 'selectBackupFile').value == '') {
+        return false;
+    }
+
+    // If the name of the current slot and the backup file's slot name
+    // matches then we can just do the restore
+    if (slotTable.editName == backupSlotName) {
+        setTimeout('showBackupRestoreLiveStatus()', 0);
+        return true;
+    }
+    else {
+        // Let's see if the backup file's slot name matches one already in use,
+        // if so we abort. We can get the list of existing slot names by
+        // walking the slot table's DOM
+        var slotDom = slotTable.docElement;
+        for (child = slotDom.firstChild; child; child = child.nextSibling) {
+            var slotName = child.getAttribute ('name');
+
+            if (backupSlotName == slotName) {
+                var content = 'This backup file must be restored to the ' +
+                              'existing slot named "' + backupSlotName + '".';
+                var backupConfirm = new RBT.Dialog({
+                            alignNode: Y.one('input[name="restoreBackup_emptySlot"]'),
+                            buttons: [{label: 'OK', clickFn: RBT.Dialog.dismiss}],
+                            content: content
+                            }).render();
+                return false;
+            }
+        }
+
+        // We can proceed with restore after the slot is renamed
+        var content = 'This slot will be renamed to "' + backupSlotName +
+                      '" when this backup file is restored.';
+        var backupConfirm = new RBT.Dialog({
+                    alignNode: Y.one('input[name="restoreBackup_emptySlot"]'),
+                    buttons: [{label: 'Rename & Restore', clickFn: restoreRenamedSlot},
+                              {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                    content: content
+                    }).render();
+    }
+    return false;    // Don't do the operation
+}
+
+/**
+ *  Executes the restore operation on the current empty slot after it is renamed.
+ */
+function restoreRenamedSlot() {
+    var form = $('slotsForm');
+    var backupFilename = form['selectBackupFile'].value;
+    var backupSlotName = backupToSlotName[backupFilename];
+
+    setFormValue(form, 'newBackupSlotName', backupSlotName);
+    this.hide();
+    setTimeout('showBackupRestoreLiveStatus()', 0);
+    AjaxEntryTable.submitCommandField(slotTable.tableId,
+                            'restoreBackup_emptySlot',
+                            'restoreBackup_emptySlot');
+}
+
+// ]]>
+</script>
+
+<%
+openEditSlot = req.fields().get('openEditSlot')
+if openEditSlot: {
+    self.addPageletJavascript('slotTable.editAfterLoad = ["name", "%s"];' % openEditSlot)
+}
+openEditTab = req.fields().get('openEditTab')
+if openEditTab: {
+    self.addOnload('slotEditTabs.switchTo("%s");' % (openEditTab))
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// OVAs and their requirements.
+var ovaRequirements = <%= RVBDUtils.jsonizeAndEscapeForJs(ovaRequirements) %>;
+
+// Datastores and their details.
+var dsInfo = <%= RVBDUtils.jsonizeAndEscapeForJs(dsInfo) %>;
+
+// VMs and their requirements.
+var vmRequirements = <%= RVBDUtils.jsonizeAndEscapeForJs(vmRequirements) %>;
+
+// Backups and their requirements.
+var backupRequirements = <%= RVBDUtils.jsonizeAndEscapeForJs(backupRequirements) %>;
+
+// Maps slots to a list of corresponding backup files.
+var backupMapping = <%= RVBDUtils.jsonizeAndEscapeForJs(backupSlots) %>;
+
+// Maps backup filenames to slotnames.
+var backupToSlotName = <%= RVBDUtils.jsonizeAndEscapeForJs(backupSlotName) %>;
+
+// List of OVAs that are VMX4 compatible
+var ovaVMX4 = <%= RVBDUtils.jsonizeAndEscapeForJs(ovaVMX4) %>;
+
+// List of OVAs that are VMX6 compatible
+var ovaVMX6 = <%= RVBDUtils.jsonizeAndEscapeForJs(ovaVMX6) %>;
+
+// List of OVAs that contain unsupported devices
+var ovaUnsupported = <%= RVBDUtils.jsonizeAndEscapeForJs(ovaUnsupported) %>;
+
+// Copy the name of the user that's being edited to a hidden input field so the
+// server-side code knows whose password to change.
+slotSSOUsersTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setFormValue($('slotsForm'), 'slotEditSSOEditUserName', editName);
+    setFormValue($('slotsForm'), 'slotEditSSOEditUserPassword', el.getAttribute('password'));
+    setFormValue($('slotsForm'), 'slotEditSSOEditUserPasswordConfirm', el.getAttribute('password'));
+}
+
+// Update the edit div with the correct disk parameters.
+slotDiskTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    var form = $('slotsForm');
+    var isAttached = el.getAttribute('attached') == 'true';
+
+    // Update form values
+    var attachStatus = isAttached ? 'attached' : 'detached';
+    var attachAction = isAttached ? 'Detach Disk' : 'Attach Disk';
+    setFormValue(form, 'editDiskName', editName);
+    setFormValue(form, 'attachDisk', attachAction);
+    setElementText('slotDiskAttachStatus', attachStatus);
+
+    // Show disk options pane if not attached.
+    enableElements('slotDiskAttachOptionsPane', !isAttached || 'hide');
+
+    // Populate the controller/device fields based on adapter type.
+    updateControllerDeviceOptions();
+}
+
+// IDE: 2 controllers, 2 devices per controller
+// SCSI: 4 controllers, 16 devices per controller
+// SCSI device 7 is reserved, so disable that option.
+var CONTROLLER_DEVICE_OPTIONS = {
+    ide: {
+        controller: ['0', '1'],
+        device: ['0', '1']
+    },
+    scsi: {
+        controller: ['0', '1', '2', '3'],
+        device: ['0', '1', '2', '3', '4', '5', '6', ['7', '7 (host device)', true], '8', '9', '10', '11', '12', '13', '14', '15']
+    }
+};
+
+// Update the controller and device select options based on the current adapter
+// selection.
+function updateControllerDeviceOptions() {
+    var adapter = Y.one('select[name="slotEditDiskAdapter"]').get('value');
+    var form = $('slotsForm');
+    populateSelect(form, 'slotEditAttachDiskController', CONTROLLER_DEVICE_OPTIONS[adapter]['controller']);
+    populateSelect(form, 'slotEditAttachDiskDevice', CONTROLLER_DEVICE_OPTIONS[adapter]['device']);
+}
+
+// Populate the edit div with attributes of the XML element corresponding
+// to editName.
+slotVniTable.editEntry = function(editName) {
+    var form = $('slotsForm');
+    var el = this.getEntryElement('name', editName);
+
+    setFormValue(form, 'editVniName', editName);
+    setFormValue(form, 'slotEditVniType', el.getAttribute('type'));
+}
+
+// Enable or disable the "Enable Heartbeat" checkbox depending on
+// the existence of a configured heartbeat port.
+var heartbeatPortDisplay = new DisplayControl();
+heartbeatPortDisplay.display = function() {
+    var xmlEl = slotTable.editXMLElement;
+    var supportsHeartbeat = (xmlEl.getAttribute('watchdogHeartbeatPort') != 'N/A');
+    return supportsHeartbeat;
+}
+addUpdateable('enable', heartbeatPortDisplay, 'heartbeatGroup');
+
+slotTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    var form = $('slotsForm');
+    setFormValue(form, 'slotName', editName);
+    setFormValue(form, 'newSlotName', editName);
+    setFormValue(form, 'newBackupSlotName', editName);
+
+    // Don't load unnecessary data if this slot is partially installed
+    if (el.getAttribute('slotStatus').indexOf('Partially Installed') == 0) {
+        return;
+    }
+
+    // Populate the OVA requirements.
+    var currentOva = Y.one('select[name="selectedOva"]').get('value');
+    if (currentOva != '') {
+        setElementClass($('ovaRequirements'), 'selectedEntryDetails');
+        setElementText('ovaRequirements', ovaRequirements[currentOva]);
+    }
+
+    // Populate the datastore details.
+    var currentDatastore = Y.one('select[name="installOvaTo"]').get('value');
+    setElementClass($('dsDetails'), 'selectedEntryDetails');
+    setElementText('dsDetails', dsInfo[currentDatastore]);
+
+    // Populate the VM requirements.
+    var currentVm = Y.one('select[name="selectRemoteVm"]').get('value');
+    if (currentVm != '') {
+        setElementClass($('vmRequirements'), 'selectedEntryDetails');
+        setElementText('vmRequirements', vmRequirements[currentVm]);
+    }
+
+    // Populate the backup requirements.
+    var currentBackup = Y.one('select[name="selectBackupFile"]').get('value');
+    if (currentBackup != '') {
+        setElementClass($('backupRequirements'), 'selectedEntryDetails');
+        setElementText('backupRequirements', backupRequirements[currentBackup]);
+    }
+
+    // Set any applicable OVA warnings.
+    toggleOvaWarnings(Y.one('select[name="selectedOva"]').get('value'));
+
+    setFormValue(form, 'swapDiskOva', false);
+    setFormValue(form, 'swapDiskVm', true);
+
+    setFormValue(form, 'slotEditCpus', el.getAttribute('numCpus'));
+    setElementText('vmwareTools', el.getAttribute('vmwareTools'));
+    setFormValue(form, 'slotEditMemory', el.getAttribute('memSize'));
+    setFormValue(form, 'slotEditWatchdogTimeout', el.getAttribute('watchdogTimeout'));
+    setFormValue(form, 'slotEditWatchdogGracePeriod', el.getAttribute('watchdogGracePeriod'));
+    setFormValue(form, 'slotEditWatchdogVniPolicy', el.getAttribute('watchdogVniPolicy'));
+    setFormValue(form, 'slotEditWatchdogReboot', el.getAttribute('watchdogReboot'));
+    setFormValue(form, 'slotEditWatchdogPingUse', el.getAttribute('watchdogPingUse'));
+    setFormValue(form, 'slotEditWatchdogPingIp', el.getAttribute('watchdogPingIp'));
+    setFormValue(form, 'slotEditWatchdogPingInterval', el.getAttribute('watchdogPingInterval'));
+    setFormValue(form, 'slotEditWatchdogHeartbeatUse', el.getAttribute('watchdogHeartbeatUse'));
+    setElementText('wdHeartbeatPort', el.getAttribute('watchdogHeartbeatPort'));
+    setElementText('slotEditVmDatastoreName', el.getAttribute('packageDatastore'));
+    setElementText('slotEditVmDatastoreFreeSpace', el.getAttribute('freeSpace'));
+
+    // Single Sign-On link
+    var ssoState = el.getAttribute('singleSignonState');
+    if (ssoState == 'authorized') {
+        var singleSignonUrlAnchorEl = Y.one('#singleSignonUrl').one('a');
+        singleSignonUrlAnchorEl.set('href', '/mgmt/singleSignon?slot=' + editName);
+        singleSignonUrlAnchorEl.set('target', '_blank');
+    }
+
+    // Single Sign-On tab
+    if (ssoState != 'locked' && ssoState != 'unsupported') {
+        setFormValue(form, 'slotEditSSOProtocol', el.getAttribute('ssoProtocol'));
+        setFormValue(form, 'slotEditSSOHost', el.getAttribute('ssoHost'));
+        setFormValue(form, 'slotEditSSOPort', el.getAttribute('ssoPort'));
+        setFormValue(form, 'slotEditSSODefaultUserEnable', el.getAttribute('ssoDefaultUserEnable'));
+        setFormValue(form, 'slotEditSSODefaultUserName', el.getAttribute('ssoDefaultUserName'));
+        setFormValue(form, 'slotEditSSODefaultUserPassword', el.getAttribute('ssoDefaultUserPassword'));
+        setFormValue(form, 'slotEditSSODefaultUserPasswordConfirm', el.getAttribute('ssoDefaultUserPassword'));
+    }
+
+    var enabled = 'true' == el.getAttribute('enabled');
+    var installed = 'true' == el.getAttribute('installed');
+
+    // If the slot is enabled/installed, then tables will be shown. Load up the XML data.
+    if (enabled || installed) {
+
+<% if isSH(): { %>
+        slotDiskTable.sendRequest('/mgmt/xmldata?p=rsp3SlotDisks&slot=' + editName);
+        slotSSOUsersTable.sendRequest('/mgmt/xmldata?p=rsp3SlotSSOUsers&slot=' + editName);
+<% } %>
+
+        slotVniTable.sendRequest(
+            '/mgmt/xmldata?p=rsp3SlotVnis&slot=' + editName +
+            '&editPolicy=<%= cgi.escape(fields.get('editPolicy', '')) %>');
+    }
+
+    // Populate the restore backup dropdown with files.
+    var backupList = backupMapping[editName];
+    var hasBackups = (backupList != null);
+    // Populate select dropdown on installed slot operation pane
+    populateSelect(form, 'selectedBackup_slotOperation', hasBackups ? backupList : [['', 'No backups']]);
+}
+
+// Show and hide the correct fields and buttons, depending on the slot and VM state.
+var slotDisplayControl = new DisplayControl();
+slotDisplayControl.display = function(targetDiv) {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+    var enabled = 'true' == el.getAttribute('enabled');
+    var installed = 'true' == el.getAttribute('installed');
+    var slotStatus = el.getAttribute('slotStatus');
+    var partiallyInstalled = slotStatus.indexOf('Partially Installed') == 0;
+    var powered = 'on' == el.getAttribute('powerState').toLowerCase();
+    var ssoState = el.getAttribute('singleSignonState');
+    var remoteVm = el.getAttribute('packageDatastore') != '<%= rsp3.rsp_local_datastore_name %>';
+    var backupList = backupMapping[slotTable.editName];
+    var hasBackups = (backupList != null);
+
+    switch(targetDiv) {
+        case 'slotEdit_emptySlot':
+            return !installed && !partiallyInstalled;
+        case 'slotEdit_installedSlot':
+            return installed && !partiallyInstalled;
+        case 'slotEdit_vmInstallationFailed':
+            return slotStatus == 'Partially Installed' ||
+                   slotStatus == 'Partially Installed (Operation Failed)';
+        case 'slotEdit_vmInstalling':
+            return slotStatus == 'Partially Installed (Installing)';
+        case 'slotEdit_vmUninstalling':
+            return slotStatus == 'Partially Installed (Uninstalling)';
+
+        // Slot Operations tab
+        case 'uninstallSlotFieldset':
+        case 'uninstallSlotButtonDiv':
+            return !enabled;
+        case 'uninstallSlotTextVmEnabled':
+            return enabled;
+        case 'restoreBackupFieldset':
+        case 'restoreBackupTextBackupsPage':
+            return !enabled && !remoteVm;
+        case 'restoreBackupTextVmEnabled':
+            return enabled;
+        case 'enableSlotButton':
+            return !enabled && !powered;
+        case 'disableSlotButton':
+            return enabled;
+        case 'startVmButton':
+            return enabled && !powered;
+        case 'restartVmButton':
+            return enabled && powered;
+
+        // VM Settings, VNIs, Disks
+        case 'vmSettingsVmDisabled':
+        case 'vniSettingsVmDisabled':
+        case 'diskSettingsVmDisabled':
+            return !enabled;
+        case 'vmSettingsVmEnabled':
+        case 'vniSettingsVmEnabled':
+        case 'diskSettingsVmEnabled':
+            return enabled;
+
+        // Single Sign-On
+        case 'singleSignonFieldset':
+            return (ssoState == 'authorized');
+        case 'singleSignonTextLocked':
+            return (ssoState == 'locked');
+        case 'singleSignonTextUnsupported':
+            return (ssoState == 'unsupported');
+        case 'singleSignonTextUnconfigured':
+            return (ssoState == 'unconfigured');
+        case 'singleSignonTextUnauthorized':
+            return (ssoState == 'unauthorized');
+        case 'singleSignonUrl':
+            return (ssoState == 'authorized');
+        case 'slotEdit_sso_secureVaultLocked':
+            return (ssoState == 'locked');
+        case 'slotEdit_sso_unsupportedVm':
+            return (ssoState == 'unsupported');
+        case 'slotEdit_sso_normal':
+            return (ssoState != 'locked' && ssoState != 'unsupported');
+
+        default:
+            return null;
+    }
+}
+
+// Slot panels are shown or hidden
+addUpdateable('display', slotDisplayControl, 'slotEdit_installedSlot');
+addUpdateable('display', slotDisplayControl, 'slotEdit_emptySlot');
+addUpdateable('display', slotDisplayControl, 'slotEdit_vmInstallationFailed');
+addUpdateable('display', slotDisplayControl, 'slotEdit_vmInstalling');
+addUpdateable('display', slotDisplayControl, 'slotEdit_vmUninstalling');
+
+// Slot Operations
+addUpdateable('enable', slotDisplayControl, 'uninstallSlotFieldset');
+addUpdateable('display', slotDisplayControl, 'uninstallSlotTextVmEnabled');
+addUpdateable('display', slotDisplayControl, 'uninstallSlotButtonDiv');
+addUpdateable('enable', slotDisplayControl, 'restoreBackupFieldset');
+addUpdateable('display', slotDisplayControl, 'restoreBackupTextVmEnabled');
+addUpdateable('function', updateRestoreBackupWidgetsDiv, 'restoreBackupWidgetsDiv');
+addUpdateable('display', slotDisplayControl, 'restoreBackupTextBackupsPage');
+addUpdateable('display', slotDisplayControl, 'enableSlotButton');
+addUpdateable('display', slotDisplayControl, 'disableSlotButton');
+addUpdateable('display', slotDisplayControl, 'startVmButton');
+addUpdateable('display', slotDisplayControl, 'restartVmButton');
+
+// VM Settings, VNIs, Disks
+addUpdateable('enable', slotDisplayControl, 'vmSettingsVmDisabled');
+addUpdateable('display', slotDisplayControl, 'vmSettingsVmEnabled');
+addUpdateable('enable', slotDisplayControl, 'vniSettingsVmDisabled');
+addUpdateable('display', slotDisplayControl, 'vniSettingsVmEnabled');
+addUpdateable('enable', slotDisplayControl, 'diskSettingsVmDisabled');
+addUpdateable('display', slotDisplayControl, 'diskSettingsVmEnabled');
+
+// Single Sign-On
+addUpdateable('enable', slotDisplayControl, 'singleSignonFieldset');
+addUpdateable('display', slotDisplayControl, 'singleSignonTextLocked');
+addUpdateable('display', slotDisplayControl, 'singleSignonTextUnsupported');
+addUpdateable('display', slotDisplayControl, 'singleSignonTextUnconfigured');
+addUpdateable('display', slotDisplayControl, 'singleSignonTextUnauthorized');
+addUpdateable('display', slotDisplayControl, 'singleSignonUrl');
+addUpdateable('display', slotDisplayControl, 'slotEdit_sso_secureVaultLocked');
+addUpdateable('display', slotDisplayControl, 'slotEdit_sso_unsupportedVm');
+addUpdateable('display', slotDisplayControl, 'slotEdit_sso_normal');
+
+// Update the enabled/visible state of the div containing the controls for
+// restoring a slot backup to an installed slot.
+//
+// There are three states to consider:
+//   1. The VM is enabled: we hide the controls since they're not applicable.
+//   2. The VM is disabled and there are no slot backups: we show the controls
+//      but disable them.
+//   3. The VM is disabled and there are slot backups: we show the controls and
+//      enable them.
+function updateRestoreBackupWidgetsDiv(target) {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+    var enabled = 'true' == el.getAttribute('enabled');
+    var backupList = backupMapping[slotTable.editName];
+    var hasBackups = (backupList != null);
+    enableElements(target, enabled ? 'hide' : hasBackups);
+}
+
+// Remember which slot and tab to open after form submit.
+function slotsSubmit(form) {
+    if (slotTable.editMode) {
+        // replace the current (if any) openEditSlot and openEditTab
+        form.action = form.action.replace(/openEditSlot=[^&]*&?/, '').replace(
+                                          /openEditTab=[^&]*&?/, '').replace(
+                                          /&*$/, '');
+        form.action += '&openEditSlot=' + slotTable.editName;
+        form.action += '&openEditTab=' + slotEditTabs.current;
+    }
+}
+
+// Show and hide the correct fields and buttons, depending on widgets for OVA installation
+var ovaInstallDisplayControl = new DisplayControl();
+ovaInstallDisplayControl.display = function(targetDivID) {
+
+    // Enable/disable the OVA swap disk checkbox based on whether a
+    // remote/local datastore is selected
+
+    var form = $('slotsForm');
+    var source = radioValue(form, 'slotInstallSource');
+
+    switch (targetDivID) {
+        case 'swapDiskOvaDiv':
+            if (source == 'local') {
+                dsData = getFormElement(form, 'installOvaTo').value.split("/");
+                // dsData now contains:
+                // [0] - datastore name
+                // [1] - locality (remote or local)
+                isRemote = dsData[1] == 'remote';
+                setFormValue(form, 'swapDiskOva', isRemote);
+                return isRemote;
+            }
+            break;
+        case 'installPackageButton':
+            return (source == 'local') || (source == 'remote');
+        case 'restoreBackupButton':
+            return (source == 'backup');
+        case 'remoteDatastoreDiv':
+            return <%= veLicensed %>;
+    }
+}
+
+// Update OVA's swap disk checkbox and remote VM installation widgets
+addUpdateable('enable', ovaInstallDisplayControl, 'swapDiskOvaDiv');
+addUpdateable('enable', ovaInstallDisplayControl, 'remoteDatastoreDiv');
+
+// Show/hide 'install' and 'restore' buttons
+addUpdateable('display', ovaInstallDisplayControl, 'installPackageButton');
+addUpdateable('display', ovaInstallDisplayControl, 'restoreBackupButton');
+
+function showSlotInstallLiveStatus() {
+    slotInstallLiveStatus.show('Installing OVA.');
+}
+
+function showSlotUninstallLiveStatus() {
+    slotInstallLiveStatus.show('Uninstalling slot.');
+}
+
+function showBackupRestoreLiveStatus() {
+    backupRestoreLiveStatus.show('Restoring slot backup.');
+}
+
+// ]]>
+</script>

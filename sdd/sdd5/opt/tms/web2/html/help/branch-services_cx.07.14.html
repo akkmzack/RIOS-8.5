@@ -1,0 +1,629 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Adding Rules to an Optimization VNI</title>
+    <link rel="StyleSheet" href="css/branch-services_cx.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="branch-services_cx.07.01.html#285793">Chapter 5	Configuring Branch Services</a> : <a class="WebWorks_Breadcrumb_Link" href="setupRSPDataflow.html#285793">Configuring RSP Data Flow</a> : Adding Rules to an Optimization VNI</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading2Topic"><a name="285793">Adding Rules to an Optimization VNI</a></div>
+      <div class="Body"><a name="285796">VNI rules determine what the VNI does with the traffic it receives. After you install a package and add it to </a>a slot, you must add rules to configure the data flow for the package unless you use the default rules for the package. For a WAN VNI, you add WAN-to-LAN rules to direct traffic. For a LAN VNI, you add LAN-to-WAN rules to direct traffic. </div>
+      <div class="Body"><a name="285797">Rules are used with in-path and virtual in-path optimization VNIs. You do not need to add rules to </a>management VNIs. </div>
+      <div class="Body"><a name="285799">VNI rules determine what the VNI does with the traffic it receives. You can control the redirection by rules </a>based on IP or port. VNI rules can perform one of these actions:</div>
+      <li class="Bullet"><a name="285800">Redirect the packets to the VM.</a></li>
+      <li class="Bullet"><a name="285801">Pass the packets along the data flow to the next VNI.</a></li>
+      <li class="Bullet"><a name="285802">Pass the packets along the data flow and send a copy of the packets to the VM. </a></li>
+      <div class="Heading4"><a name="285804">Using VNI Rules to Chain Packages Together</a></div>
+      <div class="Body"><a name="285805">Supposing you have installed a video streaming package, a security package, and a VPN package on the </a>Steelhead appliance, you can define rules to invoke this data path:</div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285812">Flash video traffic coming from the LAN Steelhead appliance is redirected to a video proxy solution.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285816">All other traffic goes directly to RiOS and is optimized.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285820">After RiOS optimizes the traffic, it is redirected to the security package on the WAN-side of the </a>Steelhead appliance that checks the data (or, if it is a VPN solution, encrypts it), and sends it back out of the WAN. You can control the data redirection using rules based on IP or port.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="285824">DNAT Rules</a></div>
+      <div class="Body"><a name="285825">Destination Network Address Translation (DNAT) rules are used for in-path proxy-based solutions. You </a>can only add DNAT rules for a Virtual In-path optimization VNIs.</div>
+      <div class="Body"><a name="285826">By default, DNAT is disabled. When DNAT is enabled, it translates the network address of packets that </a>match the source and destination IP and the port (or port range) to the target IP and, optionally, the target port. It then routes them to the correct device, host, or network.</div>
+      <div class="Body"><a name="285830">You can install an RSP package for live video streaming and add a DNAT rule (using the IP address, port </a>number, or both) that transparently proxies all traffic redirected to the local RSP video instance. </div>
+      <div class="Body"><a name="285837">Consequently, the local RSP video instance responds to the local clients on behalf of the original server, </a>simultaneously communicating with the original server in the background over the WAN. This process streamlines the number of requests over the WAN, resulting in time and bandwidth savings.</div>
+      <div class="Body"><a name="285841">The RSP rule that determines which traffic is network address translated is provided in the data flow rules </a>for the Virtual In-path VNI.	</div>
+      <div class="Heading3"><a name="285842">Usage Notes</a></div>
+      <div class="Body"><a name="285843">Use these tips when you create data flow rules:</a></div>
+      <li class="Bullet"><a name="285844">Place the VNI in the data flow only for in-band packages</a></li>
+      <li class="Bullet"><a name="285845">You can either use the default IP rules or non-IP rules per VNI (customizable by each package vendor).</a></li>
+      <li class="Bullet"><a name="285846">Add rules to control traffic (such as in-path rules) per VNI and perform these actions:</a></li>
+      <li class="BulletSubDash"><a name="285847">Redirect the packets to the VM.</a></li>
+      <li class="BulletSubDash"><a name="285848">Pass the packets along the data flow to the next VNI.</a></li>
+      <li class="BulletSubDash"><a name="285849">Pass the packets along the data flow and send a copy of the packets to the VM. </a></li>
+      <li class="Bullet"><a name="285850">Each given data flow rule pertains to one direction only, incoming or outgoing.</a></li>
+      <li class="Bullet"><a name="285851">For a WAN VNI, only WAN-to-LAN rules apply. </a></li>
+      <li class="Bullet"><a name="285852">For a LAN VNI, only LAN-to-WAN rules apply. </a></li>
+      <li class="Bullet"><a name="285853">You can only add DNAT rules for a virtual in-path VNI.</a></li>
+      <li class="Bullet"><a name="285854">You can specify a target port range with DNAT rules.</a></li>
+      <div class="Indent1"><a name="285855">This table shows some typical rule actions that you can use to control the data flow for the various VNI </a>types. </div>
+      <table class="RegularTable" style="text-align: left; width: 467.19216pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 137.25144pt">
+            <div class="CellHeading"><a name="285858">Optimization VNI type</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.94072pt">
+            <div class="CellHeading"><a name="285860">Typical Data Flow Rule Actions</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285862">LAN</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285864">Pass traffic around a VM or redirect it to the VM. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285866">WAN</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285868">Pass traffic around a VM or redirect it to the VM. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285870">Virtual In-Path DNAT</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285872">Pass traffic to the target IP or redirect it to a target IP.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285874">Virtual In-Path Mirror</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285876">Pass traffic along the data flow and copy it for monitoring.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="HeadingProcedure"><a name="285877">To add a LAN-to-WAN or WAN-to-LAN rule to a VNI</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285884">Choose Configure &gt; Branch Services &gt; RSP Data Flow to display the RSP Data Flow page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285885">In the VNI list, select the VNI name.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285886">Complete the rule properties under LAN to WAN Rules or WAN to LAN Rules, as described in this </a>table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 144.76464pt">
+            <div class="CellHeading"><a name="287567">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.1116pt">
+            <div class="CellHeading"><a name="287569">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287571">Add a Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287573">Displays the controls to add a rule.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287575">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287577">Optionally, specify a number (0 - 65535).</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287579">Source Network</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287581">Optionally, specify the source subnet of the packet; for example, 1.2.3.0/24, or </a>leave it blank to specify all subnets.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287583">[Source] Port </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287585">Optionally, specify a single source port value or a port range of port1-port2, </a>where port1 must be less than port2. </div>
+            <div class="CellBody"><a name="287586">You can only specify a port when the protocol is either TCP or UDP.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287588">Destination Network</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287590">Optionally, specify the destination network or leave it blank to specify all </a>destination networks.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287592">[Destination] Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287594">Optionally, specify the destination port of the packet, either a single port value </a>or a port range of port1-port2, where port1 must be less than port2.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="287595">You can only specify a port when the protocol is either TCP or UDP.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287597">Target Destination Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287599">Specify the target destination IP address.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287601">[Target Destination Address] Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287603">Specify the target destination port number.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287605">Enable Destination Network </a>Address Translation</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287607">(DNAT only.) Select this option to enable a default DNAT target.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287609">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287611">Optionally, specify all, TCP, UDP, or specify a protocol number (1-255). The </a>default setting is all.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287613">VLAN Tag ID</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287615">Optionally, specify all or a VLAN identification number.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287617">Rule Action</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287619">Select an action from the drop-down list:</a></div>
+            <li class="CellBullet"><span class="Bold"><a name="287620">Redirect Traffic to Slot </a></span>- Click to redirect the packet to a VM.</li>
+            <li class="CellBullet"><span class="Bold"><a name="287621">Pass Traffic Around Slot</a></span> - Click to pass the packet along the data flow, bypassing the VM.</li>
+            <li class="CellBullet"><span class="Bold"><a name="287622">Copy Traffic to Slot</a></span> - Click to copy the packet to the VM and also pass it along the data flow.</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287624">Add </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287626">Adds the rule to the VNI. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287628">Remove Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287630">Removes the selected rules. Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected Rules</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287632">Move Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287634">Moves the selected rules. Click the arrow next to the desired rule position; the </a>rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Heading3"><a name="285949">Changing the Default VNI Rules</a></div>
+      <div class="Body"><a name="285951">The LAN-to-WAN and WAN-to-LAN rule tables include default rules to direct traffic that does not match </a>any other rules. The tables always list these default rules last and you cannot delete them. </div>
+      <div class="Body"><a name="285980">Riverbed supplies these default rules to direct traffic for optimization VNIs</a><span style="font-size: 9.0pt">. </span><span style="font-size: 9.0pt"> </span></div>
+      <table class="RegularTable" style="text-align: left; width: 466.30512pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.6616pt">
+            <div class="CellHeading"><a name="285957">Optimization VNI Type</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 158.66928pt">
+            <div class="CellHeading"><a name="285959">Data Flow Action on IP Traffic</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 163.97424pt">
+            <div class="CellHeading"><a name="285961">Data Flow Action on Non-IP Traffic</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285963">LAN</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285965">Pass</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285967">Pass</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285969">WAN</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285971">Pass</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285973">Pass</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285975">Virtual in-path</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285977">L2 switch</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285979">L2 switch</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="HeadingProcedure"><a name="285982">To edit the default VNI rule settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285989">Choose Configure &gt; Branch Services &gt; RSP Data Flow to display the RSP Data Flow page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285990">In the VNI list, select the VNI name.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285991">Under either Default IP Policy or Default Non-IP Policy, select one of these data flow options:</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285992">Pass Traffic Around Slot</a></span> - Redirects the packet to a VM in a slot.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285993">Redirect Traffic to Slot</a></span>- Passes the packet along the data flow, bypassing the VM in a slot.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285994">Copy Traffic to Slot </a></span>- Copies the packet to the slot and also pass it along the data flow.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285995">Use L2 switching </a></span>- Uses L2 switching.</li>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285996">Click </a><span style="font-weight: bold">Apply</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285997">Click </a><span style="font-weight: bold">Save</span> to save your changes permanently. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="285999">To add a DNAT rule to a virtual in-path VNI</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="286006">Choose Configure &gt; Branch Services &gt; RSP Data Flow to display the RSP Data Flow page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="286007">In the VNI list, select the VNI name.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="286008">Complete the rule properties under Destination NAT Rules, as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 144.76464pt">
+            <div class="CellHeading"><a name="287655">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.1116pt">
+            <div class="CellHeading"><a name="287657">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287659">Add a Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287661">Displays the controls to add a rule.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287663">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287665">Optionally, specify a number (0 - 65535) to replace the default rule number.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287667">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287669">Optionally, select All, TCP, UDP, or specify a protocol number (1-254). The </a>default setting is All.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287671">Source Network</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287673">Optionally, specify the source subnet of the packet; for example, 1.2.3.0/24, or </a>leave it blank to specify all subnets.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287675">Source Port or Range</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287677">Optionally, specify a single source port value or a port range of port1-port2, </a>where port1 must be less than port2. Leave it blank to specify all ports.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287679">Original Destination Network</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287681">Optionally, specify the destination network or leave it blank to specify all </a>destination networks.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287683">Original Destination Port or </a>Range</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287685">Optionally, specify the destination port of the packet, either a single port value </a>or a port range of port1-port2, where port1 must be less than port2.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287687">Target Destination Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287689">Optionally, specify the target address or leave it blank to specify all target </a>addresses.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287691">Target Destination Port or Range</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287693">Specify the target destination port of the packet, either a single port value or a </a>port range of port1-port2, where port1 must be less than port2. Leave it blank to specify all target ports.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287695">Add </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287697">Adds the rule to the VNI. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287699">Removed Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287701">Removes the selected rules. Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected Rules</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287703">Move Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287705">Moves the selected rules. Click the arrow next to the desired rule position; the </a>rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="286067">To remove the data flow configuration for an interface, click </a><span style="font-weight: bold">Remove Configuration</span>.</div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

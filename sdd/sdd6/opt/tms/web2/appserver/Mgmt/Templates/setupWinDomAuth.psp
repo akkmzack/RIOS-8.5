@@ -1,0 +1,321 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Al Sweigart
+##
+## setupWinDomAuth.psp
+## This is the template for the Windows Domain Authentication page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsCIFS', 'setupServiceProtocolsSMB2', 'setupServiceProtocolsMAPI') %>
+
+<psp:method name="css">
+    return '''
+#domainAuthTable_main { width: 400px; }
+#replUsersTable_main  { width: 650px; }
+#ntlmFieldset         { width: 680px; }
+#kerberosFieldset     { width: 680px; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'useAlwaysList': NodeEntry(
+            name='useAlwaysList',
+            path='/rbt/sport/domain_auth/config/rules/use_always_list',
+            type='bool',
+            widget='radio',
+            label={'true':  'Allow delegated authentication to these servers (Delegate-Only):',
+                   'false': 'Allow delegated authentication to all servers except the following (Delegate-All-Except):'},
+            enableDiv={'true': 'alwaysSection', 'false': 'neverSection'}),
+        'autoDelegation': NodeEntry(
+            name='autoDelegation',
+            path='/rbt/sport/domain_auth/config/auto_delegation/enable',
+            type='bool',
+            widget='radio',
+            enableDiv={'false':'alwaysRadioSection'},
+            label={'true': 'Auto',
+                'false': 'Manual'},
+            action='if (this.value == "true") { setFormValue("winDomAuthForm", "useAlwaysList", "false"); updateUpdateables(); }'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'alwaysIps': NodeEntry(
+            name='alwaysIps',
+            widgetClass='wide3',
+            label='IPs',
+            hint='(comma-separated list)',
+            validate='ipv4addr_list',
+            inputOptional=True),
+        'neverIps': NodeEntry(
+            name='neverIps',
+            widgetClass='wide3',
+            label='IPs',
+            hint='(comma-separated list)',
+            validate='ipv4addr_list',
+            inputOptional=True),
+        'addDomain_domain': NodeEntry(
+            name='addDomain_domain',
+            label='Active Directory Domain Name',
+            validate='nonempty'),
+        'addDomain_user': NodeEntry(
+            name='addDomain_user',
+            widgetClass='account',
+            label='Username',
+            validate='validateActiveDirectoryUsername'),
+        'addDomain_password': NodeEntry(
+            name='addDomain_password',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'addDomain_passwordConfirm': NodeEntry(
+            name='addDomain_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+        'addRepl_domain': NodeEntry(
+            name='addRepl_domain',
+            label='Active Directory Domain Name',
+            tooltip='The domain to replicate accounts from.',
+            validate='nonempty'),
+        'addRepl_user': NodeEntry(
+            name='addRepl_user',
+            widgetClass='account',
+            label='Username',
+            tooltip='This user must have the "Replicate Directory Changes" privilege.',
+            validate='validateActiveDirectoryUsername'),
+        'addRepl_userdomain': NodeEntry(
+            name='addRepl_userdomain',
+            label='User Domain',
+            tooltip='The domain the user belongs to, if different from the AD Domain Name.'),
+        'addRepl_dcname': NodeEntry(
+            name='addRepl_dcname',
+            label='DC Name',
+            tooltip='The hostname (not IP address) of a DC in the replication domain.',
+            validate='nonempty'),
+        'addRepl_rodc': FormUtils.NodeEntry(
+            name='addRepl_rodc',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='When enabled, the Steelhead will act as an RODC and cache passwords from the specified DC according to the PRP.',
+            enableDiv='dcnameDiv',
+            label='Enable RODC Password Replication Policy Support'),
+        'addRepl_password': NodeEntry(
+            name='addRepl_password',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'addRepl_passwordConfirm': NodeEntry(
+            name='addRepl_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password')
+    }
+</psp:method>
+
+<%
+
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+rulesBase = pathPrefix + '/rbt/sport/domain_auth/config/rules'
+
+alwaysIps = Nodes.getMgmtLocalChildrenNames(mgmt, rulesBase + '/always_list')
+alwaysIps.sort(FormUtils.compareIpv4)
+dialogEntries['alwaysIps'].value = ', '.join(alwaysIps)
+
+neverIps = Nodes.getMgmtLocalChildrenNames(mgmt, rulesBase + '/never_list')
+neverIps.sort(FormUtils.compareIpv4)
+dialogEntries['neverIps'].value = ', '.join(neverIps)
+
+# secure vault and migration nodes
+vaultUnlocked = Nodes.present(mgmt, '/secure_vault/state/unlocked') == 'true'
+steelheadMigrationDone = Nodes.present(mgmt, '/rbt/sport/domain_auth/local/config/migration_done') == 'true'
+
+# For CMC we don't have any migration concept. The information is always stored in secure vault.
+# Therefore, we will only care about if the secure vault is locked and always assume the migration 
+# is done on CMC
+if policyType: {
+    migrationDone = True
+} else: {
+    migrationDone = steelheadMigrationDone
+}
+
+# don't create any tables if a migration is done and the vault is locked
+if (vaultUnlocked) or (not migrationDone): {
+    domainAuthTable = ajaxentrytable.AjaxEntryTable('domainAuth',
+        url=self.urlForCmcEdit('/mgmt/xmldata?p=domainAuthUsers'),
+        titleText='Users with Delegation Rights',
+        headerSpec=('', 'Domain', 'Username'),
+        rowSpec="""
+    [AjaxEntryTable.tdSelectCheckbox('name', 'select_'),
+     AjaxEntryTable.tdAttr('name'),
+     AjaxEntryTable.tdAttr('user')]""",
+        emptyMessage='No delegation users.',
+        addButtonText='Add a New User',
+        addButtonName='addDomain',
+        removeName='removeDomains',
+        removeButtonText='Remove Selected',
+        removePrefix='select_')
+
+    domainAuthTable.addDivContent='''
+      <div class="midLevel">
+        <table>
+          %s
+          %s
+          %s
+          %s
+        </table>
+      </div>
+    ''' % (dialogEntries['addDomain_domain'].html(self),
+           dialogEntries['addDomain_user'].html(self),
+           dialogEntries['addDomain_password'].html(self),
+           dialogEntries['addDomain_passwordConfirm'].html(self))
+
+
+    replUsersTable = ajaxentrytable.AjaxEntryTable('replUsers',
+        url=self.urlForCmcEdit('/mgmt/xmldata?p=replUsers'),
+        titleText='Replication Users',
+        headerSpec=('', 'Domain', 'User Domain', 'Username', 'DC Name'),
+        rowSpec="""
+    [AjaxEntryTable.tdSelectCheckbox('name', 'select_'),
+     AjaxEntryTable.tdAttr('name'),
+     AjaxEntryTable.tdAttr('userdomain'),
+     AjaxEntryTable.tdAttr('user'),
+     AjaxEntryTable.tdAttr('dcname')]""",
+        emptyMessage='No replication users.',
+        addButtonText='Add a New User',
+        addButtonName='addRepl',
+        removeName='removeRepls',
+        removeButtonText='Remove Selected',
+        removePrefix='select_')
+
+    replUsersTable.addDivContent='''
+      <div class="midLevel">
+        <table>
+          %s
+          %s
+          %s
+          %s
+          %s
+        </table>
+      </div>
+      <div class="midLevel">
+        %s
+        <div id="dcnameDiv" class="indent">
+          <table>
+            %s
+          </table>
+        </div>
+      </div>
+    ''' % (dialogEntries['addRepl_domain'].html(self),
+           dialogEntries['addRepl_userdomain'].html(self),
+           dialogEntries['addRepl_user'].html(self),
+           dialogEntries['addRepl_password'].html(self),
+           dialogEntries['addRepl_passwordConfirm'].html(self),
+           dialogEntries['addRepl_rodc'].html(self),
+           dialogEntries['addRepl_dcname'].html(self))
+}
+%>
+
+<% self.beginPagelet() 
+# in this case, we want the display the unlock box at the top of the page
+if not vaultUnlocked and migrationDone: { %>
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+<% } %>
+
+
+  <fieldset id="ntlmFieldset">
+    <legend>NTLM</legend>
+
+    <div class="midLevel">
+      <form method="post"
+            action="<%= self.thisPageletRequest() %>"
+            id="winDomAuthDelUsersForm">
+        <%
+        # show the delegation table if we have not migrated or the sv is unlocked
+        # otherwise we need to hide it
+        if (vaultUnlocked) or (not migrationDone): {
+            self.write("<div class='midLevel'>")
+            self.write(domainAuthTable.html(self))
+            self.write("</div>")
+        }
+        %>
+        <div>
+        <input type="hidden" name="_action_" value="setupWinDomAuthNTLM" />
+        </div>
+      </form>
+    </div>
+
+    <div class="topLevel">
+      <form method="post"
+            action="<%= self.thisPageletRequest() %>"
+            id="winDomAuthForm">
+        <div class="midLevel" id="delegationMode">
+          Delegation Mode: &emsp;
+          <%= nodeEntries['autoDelegation'].html(self, value='false', format="inline") %>
+          &emsp;
+          <%= nodeEntries['autoDelegation'].html(self, value='true', format="inline") %>
+          <div class="indent">
+            <div id='alwaysRadioSection'>
+              <%= nodeEntries['useAlwaysList'].html(self, value='true') %>
+              <div id="alwaysSection" class="indent">
+                <%= dialogEntries['alwaysIps'].html(self, format='block') %>
+              </div>
+            </div>
+            <div id='neverRadioSection'>
+              <%= nodeEntries['useAlwaysList'].html(self, value='false') %>
+              <div id="neverSection" class="indent">
+                <%= dialogEntries['neverIps'].html(self, format='block') %>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <input type="hidden" name="_action_" value="setupWinDomAuthNTLM" />
+        </div>
+
+      <% # Note that the Apply button is inside the fieldset. This is because
+         # we have to have two <form> elements inside the fieldset. %>
+      <%= FormUtils.formSubmitButtons(self) %>
+      </form>
+    </div>
+  </fieldset>
+
+<% 
+# show the kerberos table if we have not migrated or the sv is unlocked
+# otherwise we need to hide it
+if (vaultUnlocked) or (not migrationDone): { %>
+    <form method="post" 
+        action="<%= self.thisPageletRequest() %>">
+      <fieldset id="kerberosFieldset" class="topLevel">
+        <input type="hidden" name="_action_" value="setupWinDomAuthKerberos" />
+        <legend>Kerberos</legend>
+        <div class="midLevel">
+          <%= replUsersTable.html(self) %>
+        </div>
+      </fieldset>
+    </form>
+<% } %>
+
+<script type="text/javascript">
+// <![CDATA[
+function validateActiveDirectoryUsername(val) {
+    if (val.length > 20) {
+        throw 'Usernames must be no more than 20 characters long.';
+    } else if (/[\/\\[\]:;|=,+*?<>@"]/.test(val)) {
+        throw 'The following characters are not permitted: / \\ [ ] : ; | = , + * ? &lt; &gt; @ "';
+    }
+}
+// ]]>
+</script>
+
+<% self.endPagelet() %>

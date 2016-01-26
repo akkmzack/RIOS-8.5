@@ -1,0 +1,1263 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupSecurityPermissions.psp
+## This is the template for the administrator to create users
+## and assign them roles.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="OSUtils, RBA, Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isIB, RVBDUtils:isCMC" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupPasswordSettings',) %>
+<%
+   policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+   self.simplifiedRbm = (isCMC() and not policyType)
+   self.rsp_role_name = 'riverbed_services_platform'
+   self.qos_qop_role_name = 'qos'
+%>
+
+<psp:method name="css">
+    return '''
+.ajaxEntryTable_addDivContent .rbaRoleTable fieldset { width: 594px; }
+.ajaxEntryTable_editDivContent .rbaRoleTable fieldset { width: 560px; }
+.rbaRoleTable table { width: 100%; }
+.rbaRoleTable td { padding-top: 2px; padding-bottom: 2px; }
+.rbaRoleTable td.role { width: 200px; }
+.loginFailureTable td { padding-bottom: 10px; }
+
+.ajaxEntryTable_addDiv .selectAllLink a:visited, .ajaxEntryTable_addDiv .selectAllLink a:link,
+.ajaxEntryTable_table .selectAllLink a:visited, .ajaxEntryTable_table .selectAllLink a:link
+    { color: #0000FF; text-decoration:underline; }
+
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'adminOnlyRBA': NodeEntry(
+            path='/rbm_fake/rbm/config/permissions/admin_only',
+            type='string')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'editCapabilityAccount_enable': NodeEntry(
+            name='editCapabilityAccount_enable',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'editCapabilityAccount_changepw': NodeEntry(
+            name='editCapabilityAccount_changepw',
+            widget='checkboxLeft',
+            label='Change Password',
+            enableDiv='editAcct_changePassword'),
+        'editCapabilityAccount_password': NodeEntry(
+            name='editCapabilityAccount_password',
+            widget='password',
+            label='New Password',
+            inputOptional=True,
+            validate='password'),
+        'editCapabilityAccount_passwordConfirm': NodeEntry(
+            name='editCapabilityAccount_passwordConfirm',
+            widget='password',
+            label='New Password Confirm',
+            inputOptional=True,
+            validate='password'),
+
+        'addRbmUser_account': NodeEntry(
+            name='addRbmUser_account',
+            widgetClass='account',
+            label='Account Name',
+            validate='username'),
+        'addRbmUser_enable': NodeEntry(
+            name='addRbmUser_enable',
+            value='true',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'addRbmUser_password': NodeEntry(
+            name='addRbmUser_password',
+            widget='password',
+            label='Password',
+            inputOptional=True,
+            validate='password'),
+        'addRbmUser_passwordConfirm': NodeEntry(
+            name='addRbmUser_passwordConfirm',
+            widget='password',
+            label='New Password Confirm',
+            inputOptional=True,
+            validate='password'),
+        'editRbmUser_enable': NodeEntry(
+            name='editRbmUser_enable',
+            value='true',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'editRbmUser_changepw': NodeEntry(
+            name='editRbmUser_changepw',
+            widget='checkboxLeft',
+            label='Change Password',
+            enableDiv='editRbmUser_changePassword'),
+        'editRbmUser_password': NodeEntry(
+            name='editRbmUser_password',
+            widget='password',
+            label='New Password',
+            inputOptional=True,
+            validate='password'),
+        'editRbmUser_passwordConfirm': NodeEntry(
+            name='editRbmUser_passwordConfirm',
+            widget='password',
+            label='New Password Confirm',
+            inputOptional=True,
+            validate='password'),
+    }
+</psp:method>
+
+<psp:method name="roleDialogEntries" params="prefix">
+    # param prefix is either 'addRole_' or 'editRole_'.
+    #
+    # Return a dialogEntries mapping of keys to NodeEntry's,
+    # with the keys = the NodeEntry names prefixed with prefix.
+    rbmDialogEntries = {}
+    mgmt = self.session().value('mgmt')
+
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    isCMCUser = isCMC() and not policyType
+
+    for eachRole in mgmt.getChildren('/rbm/config/role').keys():
+        # some filtering for cmc (might not be necessary)
+        if eachRole.startswith('cmc_apps_and_groups_'):
+            continue
+        if eachRole.startswith('__cmc_group_'):
+            eachRole = eachRole[len('__cmc_group_'):]
+
+        # This is a hack.  The deny option is disabled for the op
+        # status role on the CMC so we don't want the deny button to
+        # come up selected.  In this case default to read instead of
+        # deny.  We really ought to find a better way to do this.
+        if eachRole == 'cmc_operation_status':
+            defaultValue = 'read'
+        else:
+            defaultValue = 'deny'
+
+        rbmDialogEntries[eachRole] = NodeEntry(
+            name=(prefix + eachRole),
+            widget='radio',
+            value=defaultValue,
+            label=RBA.rolePermissionMap)
+
+        # For simpified RBM, we need to an action to give
+        # visual indicators to user depending on collapse status group
+        # Exclude CMC group roles because they are not show in simplified form
+        if self.simplifiedRbm and not eachRole.startswith('CMC_Group'):
+            rbmDialogEntries[eachRole].action = 'rbmCompPermChange(this)'
+
+    return rbmDialogEntries
+</psp:method>
+
+<psp:method name="permButtonHtmlForRoleGroup"
+    params="roleName, firstColumnHtml, componentEntry">
+    # Returns HTML for three role (read, write, deny)
+    # permissions for simplified role groups:
+    #
+    # parameter roleName is the role name
+    # firstColumnHtml is any extra html that goes in the first
+    # column
+    # componentEntry is node entry for permissions
+    #
+
+    html = '''<tr>
+                  <td class="roleGroup">%s</td>
+                  <td class="role roleGroup">%s:</td>
+                  <td class="roleGroup">%s</td>
+                  <td class="roleGroup">%s</td>
+                  <td class="roleGroup">%s</td>
+              </tr>''' % (firstColumnHtml, roleName,
+                          componentEntry.html(self, value='deny', format='inline'),
+                          componentEntry.html(self, value='read', format='inline'),
+                          componentEntry.html(self, value='write', format='inline'))
+    return html
+
+</psp:method>
+
+<psp:method name="permButtonHtmlForComponentRole"
+    params="roleName, componentEntry">
+    # Returns HTML for component roles within
+    # role groups for three permissions:
+    # deny, read-only, read-write
+    #
+    # parameter roleName is the role name
+    # componentEntry is node entry for permissions
+    #
+
+    html = '''<tr>
+                  <td></td>
+                  <td class="role">%s:</td>
+                  <td>%s</td>
+                  <td>%s</td>
+                  <td>%s</td>
+              </tr>''' % (roleName,
+                          componentEntry.html(self, value='deny', format='inline'),
+                          componentEntry.html(self, value='read', format='inline'),
+                          componentEntry.html(self, value='write', format='inline'))
+    return html
+
+</psp:method>
+
+<psp:method name="permButtonHtmlLegacy"
+    params="roleName, componentEntry, policyType">
+    # Returns HTML for three role permissions for legacy code:
+    # deny, read-only, read-write
+    #
+    # parameter roleName is the role name
+    # componentEntry is node entry for permissions
+    #
+
+    # For policy page, all the deprecated RBM roles applicable to appliances managed by CMC should
+    # have a tooltip.
+    if policyType and 'Diagnostics' == roleName:
+        roleHtml = '<span class="popupTitle" title="Does not apply to RiOS 7.0 and above."> \
+                            %s</span>' % roleName
+    else:
+        roleHtml = roleName
+
+    html = '''<tr>
+                  <td class="role">%s:</td>
+                  <td>%s</td>
+                  <td>%s</td>
+                  <td>%s</td>
+              </tr>''' % (roleHtml,
+                          componentEntry.html(self, value='deny', format='inline'),
+                          componentEntry.html(self, value='read', format='inline'),
+                          componentEntry.html(self, value='write', format='inline'))
+    return html
+
+</psp:method>
+
+<psp:method name="permButtonHtmlForCollapsedRoleGroup"
+    params="roleName, componentEntry">
+    # Returns HTML for three role permissions:
+    # deny, read-only, read-write
+    #
+    # parameter type is one of 'simplified', 'component', 'legacy',
+    # 'groups', depening on which role types this permissions
+    # html gets attached to
+    # parameter roleName is the role name
+    # firstColumnHtml is any extra html that goes in the first
+    # column
+    # componentEntry is node entry for permissions
+    #
+
+    # For CMC groups, which does not have the glyph, add some html
+    # to align properly
+    html = '''<tr>
+                  <td>&nbsp;&nbsp;&nbsp;</td>
+                  <td class="role">%s:</td>
+                  <td>%s</td>
+                  <td>%s</td>
+                  <td>%s</td>
+              </tr>''' % (roleName,
+                          componentEntry.html(self, value='deny', format='inline'),
+                          componentEntry.html(self, value='read', format='inline'),
+                          componentEntry.html(self, value='write', format='inline'))
+    return html
+
+</psp:method>
+
+
+<psp:method name="getCMCGroupsPermissionTable" params="rbmEntries, rbmEntriesPrefix">
+    # Returns the HTML for the table of CMC Group permissions.
+
+    sortedRoles = RBA.getSortedRoleSubset(rbmEntries.keys(), self.simplifiedRbm)
+    cmcGroupsRole = ''
+    selectAllHtml = '<tr><td>&nbsp;</td><td>&nbsp;</td>'
+    for selAllParam in ('deny', 'read', 'write'):
+        selectAllHtml += '<td class="selectAllLink"><a href="#" onclick="selectAllClick(this, \'%s\', \'%s\'); return false;">Select All</a></td>' % (selAllParam, 'TABLE')
+    selectAllHtml += '</tr>\n'
+
+    for groupName, groupRoles in sortedRoles:
+
+        if not groupName.startswith('Groups'):
+            # ignore roles not associated with groups
+            continue
+
+        rowHtml = ''
+        for mgmtdName, prettyName in groupRoles:
+            entry = rbmEntries[mgmtdName]
+            rowHtml += self.permButtonHtmlForCollapsedRoleGroup(prettyName,
+                         entry)
+
+        # Each groups gets html of the form:
+        # <tbody>
+        #            <select all html>
+        # Group      o          o          o
+        # </tbody>
+        cmcGroupsRole += '<tbody>\n'
+        if len(groupRoles) > 1:
+            # "select all" onclick link is pointless for groups with only one permission.
+            cmcGroupsRole += selectAllHtml
+        cmcGroupsRole += rowHtml
+        cmcGroupsRole += '</tbody>\n'
+
+    returnHtml = '''<fieldset>
+                       <legend>%s</legend>
+                           <div class="midLevel">
+                               <table>
+                               %s
+                               </table>
+                           </div>
+                    </fieldset>\n''' % ('Groups', cmcGroupsRole)
+
+    return returnHtml
+
+</psp:method>
+
+<psp:method name="getSimplifiedTableHTML"
+     params="title, roleGroupList, rbmEntries, rbmEntriesPrefix">
+    # title is the section title, roleGroupList is a list of
+    # role groups. Role group is itself a collection of roles.
+    # rbmEntries is a dict of NodeEntry radio objects that is created
+    # by the roleDialogEntries() method.
+    #
+    # Returns HTML for list of group roles. For each group role
+    # it produces four tbody sections described below:
+    #
+    #       <table>
+    #          ...
+    #          <tbody id=prefix-<role_group>-simple_grp>
+    #             Simplified view with radio buttons for permissions.
+    #             This section is visible when the all roles have
+    #             same permissions.
+    #          </tbody>
+    #          <tbody id=prefix-<role_group>-detail_grp>
+    #             In the detail view, the component section (mentioned below)
+    #             is visible, so we do not show radio button permissions
+    #             for this role group. Either this tbody or the above
+    #             tbody is visible at any given time.
+    #          </tbody>
+    #          <tbody>
+    #              Always visible section which give description of the
+    #              role group.
+    #          </tbody>
+    #          <tbody id=prefix-<role_group>-comp>
+    #              Component Roles for this group.
+    #              Shows all the roles under this role group.
+    #              Visible only in detail view (prefix-detail-grp is visible)
+    #          </tbody>
+    #          ...
+    #       </table>
+
+
+    sectionHtml = ''
+    selectAllHtml = '<tr><td colspan="2">&nbsp;</td>'
+    for selAllParam in ('deny', 'read', 'write'):
+        selectAllHtml += '<td class="selectAllLink"><a href="#" onclick="selectAllClick(this, \'%s\', \'%s\'); return false;">Select All</a></td>' % (selAllParam, 'TBODY')
+    selectAllHtml += '</tr>\n'
+
+    for (rbmGroupRole, roleName, roleInfo, componentRoles) in roleGroupList:
+
+        prefix = '%s-%s' % (rbmEntriesPrefix, rbmGroupRole)
+        # Form the html for component roles
+        componentHtml = ''
+        for componentRole in componentRoles:
+            componentEntry = rbmEntries.get(componentRole)
+            if componentEntry:
+                # The CMC's own user permissions are slightly different from
+                # that on the SH or in the policies (The 'RSP' role is called
+                # 'RSP/VSP' and there's no VSP role). We need to conditionally
+                # rewrite the label in this case.
+                componentLabel = RBA.getRBMLabelFromName(componentRole)
+                if componentRole == self.rsp_role_name:
+                    componentLabel = RBA.getRSPPrettyName(self.rsp_role_name, True)
+                elif componentRole == self.qos_qop_role_name:
+                    componentLabel = RBA.getQosPathSelectionPrettyName(self.qos_qop_role_name, True)
+
+                componentHtml += self.permButtonHtmlForComponentRole(
+                                 componentLabel,
+                                 componentEntry)
+        if len(componentRoles) > 1:
+            # Meaningless to add select all option
+            # if we have only one role to select
+            componentHtml = selectAllHtml + componentHtml
+
+        # From the row for simplified view, of the following form:
+        #  <glyph> <Role Group name>    o     o      o
+
+        rbmGroupEntry = NodeEntry(name=(rbmEntriesPrefix + '-' + rbmGroupRole),
+                            widget='radio',
+                            value='deny',
+                            label=RBA.rolePermissionMap,
+                            action='rbmGroupPermChange(this.id)')
+
+        imgHtml = '''<img src="/images/aet_tree_closed.png" id="%s" onclick="updateSimplifiedView(this.id)" alt=""/>
+                     <input type="hidden" id="%s" value="simple" />''' \
+                  % ('%s-simple-img' % prefix,
+                     '%s-status' % prefix)
+
+        # Add permission buttons
+        rbmSimplifiedGroupHtml = self.permButtonHtmlForRoleGroup(
+                                    roleName, imgHtml, rbmGroupEntry)
+
+
+        # Form the row for detailed view, which basically has
+        # an open glyph and just the role name, but no radio buttons
+        imgHtml = '''<img src="/images/aet_tree_open.png" id="%s" onclick="updateSimplifiedView(this.id)" alt=""/>'''\
+                  % ('%s-detail-img' % prefix)
+
+        rbmOpenGroupHtml = '''
+                        <tr>
+                            <td class="roleGroup">%s</td>
+                            <td colspan="4" class="role roleGroup">%s:</td>
+                        </tr>\n''' % (imgHtml, roleName)
+
+        # Form tbody section for this role group.
+        # One for simplified view, one for detailed view,
+        # one for description and one for component roles.
+        sectionHtml += '''
+                    <tbody id="%(prefix)s-simple_grp" >
+                        %(simplifiedHtml)s
+                    </tbody>
+                    <tbody id="%(prefix)s-detail_grp" >
+                        %(detailGroupHtml)s
+                    </tbody>
+                    <tbody>
+                        <tr>
+                            <td class="ajaxEntryTable_rowDesc" colspan="5">
+                                %(roleInfo)s
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tbody id="%(prefix)s-comp" >
+                        %(componentHtml)s
+                    </tbody>\n''' % { 'prefix': prefix,
+                                      'roleInfo' : roleInfo,
+                                      'simplifiedHtml': rbmSimplifiedGroupHtml,
+                                      'detailGroupHtml': rbmOpenGroupHtml,
+                                      'componentHtml': componentHtml
+                                    }
+
+
+    returnHtml = '''<fieldset>
+                       <legend>%s</legend>
+                           <div class="midLevel">
+                               <table>
+                               %s
+                               </table>
+                           </div>
+                    </fieldset>\n''' % (title, sectionHtml)
+
+    return returnHtml
+
+</psp:method>
+
+
+<psp:method name="roleTableHTMLSimplified" params="rbmEntries, rbmEntriesPrefix">
+    # Forms the HTML for Simplified view of RBM roles and permissions.
+    # Returns HTML with three tables:
+    #  <table>
+    #       CMC Mgmt Roles
+    #  </table>
+    #  <table>
+    #       CMC Group Roles
+    #  </table>
+    #  <table>
+    #       Appliance Management Roles
+    #  </table>
+    #
+    cmc_mgmt_role_groups  = []
+    appl_mgmt_role_groups = []
+    for (rbmGroupRole, roleName, roleInfo, componentRoles) in RBA.roleGroupList:
+        if rbmGroupRole.startswith('cmc_'):
+            # Add it to list of CMC Managed roles
+            cmc_mgmt_role_groups.append((rbmGroupRole, roleName,
+                                         roleInfo, componentRoles))
+        else:
+            # It is an appliance mgmt role
+            appl_mgmt_role_groups.append((rbmGroupRole, roleName,
+                                          roleInfo, componentRoles))
+
+    # Add HTML for CMC Mgmt Roles
+    html = self.getSimplifiedTableHTML('CMC Roles', cmc_mgmt_role_groups,
+                                       rbmEntries, rbmEntriesPrefix)
+
+    # Add HTML for CMC Groups
+    html += self.getCMCGroupsPermissionTable(rbmEntries, rbmEntriesPrefix)
+
+    # Add HTML for CMC Appliance Management Roles
+    html += self.getSimplifiedTableHTML('Appliance Management Roles',
+                                        appl_mgmt_role_groups,
+                                        rbmEntries, rbmEntriesPrefix)
+
+    return html
+
+</psp:method>
+
+
+<psp:method name="roleTableHtml" params="rbmEntries, rbmEntriesPrefix">
+    # rbmEntries is a dict of NodeEntry radio objects that is created
+    # by the roleDialogEntries() method.
+    #
+    # Returns the HTML for a table filled with radio buttons for
+    # deny/read/write permissions.
+
+    if self.simplifiedRbm :
+        # Use the simplified RBM view
+        return self.roleTableHTMLSimplified(rbmEntries, rbmEntriesPrefix)
+
+    html = ''
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    isCMCUser = isCMC() and not policyType
+    sortedRoles = RBA.getSortedRoleSubset(rbmEntries.keys(), isCMCUser)
+
+    selectAllHtml = '<tr><td>&nbsp;</td>'
+    for selAllParam in ('deny', 'read', 'write'):
+        selectAllHtml += '<td class="selectAllLink"><a href="#" onclick="selectAllClick(this, \'%s\', \'%s\'); return false;">Select All</a></td>' % (selAllParam, 'TABLE')
+    selectAllHtml += '</tr>\n'
+
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    for groupName, groupRoles in sortedRoles:
+
+        if policyType and (groupName not in ('Steelhead', 'Uncategorized')):
+            continue
+        rowHtml = ''
+        for mgmtdName, prettyName in groupRoles:
+            entry = rbmEntries[mgmtdName]
+            rowHtml += self.permButtonHtmlLegacy(prettyName, entry, policyType)
+
+        tableHtml =  '<div class="midLevel">\n'
+        tableHtml += '  <table>\n'
+        tableHtml += '    <tbody>\n'
+        if len(groupRoles) > 1:
+            # "select all" onclick link is pointless for groups with only one permission.
+            tableHtml += selectAllHtml
+        tableHtml += rowHtml
+        tableHtml += '    </tbody>\n'
+        tableHtml += '  </table>\n'
+        tableHtml += '</div>\n'
+
+        # create a fieldset only if there's more than one group
+        if len(sortedRoles) > 1:
+            html += '<fieldset>\n'
+            html += '<legend>%s</legend>\n' % groupName
+            html += tableHtml
+            html += '</fieldset>\n'
+        else:
+            html += tableHtml
+
+    return html
+
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+# CapabilityAccounts table - just for admin and monitor
+capabilityAccountsTable = ajaxentrytable.AjaxEntryTable('capabilityAccounts',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=capabilityAccounts'),
+    titleText='Capability-Based Accounts',
+    headerSpec=('User', 'Enabled'),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('enable')]""",
+    emptyMessage='No admin or monitor accounts.',
+    editButtonName='editCapabilityAccount',
+    editDivTitle='Edit User <span id="editCapabilityAccount_name"></span>',
+    editDivOffset=0)
+
+# CapabilityAccounts table Edit Div
+capabilityAccountsTable.editDivContent = ''
+if not policyType: { # hide login failure details for CMC policy page
+capabilityAccountsTable.editDivContent = '''
+
+  <fieldset class="midLevel">
+    <legend>Login Failure Details </legend>
+    <p class="warning"><span id="editCapabilityAccount_lockedOutWarning"></span></p>
+    <table class="loginFailureTable">
+      <tr><td>Login Failure Count: </td><td><span id="editCapabilityAccount_loginFailureCount"></span></td></tr>
+      <tr><td>Login Failure Lockout: </td><td><span id="editCapabilityAccount_loginFailureLockout"></span></td></tr>
+      <tr><td>Login Password Status: &nbsp;</td><td><span id="editCapabilityAccount_loginPasswordStatus"></span></td></tr>
+      <tr><td>Last Login Failure: </td><td><span id="editCapabilityAccount_lastLoginFailure"></span></td></tr>
+    </table>
+  </fieldset>
+  <input type="button" name="clearCapabilityLoginStats" value="Clear Login Failure Details" onclick="buttonSubmit(this)"/>
+'''
+}
+
+capabilityAccountsTable.editDivContent += '''
+  <input type="hidden" name="editCapabilityAccount_account" value="" />
+  %s
+  <div id="editAcct_changePassword" class="indent">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+  %s
+  ''' % (dialogEntries['editCapabilityAccount_changepw'].html(self),
+         dialogEntries['editCapabilityAccount_password'].html(self),
+         dialogEntries['editCapabilityAccount_passwordConfirm'].html(self),
+         dialogEntries['editCapabilityAccount_enable'].html(self))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="capabilityAccountsForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupSecurity_capabilityAccounts" />
+    <%= capabilityAccountsTable.html(self) %>
+  </div>
+</form>
+
+<%
+# Disable RBM User Table on Interceptor
+if not isIB(): {
+
+# RBM Users Table, the main table on this pagelet.
+
+# NodeEntry mappings for rbmUsersTable add div and edit div, respectively.
+addRoleEntries = self.roleDialogEntries('addRole_')
+editRoleEntries = self.roleDialogEntries('editRole_')
+
+rbmUsersTable = ajaxentrytable.AjaxEntryTable('rbmUsers',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=rbmUsers'),
+    titleText='Role-Based Accounts',
+    headerSpec=('', 'User', 'Enabled'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('enable')]""",
+    emptyMessage='No role-based users.',
+    addButtonText='Add a New User',
+    removeName='removeRbmUsers',
+    removeButtonText='Remove Selected Users',
+    removePrefix='ck_',
+    addButtonName='addRbmUser',
+    editButtonName='editRbmUser',
+    editDivTitle='Edit User <span id="editRbmUser_name"></span>')
+
+# RBM Users nable add div
+rbmUsersTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+    %s
+  </div>
+  <h4 class="topLevel">Roles and Permissions:</h4>
+  <div class="rbaRoleTable midLevel">
+    %s
+  </div>
+  ''' % (dialogEntries['addRbmUser_account'].html(self),
+
+         dialogEntries['addRbmUser_password'].html(self),
+         dialogEntries['addRbmUser_passwordConfirm'].html(self),
+         dialogEntries['addRbmUser_enable'].html(self),
+         self.roleTableHtml(addRoleEntries, 'addRole_'))
+
+# RBM Users table edit div
+rbmUsersTable.editDivContent = ''
+if not policyType: { # Hide login failure details for CMC policy page
+rbmUsersTable.editDivContent = '''
+  <input type="hidden" name="editRbmUser_account" value="" />
+  <p class="warning"><span id="editRbmUser_passwordLockWarning"></span></p>
+  <fieldset class="midLevel">
+    <legend>Login Failure Details</legend>
+    <p class="warning"><span id="editRbmUser_lockedOutWarning"></span></p>
+    <table class="loginFailureTable">
+      <tr><td>Login Failure Count: </td><td><span id="editRbmUser_loginFailureCount"></span></td></tr>
+      <tr><td>Login Failure Lockout: </td><td><span id="editRbmUser_loginFailureLockout"></span></td></tr>
+      <tr><td>Login Password Status: &nbsp;</td><td><span id="editRbmUser_loginPasswordStatus"></span></td></tr>
+      <tr><td>Last Login Failure: </td><td><span id="editRbmUser_lastLoginFailure"></span></td></tr>
+    </table>
+  </fieldset>
+  <input type="button" name="clearRbmLoginStats" value="Clear Login Failure Details" onclick="buttonSubmit(this)"/>
+'''
+} else: { # policy page on CMC
+rbmUsersTable.editDivContent = '''
+  <input type="hidden" name="editRbmUser_account" value="" />
+'''
+}
+
+rbmUsersTable.editDivContent += '''
+  <div class="midLevel">
+    %s
+    <div id="editRbmUser_changePassword" class="indent">
+      <table>
+        %s
+        %s
+      </table>
+    </div>
+    %s
+  </div>
+  <h4 class="topLevel">Roles and Permissions:</h4>
+  <div id="editRbmUser_permissionTable" class="rbaRoleTable midLevel">
+    %s
+  </div>
+  ''' % (dialogEntries['editRbmUser_changepw'].html(self),
+         dialogEntries['editRbmUser_password'].html(self),
+         dialogEntries['editRbmUser_passwordConfirm'].html(self),
+         dialogEntries['editRbmUser_enable'].html(self),
+         self.roleTableHtml(editRoleEntries, 'editRole_'))
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="usersForm">
+  <div>
+    <%= rbmUsersTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupSecurity_usersAction" />
+  </div>
+</form>
+
+<%
+# Disable RBM User Table on Interceptor
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+
+function selectAllClick(el, selectAllType, parentType) {
+    // A "select all" onclick link has been clicked, so we should check all
+    // of the non-disabled radio buttons in that group.
+
+    // param el is the link element that was clicked.
+    // param selectAllType is a string 'deny', 'read', or 'write' for the
+    // value a radio button should have to be checked
+    // parentType determines the parent of this element.
+
+    // The "select all" links' functionality relies on the fact that all
+    // the radio buttons and onclick link are in a single table.
+    parentTable = getParentOfType(el, parentType);
+    allInputTags = parentTable.getElementsByTagName("input");
+
+    for (var i = 0; i < allInputTags.length; ++i) {
+        // Check the radio button if it is not disabled.
+        if ((!allInputTags[i].disabled) && (allInputTags[i].value == selectAllType)) {
+            allInputTags[i].checked = true;
+        }
+    }
+
+<%
+if self.simplifiedRbm: {
+%>
+    // Since component rbm permissions have changed because
+    // select all, call its change handler
+    rbmCompPermChange(el);
+
+<% } %>
+}
+
+capabilityAccountsTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('editCapabilityAccount_name', editName);
+    var formEl = document.getElementById('capabilityAccountsForm');
+
+    var loginFailureCount = el.getAttribute('login_failure_count');
+<% maxRetry = int(Nodes.present(self.session().value('mgmt'), '/aaa/auth/config/policies/max_retry')) %>
+<% accountControlEnabled = 'true' == Nodes.present(self.session().value('mgmt'), '/aaa/auth/config/policies/enable') %>
+<% if accountControlEnabled: { %>
+    if (Number(loginFailureCount) >= <%= maxRetry %> && 0 < <%= maxRetry %> && 'admin' != editName) {
+        setElementText('editCapabilityAccount_lockedOutWarning', 'Access to this account is currently rate-limited due to too many failed login attempts. Clear login failure details to remove this restriction.');
+    } else {
+        setElementText('editCapabilityAccount_lockedOutWarning', '');
+    }
+<% } %>
+    setElementText('editCapabilityAccount_loginFailureCount', loginFailureCount);
+    setElementText('editCapabilityAccount_loginFailureLockout', el.getAttribute('login_failure_lockout'));
+    setElementText('editCapabilityAccount_loginPasswordStatus', el.getAttribute('password_status'));
+    setElementText('editCapabilityAccount_lastLoginFailure', el.getAttribute('login_failure_from'));
+
+    formEl.editCapabilityAccount_account.value = editName;
+    formEl.editCapabilityAccount_enable.checked = 'true' == el.getAttribute('enable');
+}
+
+capabilityAccountsTable.updateHook = function() {
+    var form = $('capabilityAccountsForm');
+    var name = form.editCapabilityAccount_account.value;
+
+    var enableCheckbox = form.editCapabilityAccount_enable;
+    var parentDiv = getParentOfType(enableCheckbox, 'DIV');
+
+    // Admin user cannot have 'enable' property modified.
+    enableElements(parentDiv, 'admin' != name);
+}
+
+<%
+# Disable RBM User Table scripts if table is disabled
+if 'rbmUsersTable' in locals(): {
+%>
+
+
+
+/*
+ * This disables radio buttons on roles where the corresponding
+ * permission is illogical.  For example, read-only permission makes
+ * no sense for the "policy push" role so we should disable the
+ * control.
+ */
+function disableRoleRadioButtons(formId, prefix) {
+
+    disabledButtons = {};
+    disabledButtons['cmc_file_transfer'] = 'read';
+    disabledButtons['cmc_policy_push'] = 'read';
+    disabledButtons['cmc_appliance_upgrade'] = 'read';
+    disabledButtons['cmc_operation_status'] = 'deny';
+    disabledButtons['cmc_diagnostics'] = 'read';
+    disabledButtons['cmc_reports'] = 'read';
+    disabledButtons['diagnostics'] = 'read';
+    disabledButtons['basic_diagnostics'] = 'read';
+    disabledButtons['tcpdump'] = 'read';
+    disabledButtons['reports'] = 'read';
+    disabledButtons['smc_reports_endpoints'] = 'read';
+    disabledButtons['smc_reports_diagnostics'] = 'read';
+
+    for (var rbmRole in disabledButtons) {
+        // this is an array of radio buttons with the same name
+        var radioButtonGroup =
+            eval('document.forms[formId].' + prefix + rbmRole);
+
+        // SH doesn't have all of CMC's roles so radioButtonGroup may be null
+        if (radioButtonGroup) {
+            for (var j = 0; j < radioButtonGroup.length; ++j) {
+                var radioButtonEl = radioButtonGroup[j];
+                if (radioButtonEl.value == disabledButtons[rbmRole]) {
+                    // assume that the parent of the radio button is a
+                    // container that holds the label too
+                    var parentEl = radioButtonEl.parentNode;
+                    enableElements(parentEl, false);
+<%
+if self.simplifiedRbm: {
+%>
+                    // we disabled the permission for a component role.
+                    // so disable the corresponding permission for
+                    // its parent group role too.
+                    var parentRbmGroupNames = parentEl.parentNode.parentNode.id.split('-')
+
+                    // get the array of radio buttons of the parent
+                    // rbm group
+                    var radioGrpName = parentRbmGroupNames[0] + '-' + parentRbmGroupNames[1]
+                    var parentButtonGroup = document.forms[formId][radioGrpName]
+
+                    // if the user is in detailed view, no need to update
+                    // buttons of simplified view.
+                    var statusValue = document.getElementById(radioGrpName + '-status')
+                    if (statusValue.getAttribute('value') == 'detail') {
+                        continue;
+                    }
+
+                    if (parentButtonGroup) {
+                        // we may change the default permission
+                        // of parent RBM group. Ensure to select
+                        // other value as default
+                        var defaultPerm = -1;
+                        for (var k = 0; k < parentButtonGroup.length; ++k) {
+
+                            var parentButtonEl = parentButtonGroup[k];
+
+                            if (parentButtonEl.value == disabledButtons[rbmRole]) {
+                                // assume that the parent of the radio button is a
+                                // container that holds the label too
+                                var parentEl = parentButtonEl.parentNode;
+                                if (parentButtonEl.checked) {
+                                    parentButtonEl.checked = false;
+                                    if (disabledButtons[rbmRole] == 'deny') {
+                                        defaultPerm = 1; // 1 is read only
+                                    } else if (disabledButtons[rbmRole] == 'read') {
+                                        defaultPerm = 0; // 0 is deny
+                                    }
+                                }
+                                enableElements(parentEl, false);
+                            }
+                        }
+                        if (defaultPerm > -1) {
+                            // select the 'defaultPerm' radio button
+                            parentButtonGroup[defaultPerm].checked = true;
+                            // update this tbody with the new default value
+                            rbmGroupPermChange(parentButtonGroup[defaultPerm].id);
+                        }
+
+                    }
+<%
+}
+%>
+                }
+            }
+        }
+    }
+
+}
+
+rbmUsersTable.editEntry = function(editName) {
+
+    var xmlEl = this.getEntryElement('name', editName);
+    setElementText('editRbmUser_name', editName);
+    var formEl = document.getElementById('usersForm');
+    setFormValue(formEl, 'editRbmUser_account', editName);
+    var passwordStatus = xmlEl.getAttribute('password_status');
+    var loginFailureCount = xmlEl.getAttribute('login_failure_count');
+
+<% maxRetry = int(Nodes.present(self.session().value('mgmt'), '/aaa/auth/config/policies/max_retry')) %>
+<% accountControlEnabled = 'true' == Nodes.present(self.session().value('mgmt'), '/aaa/auth/config/policies/enable') %>
+    if ('Expired and Locked' == passwordStatus) {
+        setElementText('editRbmUser_passwordLockWarning', 'The password for this account has been locked. Reset the password to release the lock.');
+    } else {
+        setElementText('editRbmUser_passwordLockWarning', '');
+    }
+<% if accountControlEnabled: { %>
+    if (Number(loginFailureCount) >= <%= maxRetry %> && 0 < <%= maxRetry %>) {
+        setElementText('editRbmUser_lockedOutWarning', 'Access to this account is currently rate-limited due to too many failed login attempts. Clear login failure details to remove this restriction.');
+    } else {
+        setElementText('editRbmUser_lockedOutWarning', '');
+    }
+<% } %>
+    setElementText('editRbmUser_loginFailureCount', loginFailureCount);
+    setElementText('editRbmUser_loginFailureLockout', xmlEl.getAttribute('login_failure_lockout'));
+    setElementText('editRbmUser_loginPasswordStatus', passwordStatus);
+    setElementText('editRbmUser_lastLoginFailure', xmlEl.getAttribute('login_failure_from'));
+
+    setFormValue(formEl, 'editRbmUser_enable', xmlEl.getAttribute('enable'));
+
+    // Make keywords out of the permission children of xmlEl.
+    var permissionObj = {};
+    for (var permEl = xmlEl.firstChild; permEl; permEl = permEl.nextSibling) {
+        permissionObj[permEl.getAttribute('name')] =
+                      permEl.getAttribute('value');
+    }
+
+    // Populate the permissions table.
+    var divEl = document.getElementById('editRbmUser_permissionTable');
+    var inputList = divEl.getElementsByTagName('input');
+    var radioNames = {};
+    for (var i = 0; i < inputList.length; i++) {
+        var inputEl = inputList.item(i);
+        if ('radio' == inputEl.type) {
+            // Recover the role name by pulling everything after the first
+            // '_' in the radio button name.  Messy.
+            radioNames[inputEl.name] = inputEl.name.slice(inputEl.name.indexOf('_') + 1);
+        }
+    }
+
+    iterateDict(radioNames, function(key, roleName) {
+        // key comes from radio input name in the permissionTable.
+        // roleName is derived from the key.
+        var permissionForRole = permissionObj[roleName] || 'deny';
+        setFormValue(formEl, key, permissionForRole);
+    });
+
+<%
+if self.simplifiedRbm: {
+%>
+    updateRbmGroupRolePermission();
+<%
+}
+%>
+
+
+}
+
+rbmUsersTable.updateHook = function() {
+    disableRoleRadioButtons('usersForm', 'addRole_');
+    disableRoleRadioButtons('usersForm', 'editRole_');
+}
+
+<%
+# Disable RBM User Table scripts if table is disabled
+}
+%>
+
+<%
+if self.simplifiedRbm: {
+%>
+
+/*
+ * Updates the RBM group permissions from
+ * the permissions assigned to its constituent roles
+ */
+function updateRbmGroupRolePermission() {
+
+    var formEl = document.getElementById('usersForm');
+    var divEl = document.getElementById('editRbmUser_permissionTable');
+
+    // All tbodies in this table are one of the following:
+    // tbody for the RBM Group name in simplified view
+    // tbody for the RBM Group name in detailed view
+    // tbody for the RBM Group component roles
+    // tbody for the comment field
+    var tbodyList = divEl.getElementsByTagName('tbody');
+
+    for (var i = 0; i < tbodyList.length; ++i) {
+
+        tbodyNameParts = tbodyList[i].id.split('-');
+
+        if (tbodyNameParts.length == 3 && 'simple_grp' == tbodyNameParts[2]) {
+            // We want to change the view only for the tbody
+            // for rbm group in the simplified view.
+            grpInfo = allowRbmGroupCollapse(tbodyNameParts[0], tbodyNameParts[1]);
+
+            if (grpInfo['allowCollapse']) {
+                // set the permission to the required permission.
+                // this is an array of radio buttons with the same name
+                var radioButtonGroup =
+                    formEl[ tbodyNameParts[0] + '-' + tbodyNameParts[1] ];
+
+                if (radioButtonGroup) {
+                    for (var j = 0; j < radioButtonGroup.length; ++j) {
+                        var radioButtonEl = radioButtonGroup[j];
+                        if (radioButtonEl.value == grpInfo['permission']) {
+                            // assume that the parent of the radio button is a
+                            // container that holds the label too
+                            radioButtonEl.checked = true;
+                        }
+                    }
+                }
+
+            } else {
+                // collapsing not allowed. make a note of it
+                var inputEl = document.getElementById(tbodyNameParts[0] + '-' + tbodyNameParts[1] + '-status');
+                inputEl.value = 'detail';
+                // since user cannot collapse anymore, update the image to locked image
+                $(tbodyNameParts[0] + '-' + tbodyNameParts[1] + '-detail-img').src = '/images/aet_tree_locked.png';
+            }
+        }
+    }
+}
+
+/**
+ * Display controller for making appropriate
+ * sections of RBM role group visible.
+ * When viewing the simplified section, hides
+ * the component roles section and the role group details section.
+ * In the detailed view, shows the component roles
+ * and the role group details section.
+ */
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    // the div names should be of the form
+    // prefix-rbm_group_name-[status|grp|comp]
+    var divNameParts = div.split('-');
+    var prefix       = divNameParts[0];
+    var rbmGrpName   = divNameParts[1];
+    var rbmDivType   = divNameParts[2];
+
+    // check the status of the role group we are operating on
+    // that status is determined by hidden element with id
+    //    <prefix>_grp_<rbm_group_name>
+    var status = $(prefix + '-' + rbmGrpName + '-status').value;
+
+    if (status == 'detail') {
+        // user wants to see detailed view
+        if (rbmDivType == 'comp') {
+            // component roles tbody.
+            return true;
+        } else if (rbmDivType == 'simple_grp') {
+            // hide
+            return false;
+        } else if (rbmDivType == 'detail_grp') {
+            // show detail
+            return true;
+        }
+    } else {
+        // user wants to see simplified view.
+        if (rbmDivType == 'comp') {
+            // return false so that this section is hidden
+            return false;
+        } else if (rbmDivType == 'simple_grp') {
+            // hide
+            return true;
+        } else if (rbmDivType == 'detail_grp') {
+            // hide detail
+            return false;
+        }
+    }
+
+}
+
+<%
+}
+%>
+
+
+<%
+if self.simplifiedRbm: {
+%>
+
+/**
+ * Sets the updateable controller for the
+ * various sections of RBM roles table.
+ */
+function setUpdateablesForRBMTable(sectionPrefix) {
+
+    var roleGroups = [<%= ', '.join([
+                     '"%s"' % rbmGroupRole
+                     for (rbmGroupRole, roleName, roleInfo, componentRoles)
+                     in RBA.roleGroupList]) %>];
+
+    for (var i = 0; i < roleGroups.length; ++i) {
+        var prefix = sectionPrefix + '-' + roleGroups[i] + '-';
+        addUpdateable('display', displayControl, prefix + 'detail_grp');
+        addUpdateable('display', displayControl, prefix + 'simple_grp');
+        addUpdateable('display', displayControl, prefix + 'comp');
+
+    }
+
+}
+
+setUpdateablesForRBMTable('addRole_')
+setUpdateablesForRBMTable('editRole_')
+
+/**
+ * Checks if a given group of rbm roles can
+ * be condensed to a simplified RBM group view
+ *
+ * @returns
+ *   a dict { 'allowCollapse', 'permission'}
+ *   'allowCollapse' is true if they can be represented in simplified view
+ *   'permission' has valid value only if allowCollapse is true and represents
+ *   the permission for the simplified RBM group.
+ */
+function allowRbmGroupCollapse(prefix, grpName) {
+    var tbodyId = prefix + '-' + grpName + '-comp';
+    var componentRolesRows = document.getElementById(tbodyId).rows;
+    var allowCollapse = true;
+    var permission = '';
+
+    for (var i = 0; i < componentRolesRows.length; ++i) {
+        // permission content starts from third cell
+        for (var j = 2; j < componentRolesRows[i].cells.length; ++j) {
+            var rolePermEl = componentRolesRows[i].cells[j].childNodes[0];
+            var checked = rolePermEl.getAttribute('checked');
+            if (!rolePermEl.checked) {
+                // skip this radio button.
+                continue;
+            }
+            if (permission == '') {
+                permission = rolePermEl.value;
+            } else if (permission != rolePermEl.value) {
+                allowCollapse = false;
+                break;
+            }
+        }
+    }
+
+    return { 'allowCollapse' : allowCollapse,
+             'permission' : allowCollapse ? permission : ''};
+}
+
+/**
+ * Handles user clicks on the glyph.
+ * If user is seeing detailed view but wants to see simplified view,
+ * allow it only if all permissions for component roles match.
+ */
+function updateSimplifiedView(id)
+{
+    var imgNameParts = id.split('-');
+    var prefix  = imgNameParts[0];
+    var grpName = imgNameParts[1];
+
+    var statusId = prefix + '-' + grpName + '-status';
+    var statusElement = document.getElementById(statusId);
+
+    if (statusElement.value == 'simple') {
+        // user wants detailed view
+        statusElement.value = 'detail';
+        updateUpdateables(this.form);
+    } else {
+        // user wants simplified view
+        // Allow collapsing only if all permissions match
+        allowCollapse = allowRbmGroupCollapse(prefix, grpName)
+
+        if (allowCollapse['allowCollapse']) {
+            // set the permission for the group
+            var radioButtonGroup =
+            statusElement.form[prefix + '-' + grpName];
+
+            for (var j = 0; j < radioButtonGroup.length; ++j) {
+                var radioButtonEl = radioButtonGroup[j];
+                if (radioButtonEl.value == allowCollapse['permission']) {
+                    // select this radio button.
+                    radioButtonEl.checked = true;
+                }
+            }
+            statusElement.value = 'simple'
+            updateUpdateables(this.form);
+        }
+    }
+}
+
+/**
+ * Updates the permissions of component roles
+ * according to the permission assigned to
+ * the rbm group.
+ */
+function rbmGroupPermChange(id)
+{
+    var radioElement = document.getElementById(id);
+    var elName   = radioElement.getAttribute('name');
+    var elValue  = radioElement.getAttribute('value');
+
+    // Populate the permissions table.
+    var divEl = document.getElementById(elName + '-comp');
+    var inputList = divEl.getElementsByTagName('input');
+
+    for (var i = 0, j = 0; i < inputList.length; i++) {
+
+        var inputEl = inputList.item(i);
+        var radioName = inputEl.name.substr(inputEl.name.indexOf('_') + 1)
+
+        if ('radio' == inputEl.type) {
+
+            if ((radioName in disabledButtons) &&
+               (radioName.value == disabledButtons[radioName])) {
+                // button permission is disabled, continue
+                continue;
+            }
+
+            setFormValue(inputEl.form, inputEl.name, elValue);
+        }
+    }
+
+}
+
+
+// Updates the collapse allowed status
+// when permissions on component roles are changed.
+function rbmCompPermChange(el) {
+
+    // get the id of the tbody, from which we retrieve
+    // the name of the image element to modify
+    var tbodyId = Y.one(el).ancestor('tbody').getAttribute('id');
+
+    var imgNameParts = tbodyId.split('-');
+    var prefix  = imgNameParts[0];
+    var grpName = imgNameParts[1];
+    var imageElementId = prefix + "-" + grpName + "-detail-img";
+
+    var allowCollapse = allowRbmGroupCollapse(prefix, grpName);
+    if (!allowCollapse['allowCollapse']) {
+        $(imageElementId).src = '/images/aet_tree_locked.png';
+    } else {
+        $(imageElementId).src = '/images/aet_tree_open.png';
+    }
+}
+
+<%
+}
+%>
+// -->
+</script>

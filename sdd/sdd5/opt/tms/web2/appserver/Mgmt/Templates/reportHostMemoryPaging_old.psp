@@ -1,0 +1,74 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED
+##
+## reportHostMemoryPaging_old.psp
+## This is the template for the Memory Paging report page (host version)
+## Refactored to use common report code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:HostMemoryPagingPagelet" %>
+<%@page extends="HostMemoryPagingPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'memoryPagingForm',
+    'reportSpecs': {
+        'mp': {
+            'tableName': 'memoryPagingTable',
+            'gfxId': 'memoryPaging',
+            'gfxDisplayId': 'memoryPagingGraphImg',
+        }
+    }
+}
+memoryPagingTable = ajaxentrytable.AjaxEntryTable('memoryPaging',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Memory Paging.')
+
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+%>
+
+<div id="memoryPagingGraphDiv" class="graphDiv">
+  <img id="memoryPagingGraphImg" class="graphImg"
+    alt="Memory Paging Graph" />
+</div>
+
+<form id="memoryPagingForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <%= memoryPagingTable.html(self, cssClass="midLevel") %>
+  <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+</form>
+<% self.endPagelet() %>

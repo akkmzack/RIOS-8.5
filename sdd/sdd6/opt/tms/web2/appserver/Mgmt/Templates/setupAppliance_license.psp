@@ -1,0 +1,738 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_license.psp
+##
+## License Manager
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="re, Nodes, FormUtils, OSUtils, RVBDUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isGW, RVBDUtils:isWW, GraphUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'useVirtualValues': FormUtils.NodeEntry(
+            path='/rbt/virtual/state/use_virtual_values'),
+        'virtualToken': FormUtils.NodeEntry(
+            path='/rbt/virtual/config/token',
+            label='License Request Token',
+            widgetClass='tokenField',
+            validate='nonempty'),
+        'hwSpecSupported': FormUtils.NodeEntry(
+            path='/hw/hal/spec/state/supported'),
+        'hwSpecStateCurrent': FormUtils.NodeEntry(
+            path='/hw/hal/spec/state/current/name'),
+        'rbtModel': FormUtils.NodeEntry(
+            path='/rbt/manufacture/model'),
+        'licensesTable': FormUtils.NodeEntry(
+            path='/license/key/*'),
+        'hypervisorLicense': FormUtils.NodeEntry(
+            path='/rbt/rsp3/state/host/license/key',
+            name='hypervisorLicense',
+            label='License',
+            validate='validateHypervisorLicense')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    priorityOptions = [(str(x)) for x in range(0, 10)]
+    return {
+        'cshToken': FormUtils.NodeEntry(
+            name='cshToken',
+            widgetClass='wide3',
+            tooltip='Initialize License Client by entering your one-time token.',
+            label='One-Time Token',
+            validate='nonempty'),
+        'cloudLicenseServer_priority': FormUtils.NodeEntry(
+            name='cloudLicenseServer_priority',
+            tooltip='0 - Highest Priority<br />9 - Lowest Priority',
+            label='Priority',
+            widget='select',
+            selectOptions=priorityOptions),
+        'cloudLicenseServer_name': FormUtils.NodeEntry(
+            name='cloudLicenseServer_name',
+            validate='hostname',
+            widgetClass='wide2',
+            label='Server Name'),
+        'cloudLicenseServer_port': FormUtils.NodeEntry(
+            name='cloudLicenseServer_port',
+            validate='port',
+            value='80',
+            label='Port',
+            widgetClass='port')
+    }
+</psp:method>
+
+<psp:method name="css">
+    return '''
+.current-hw-spec { font-weight: bold; }
+
+input.tokenField {
+  width: 24em;
+}
+
+.button-message-normal {
+  white-space: nowrap;
+  font-style: italic;
+  color: #666644;
+  vertical-align:middle;
+  padding: 0 0 0 3px;
+}
+
+.button-message-error {
+  white-space: nowrap;
+  font-style: italic;
+  color: #BB0000;
+  vertical-align:middle;
+  padding: 0 0 0 3px;
+}
+
+#licenseTable_main {
+  width: 100%;
+  min-width: 835px;
+}
+
+#cloudLicenseServersTable_main { width: 100%; }
+
+.coloredDivContainer {
+ -moz-border-radius-bottomright: 10px;
+ -moz-border-radius-topleft: 10px;
+ -webkit-border-bottom-right-radius: 10px;
+ -webkit-border-top-left-radius: 10px;
+ border-bottom-right-radius: 10px;
+ border-top-left-radius: 10px;
+ background-color: #E3E7ED;
+ padding: 5px 15px;
+ position: relative;
+}
+.cloudLicensing {
+    padding: 20px 25px 15px 25px;
+}
+.cshToken {
+    margin-bottom: 25px;
+}
+
+input[name="hypervisorLicense"] {
+  width: 220px;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+# SMC license state
+maxEndpoints = Nodes.present(mgmt, '/rbt/gw/fijid/state/license/count/max', '0')
+totalEndpoints = Nodes.present(mgmt, '/rbt/gw/fijid/state/ext/license/count/licensed', '0')
+connectedEndpoints = Nodes.present(mgmt, '/rbt/gw/fijid/state/ext/endpoint/count', '0')
+licensedEndpoints = Nodes.present(mgmt, '/rbt/gw/fijid/state/ext/license/count/inuse', '0')
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# Check if appliance allows token licensing and auto licensing.
+# Note: Auto Licensing for the CMC appliance is not supported for this
+#       page because the CMC doesn't yet support auto licensing at the
+#       appliance level (it currently supports only the management of
+#       auto licensed appliances instead).
+tokenLicensingEnabled = 'true' == Nodes.present(mgmt,
+                         '/rbt/virtual/state/token_licensing/supported')
+
+autoLicensingNodeVal = Nodes.present(mgmt,
+                         '/license/autolicense/config/enabled', None)
+autoLicensingSupported = (None != autoLicensingNodeVal) and (not RVBDUtils.isCMC())
+autoLicensingEnabled = 'true' == autoLicensingNodeVal
+%>
+
+<%
+if isGW(): {
+%>
+
+<fieldset id="SMCLicenseSummary" class="topLevel">
+  <div class="midLevel">
+    <table>
+      <tr>
+        <td class="statusHdr">Maximum Supported Endpoints: </td>
+        <td class="statusData"><%= maxEndpoints %></td>
+        <td class="statusHdr">Currently Connected Endpoints: </td>
+        <td class="statusData"><%= connectedEndpoints %></td>
+      </tr><tr>
+        <td class="statusHdr">Total Available Endpoint Licenses: </td>
+        <td class="statusData"><%= totalEndpoints %></td>
+        <td class="statusHdr">Currently Licensed Endpoints: </td>
+        <td class="statusData"><%= licensedEndpoints %></td>
+      </tr>
+    </table>
+  </div>
+</fieldset>
+
+<% }
+# n_license node will be None for other than rbt_cmc:
+n_license_node = Nodes.present(mgmt, '/cmc/state/total_sh_licenses')
+totalLicensesParagraph = n_license_node and \
+    ('<p>This CMC is licensed to manage %s appliances.</p>' \
+     % n_license_node) or ''
+
+if autoLicensingSupported: {
+    licenseTableHeaderSpec = ('', 'License', 'Description', 'Status', 'Installation Date &amp; Time', 'Method')
+    licenseTableRowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedLicense_'),
+ AjaxEntryTable.tdAttr('key'),
+ AjaxEntryTable.tdAttr('desc'),
+ AjaxEntryTable.tdAttr('status'),
+ AjaxEntryTable.tdAttr('installDateTime'),
+ AjaxEntryTable.tdAttr('installMethod')]"""
+}
+else: {
+    licenseTableHeaderSpec = ('', 'License', 'Description', 'Status')
+    licenseTableRowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedLicense_'),
+ AjaxEntryTable.tdAttr('key'),
+ AjaxEntryTable.tdAttr('desc'),
+ AjaxEntryTable.tdAttr('status')]"""
+}
+
+licenseTable = ajaxentrytable.AjaxEntryTable('license',
+    url='/mgmt/xmldata?p=licenses',
+    headerSpec=licenseTableHeaderSpec,
+    rowSpec=licenseTableRowSpec,
+    emptyMessage='No current licenses.',
+    addButtonText='Add a New License',
+    addButtonName='addLicense',
+    removeName='removeLicense',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedLicense_')
+
+licenseTable.addDivContent = '''
+<div class="midLevel">
+  <p class="captionUpper">
+    Enter or paste the licenses into the text area below.
+  </p>
+  <textarea name="licenses" rows="10" cols="50"></textarea>
+</div>
+'''
+
+%>
+<%= totalLicensesParagraph %>
+
+<form method="post"
+      id="licensesForm"
+      action="<%= self.thisPageletRequest() %>" >
+  <div>
+    <input type="hidden" name="_action_" value="setupLicenses" />
+  </div>
+  <%= licenseTable.html(self) %>
+</form>
+
+<%
+if autoLicensingSupported: {
+    if autoLicensingEnabled: {
+%>
+<div class="submitButtons">
+  <%= FormUtils.renderButton(self, {
+                   'name': 'fetchUpdatesButton',
+                   'value': 'Fetch Updates Now',
+                   'onclick': 'return fetchUpdatesNow(this);'
+                   } ) %>
+  <span id="fetchUpdateStatus"></span>
+</div>
+<%
+    }
+    else: {
+%>
+<div class="submitButtons">
+  <%= FormUtils.renderButton(self, {
+                   'name': 'fetchUpdatesButton',
+                   'value': 'Fetch Updates Now',
+                   'disabled': 'disabled'
+                   } ) %>
+  <span id="fetchUpdateStatus" class="button-message-normal">
+    Auto-licensing is currently disabled.
+    Please contact your system administrator for assistance.
+  </span>
+</div>
+<%
+    }
+}
+%>
+
+<%
+# If appliance is WW display the License Capacity
+if isWW(): {
+    #2^64-1 represents unlimited license capacity.
+    LICENSE_UNLIMITED_CAPACITY = '18446744073709551615'
+    licenseCapacity = Nodes.present(mgmt, '/rbt/license/state/capacity','0')
+    if licenseCapacity == LICENSE_UNLIMITED_CAPACITY : {
+        licenseCapacity = 'Unlimited'
+    }
+    else: {
+        licenseCapacity = GraphUtils.scale(int(licenseCapacity), GraphUtils.SCALER_HUNDREDS_OF_BYTES)
+    }
+%>
+
+<fieldset class="topLevel">
+  <legend>Summary</legend>
+  <div class="midLevel">
+    <table>
+      <tr>
+        <td class="statusHdr">License Capacity:</td>
+        <td class="statusData"><%= licenseCapacity %></td>
+      </tr>
+    </table>
+  </div>
+</fieldset>
+
+<%
+}
+
+# If appliance supports it, allow the user to specify a token, which gets
+# saved in the config db, and use it to generate a license request key to
+# tell Customer Support when requesting a model upgrade license.
+if tokenLicensingEnabled: {
+%>
+
+<form method="post"
+      id="virtualKeyForm"
+      action="/mgmt/gui?p=setupAppliance_license">
+  <fieldset class="topLevel">
+    <legend>License Request</legend>
+    <div class="midLevel">
+      <table>
+        <%= self.nodeEntries()['virtualToken'].html(self) %>
+      </table>
+    </div>
+    <input type="hidden" name="_action_" value="setupVirtualKey" />
+    <%= FormUtils.formSubmitButtons(self, {'value': 'Generate License Request Key',
+                                     'name': 'apply'}) %>
+  </fieldset>
+</form>
+
+<%
+}
+
+# BEGIN - Cloud SH Licensing
+isCloudSH = 'true' == Nodes.present(mgmt, '/rbt/cloud/is_cloud_steelhead')
+if isCloudSH: {
+lc_token = Nodes.present(mgmt, '/license/client/state/token')
+lc_hasLicense = 'true' == Nodes.present(mgmt, '/license/client/state/license_exists')
+%>
+
+<fieldset class="cloudLicensing topLevel">
+  <legend>Cloud Licensing</legend>
+  <div>
+
+<% if lc_token == 'None': { %>
+
+  <form method="post" action="/mgmt/gui?p=setupAppliance_license">
+    <div>
+      <input type="hidden" name="_action_" value="setupCloudLicensing" />
+      <table class="cshToken"><tr>
+        <td><%= self.dialogEntries()['cshToken'].html(self, format="inline") %></td>
+        <td class="labelPaddedLeft"><%= FormUtils.renderButton(self, {'value': 'Initialize License Client', 'name': 'initClient'}) %></td>
+      </tr></table>
+    </div>
+  </form>
+
+<% } elif not lc_hasLicense: { %>
+
+  <form method="post" action="/mgmt/gui?p=setupAppliance_license">
+    <div>
+      <input type="hidden" name="_action_" value="setupCloudLicensing" />
+      <table class="cshToken"><tr>
+        <td><%= self.dialogEntries()['cshToken'].html(self, format="inline") %></td>
+        <td class="labelPaddedLeft"><%= FormUtils.renderButton(self, {'value': 'Re-Initialize License Client', 'name': 'reInitClient'}) %></td>
+      </tr></table>
+    </div>
+  </form>
+
+<% }
+lc_serial_num = Nodes.present(mgmt, '/license/client/state/serial_num')
+lc_status_str = Nodes.present(mgmt, '/license/client/state/status_str')
+lc_change_reason = Nodes.present(mgmt, '/license/client/config/last_state_change_reason')
+lc_client_id = Nodes.present(mgmt, '/license/client/state/id')
+lc_proxy_addr = Nodes.present(mgmt, '/web/proxy/address')
+if lc_proxy_addr != '0.0.0.0': {
+    lc_proxy = lc_proxy_addr + ':' + Nodes.present(mgmt, '/web/proxy/port')
+} else: {
+    lc_proxy = 'None'
+}
+lc_last_checkout_time = Nodes.present(mgmt, '/license/client/state/last_checkout_time', 'None')
+lc_curr_server = Nodes.present(mgmt, '/license/client/state/curr_server', '0')
+%>
+
+  <div class="coloredDivContainer">
+    <div class="midLevel">
+      <p><b>License Client Status</b></p>
+      <table>
+        <tr>
+          <td class="nodeEntry labelPaddedRight">Serial Number: </td>
+          <td class="nodeEntry"><%= lc_serial_num %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Status: </td>
+          <td class="nodeEntry"><%= lc_status_str %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Reason: </td>
+          <td class="nodeEntry"><%= lc_change_reason %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Last Contact With: </td>
+          <td class="nodeEntry"><%= lc_curr_server %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Last Contact At: </td>
+          <td class="nodeEntry"><%= lc_last_checkout_time %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Client ID: </td>
+          <td class="nodeEntry"><%= lc_client_id %></td>
+        </tr><tr>
+          <td class="nodeEntry labelPaddedRight">Proxy: </td>
+          <td class="nodeEntry"><%= lc_proxy %></td>
+        </tr>
+      </table>
+    </div>
+<% if lc_hasLicense: { %>
+    <form id="setupCloudLicensingForm" method="post" action="/mgmt/gui?p=setupAppliance_license">
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="setupCloudLicensing" />
+      <%= FormUtils.renderButton(self, {'value': 'Refresh License', 'name': 'refreshLicense'}) %>
+      <%= FormUtils.renderButton(self, {'id': 'removeCloudLicense', 'value': 'Remove License', 'name': 'removeLicense'}) %>
+    </div>
+    </form>
+<% } %>
+  </div>
+
+<%
+cloudLicenseServersTable = ajaxentrytable.AjaxEntryTable('cloudLicenseServers',
+    url='/mgmt/xmldata?p=cloudLicenseServers',
+    titleText='License Servers',
+    headerSpec=('Server Name', 'Port'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('port')]""",
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage='No Configured License Servers.',
+    editDivOffset=0)
+%>
+
+  <form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="cloudLicenseServersForm">
+    <div class="topLevel">
+      <input type="hidden" name="_action_" value="setupCloudLicensing" />
+      <%= cloudLicenseServersTable.html(self) %>
+    </div>
+  </form>
+  </div>
+</fieldset>
+<br />
+
+<%
+}
+# END - Cloud SH Licensing
+
+# check if hardware specifications are supported
+hwSpecsSupported = \
+    'true' == Nodes.present(mgmt, '/hw/hal/spec/state/supported', '')
+specs = {}
+currentSpec = None
+if hwSpecsSupported: {
+    specs = Nodes.getMgmtSetEntries(mgmt, '/hw/hal/spec/state/all')
+    currentSpec = Nodes.present(mgmt, '/hw/hal/spec/state/current/name')
+}
+# For extracting the bandwidth and connection limits from a spec
+# description for a useful sort comparison
+hwSpecLimitsRE = \
+    re.compile('BW Limit:\s+(\d+)\s+(\w+)/s\s+Connection Limit:\s+(\d+)')
+
+# Convert a hardware spec description to BW and Connection Limits
+# for use in sorting hw specs
+#
+# @private
+#
+# @param desc
+#
+# @return (int BW limit, int Connection limit)
+def __hwSpecLimits(desc): {
+    try: {
+        bwNum, bwUnit, connNum = hwSpecLimitsRE.match(desc).groups()
+        # for the units, refer to common.c static const ... size_units
+        limits = (
+            connNum,
+            str(int(bwNum) *
+                1024 ** ['Bytes', 'KB', 'MB', 'GB', 'TB'].index(bwUnit))
+        )
+    }
+    except: {
+        limits = ('0', '0')
+    }
+    return ' '.join(limits)
+}
+
+specDescriptions = [(k, v.get('desc', '')) for k, v in specs.iteritems()]
+specsParsed = [__hwSpecLimits(desc) + ' ' + name
+               for name, desc in specDescriptions]
+
+# for each pair of specs in the sort,
+#     if extracting limits was successful on both of them, then
+#         sort on the limits and the spec name;
+#     otherwise sort on just the name using adapted alphanumericCompare.
+specNames = [name.split(' ', 2)[-1] for name in specsParsed]
+specNames.sort(RVBDUtils.modelNumberCompare)
+
+if hwSpecsSupported and len(specNames): {
+%>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_license">
+  <fieldset class="topLevel">
+    <legend>Hardware Specifications</legend>
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="setupFlexLicenses" />
+<%
+    specEntry = FormUtils.NodeEntry(
+        name='/hw/hal/spec/state/current/name', # (sic)
+        widget='radio',
+        value=currentSpec,
+        label=dict([(specName, '%s: %s' % (specName, specs[specName]['desc']))
+                    for specName in specNames]))
+    for specName in specNames: {
+        spec = specs[specName]
+        # A spec is either 'current', 'available', or 'unavailable'
+        state = specName == currentSpec and 'current' or \
+                'true' == spec['available'] and 'available' or \
+                'unavailable'
+        # The 'current' spec doesn't need a hint, but for other specs,
+        # the back end 'action_needed' could stand to be more descriptive.
+        specHint = \
+            'available' == state and 'activation reboots the appliance' or \
+            'unavailable' == state and spec['action_needed'] or \
+            None
+        specHint = 'hardware' == specHint and 'hardware required'
+        specLabelClass = 'current' == state and ' current-hw-spec' or \
+                         'unavailable' == state and ' dimmed' or \
+                         None
+        specEntry.disabled = 'unavailable' == state and 'disabled' or None
+        self.writeln(specEntry.html(
+            self,
+            hint=specHint and '(%s)' % specHint,
+            labelClass=specLabelClass and 'labelPaddedLeft' + specLabelClass,
+            value=specName))
+    }
+%>
+    </div>
+    <%= FormUtils.formSubmitButtons(self) %>
+  </fieldset>
+</form>
+
+<%
+} else: {  # end of hardware spec supported check
+
+# Hardware Upgrade section
+#
+# This section supports the hardware upgrade mechanism that is
+# deprecated by the flexible hardware spec licensing above.
+#
+# There is no authoritative source for the list of model numbers
+# that support this obsolete upgrade mechanism.
+# Empirically, a vlab model 520 upgraded to a 1020 but
+# a vlab model 510 did not recognize a Genlicense license to
+# upgrade to a 1010.
+#
+# To generate a license to upgrade a 520 to 1020, visit eng-vm7,
+# and specify Feature SH21HWUP1020.
+
+model = Nodes.present(mgmt, '/rbt/manufacture/model')
+modelTransformed = None
+if model in ('510', '520', '1010', '1020', '2010', '2011', '3010', '3020'): {
+    modelTransformed = str(int(model) + 500)
+} elif model in ('100', '200'): {
+    modelTransformed = str(int(model) + 100)
+}
+if modelTransformed: {
+    transformedLicenseNode = '/rbt/manufacture/hw_upgrade/%s/config/licensed' % modelTransformed
+    if 'true' == Nodes.present(mgmt, transformedLicenseNode): {
+%>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_license">
+  <fieldset>
+    <legend>Hardware Upgrade</legend>
+    <div>
+      Irreversible upgrade from current appliance model to transformable model.
+    </div>
+    <table>
+      <tr>
+        <td class="label">Current Appliance Model:</td>
+        <td><b><%= model %></td>
+      </tr>
+      <tr><td colspan="2">&nbsp;</td></tr>
+      <tr>
+        <td class="label">Transformable to Model:</td>
+        <td><b><%= modelTransformed %></td>
+      </tr>
+    </table>
+    <div class="submitButtons">
+      <input type="hidden" name="_action_" value="setupLicenses" />
+      <input type="submit" name="upgradeHardware" value="Upgrade" />
+    </div>
+  </fieldset>
+</form>
+<%
+}
+}  # end Hardware Upgrade section
+
+}  # end of hardware spec NOT supported check
+
+%>
+
+<%
+if autoLicensingSupported: {
+%>
+<script type="text/javascript">
+// <![CDATA[
+
+// "Fetch Updates Now" button's onclick method
+function fetchUpdatesNow(button) {
+
+    var status = Y.one('#fetchUpdateStatus');
+
+    status.setAttribute('className', "button-message-normal");
+    status.setContent('Fetching updates...');
+    button.setAttribute('disabled', 'disabled');
+
+    var url = '/mgmt/xmldata?p=licensesUpdateStatus';
+    var request = newAjaxRequest(url);
+    setReadyStateChangeFunc(request, function() {
+        var childMsg = '';
+        if (request.responseText.length) {
+            var child = request.responseXML.documentElement.firstChild.firstChild;
+            if (child) {
+                if ('true' == child.getAttribute('success')) {
+                    status.setContent('Updates successfully retrieved ' + child.getAttribute('when'));
+                    status.setAttribute('className', "button-message-normal");
+                    licenseTable.sendRequest('/mgmt/xmldata?p=licenses');
+                    return;
+                } else {
+                    childMsg = child.getAttribute('message');
+                    if (childMsg.length != 0) {
+                        childMsg = ': ' + childMsg;
+                    }
+                }
+            }
+        }
+        status.setContent('Update attempt failed' + childMsg);
+        status.setAttribute('className', "button-message-error");
+        button.removeAttribute('disabled');
+    });
+    request.send('');
+
+    return false;
+}
+
+// ]]>
+</script>
+<%
+}
+%>
+
+<%
+# Hypervisor (for BOB)
+#
+# The ESXi license can be overwritten with a new license or the existing license
+# can be reset to the default.
+if RVBDUtils.isBOB(): {
+%>
+
+<form method="post"
+      id="hypervisorLicenseForm"
+      action="<%= self.thisPageletRequest() %>" >
+  <fieldset>
+    <legend>Hypervisor License</legend>
+    <div class="submitButtons">
+      <%= nodeEntries['hypervisorLicense'].html(self, format='inline') %>
+      <%= FormUtils.renderButton(self, { 'name': 'update',
+                                         'value': 'Update' }) %>
+      <%= FormUtils.renderButton(self, { 'name': 'reset',
+                                         'value': 'Reset to Default',
+                                         'id': 'resetHypervisorLicenseButton',
+                                         'onclick': 'return resetHypervisorLicenseConfirm()'}) %>
+    </div>
+    <input type="hidden" name="_action_" value="setupHypervisorLicense" />
+  </fieldset>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Verify that a string at least looks like an ESXi license.
+function validateHypervisorLicense(val, el) {
+    if (!val.match(/^\w{5}\-\w{5}\-\w{5}\-\w{5}\-\w{5}$/)) {
+        throw 'A valid license is necessary.';
+    }
+};
+
+function resetHypervisorLicenseConfirm() {
+    new RBT.Dialog({
+        alignNode: Y.one('#resetHypervisorLicenseButton'),
+        buttons: [{label: 'Reset to Default', clickFn: resetHypervisorLicense},
+                  {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+        content: 'This will replace the current license with the default one.'
+    }).render();
+
+    return false;
+}
+
+function resetHypervisorLicense() {
+    this.hide();
+
+    // Fake the "Reset to Default" button before submitting the form.
+    var form = $('hypervisorLicenseForm');
+    var inputEl = document.createElement('input');
+    inputEl.type = 'hidden';
+    inputEl.name = 'reset';
+    inputEl.value = 'Reset to Default';
+    form.appendChild(inputEl);
+    form.submit();
+}
+
+// ]]>
+</script>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+<% if isCloudSH: { %>
+Y.on('domready', function() {
+    Y.on('click', confirmRemove, '#removeCloudLicense');
+});
+
+function confirmRemove(evt) {
+    new RBT.Dialog({
+        alignNode: '#removeCloudLicense',
+        content: 'Are you sure you want to remove this Cloud License?',
+        buttons: [
+            { label: 'Remove License', clickFn: function() {
+                var formNode = Y.one('#setupCloudLicensingForm');
+                formNode.appendChild(Y.Node.create('<input type="hidden" name="removeLicense">'));
+                formNode.submit(); }},
+            { label: 'Cancel', clickFn: RBT.Dialog.dismiss }
+        ]
+    }).render();
+
+    evt.halt();
+}
+<% } %>
+// ]]>
+</script>

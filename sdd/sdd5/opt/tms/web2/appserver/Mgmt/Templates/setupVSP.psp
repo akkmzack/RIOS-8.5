@@ -1,0 +1,588 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kevin Morrell
+##
+## Displays current status of various VSP components, and allows for
+## configuring VNC.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, GraphUtils, vsp" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupDiskManagement',) %>
+
+<psp:method name="css">
+    return '''
+.wizardRowLabel td{
+    padding: 3px;
+}
+
+fieldset.wizard {
+  width: 350px;
+}
+
+#restartDiv {
+  float: right;
+}
+
+#restartDiv img {
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+table#resourceStatusTable {
+  width: 650px;
+}
+
+div#wizardWarning {
+  margin-top: 15px;
+}
+
+div#wizardWarning img {
+  float: left;
+  margin-right: 10px;
+  margin-top: -5px;
+}
+
+div#initialWizardMessage {
+  padding: 15px;
+  background-color: #FFFFCC;
+  width: 614px;
+  border: 2px solid #AAAAAA;
+  border-radius: 10px 10px 10px 10px;
+  box-shadow: 3px 3px 10px #CCCCCC;
+}
+
+div#initialWizardMessage h2 {
+  margin-top: 0px;
+}
+
+table.confirmationTable {
+  width: 400px;
+}
+
+fieldset.rowFieldset {
+  margin-top: 0;
+  margin-right: 10px;
+  margin-bottom: 0;
+}
+
+fieldset#vspStatus {
+  width: 397px;
+}
+
+fieldset#resources {
+  width: 181px;
+}
+
+div.warningMessage {
+  background-color: #FCE0E0;
+  border: 1px solid #D98282;
+  margin-bottom: 10px;
+  margin-top: 10px;
+  padding: 12px;
+}
+div#esxiInstalling {
+  background-color: #FFFFDF;
+  border: 1px solid #E6E800;
+  margin-bottom: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  width: 614px;
+}
+
+td.alignTop {
+  vertical-align: top;
+}
+
+td.installStatusImageCell {
+  width: 20px;
+  vertical-align: bottom;
+}
+
+tr.installStatusRow {
+  height: 20px;
+}
+
+td.installStatusImageCell img {
+  visibility: hidden;
+}
+
+div#validationDiv {
+  visibility: hidden;
+}
+
+div#validationDiv img {
+  padding-right: 3px;
+  vertical-align: bottom;
+}
+
+span.licenseWarning {
+  color: #aa3333;
+  font-weight: bold;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    mgmt = self.session().value('mgmt')
+    password = Nodes.present(mgmt, '/rbt/vsp/config/esxi/vmx/vnc/key')
+    nodes = {
+        'vncPort': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/vmx/vnc/port',
+            type='uint32',
+            widgetClass='small',
+            label='Port'),
+        'vncPassword': FormUtils.NodeEntry(
+            name='vncPassword',
+            widget='password',
+            label='Password',
+            value=password and FormUtils.bogusPassword or '',
+            validate=('password', '[null, 8]')),
+        'vncPasswordConfirm': FormUtils.NodeEntry(
+            name='vncPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            value=password and FormUtils.bogusPassword or '',
+            validate=('password', '[null, 8]')),
+        'vncEnabled': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/vmx/vnc/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable VNC',
+            enableDiv='vncSubsection'),
+        'esxiPassword': FormUtils.NodeEntry(
+            widget='password',
+            type='password',
+            value=FormUtils.bogusPassword,
+            validate='password',
+            name='esxiPassword',
+            label='Password'),
+        'esxiPasswordConfirm': FormUtils.NodeEntry(
+            widget='password',
+            value=FormUtils.bogusPassword,
+            type='password',
+            name='esxiPasswordConfirm',
+            validate='password',
+            label='Password Confirm'),
+        'passwordSync': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/password/sync'),
+        'initialWizard': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi_wizard_completed'),
+        'virtCpu': FormUtils.NodeEntry(
+            path='/system/virtual/cpu/total'),
+        'virtMemory': FormUtils.NodeEntry(
+            path='/system/virtual/memory/total'),
+        'vmk1IP': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/network/vmk/vmk1/ipv4/ip'),
+        'vmk2IP': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/network/vmk/vmk2/ipv4/ip'),
+        'managementInterface': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/network/management/vmk/interface'),
+        'iqn': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/iscsi/iqn_name'),
+        'restartNeeded': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/restart_needed'),
+        'esxiStatus': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/status'),
+        'primaryIP': FormUtils.NodeEntry(
+            path='/rbt/vsp/proxy/net/interface/state/primary/addr/ipv4/1/ip'),
+        'auxIP': FormUtils.NodeEntry(
+            path='/rbt/vsp/proxy/net/interface/state/aux/addr/ipv4/1/ip'),
+        'safeToRestartCode': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/safe_to_restart_code')
+    }
+    nodes.update(self.nodeEntries_wizard())
+    return nodes
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+vspEnabled = Nodes.present(mgmt, '/rbt/vsp/config/enable') == 'true'
+
+if vspEnabled: {
+    esxiStatus = Nodes.present(mgmt, '/rbt/vsp/state/esxi/status')
+    passwordSync = esxiStatus != 'invalid ESXi password'
+    initialWizard = Nodes.present(mgmt, '/rbt/vsp/config/esxi_wizard_completed') == 'false'
+    esxiInstalling = esxiStatus in ('creating disks', 'installing', 'pushing configs')
+    esxiAvailable = esxiStatus == 'available'
+    nodeEntries = self.nodeEntries()
+    virtCpu = Nodes.present(mgmt, '/system/virtual/cpu/total')
+    virtMemory = Nodes.present(mgmt, '/system/virtual/memory/total')
+    virtMemoryPretty = GraphUtils.scale(int(virtMemory) * 1024 * 1024, GraphUtils.SCALER_HUNDREDS_OF_BYTES, 1)
+    currentLayoutDetails = Nodes.getTreeifiedSubtree(mgmt, '/hw/hal/resman/get/current')
+
+# Search through the volumes for the VSP volume.
+    vspSizeMB = 0
+    for i in currentLayoutDetails['volumes'].keys(): {
+        volumeDetails = currentLayoutDetails['volumes'][i]
+        if volumeDetails['name'] == 'vsp3': {
+            vspSizeMB = int(volumeDetails['usable_size_mb'])
+        }
+    }
+    vspSizePretty = GraphUtils.scale(vspSizeMB * 1024 * 1024,
+                                     GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+
+    managementInterface = Nodes.present(mgmt,
+                                        '/rbt/vsp/config/esxi/network/management/vmk/interface')
+
+    iqn = Nodes.present(mgmt, '/rbt/vsp/state/esxi/runtime/iscsi/iqn_name',
+                        '<em>Unavailable</em>')
+    if esxiAvailable: {
+        managementIP = Nodes.present(mgmt,
+                                     '/rbt/vsp/state/esxi/runtime/network/vmk/%s/ipv4/ip' % managementInterface,
+                                     '<em>Unavailable</em>')
+        license = Nodes.present(mgmt, '/rbt/vsp/state/esxi/runtime/license/key')
+
+        embeddedLicense = license == 'Embedded License'
+
+        # expiration is the time in minutes until the license expires.
+        expiration = int(Nodes.present(mgmt, '/rbt/vsp/state/esxi/runtime/license/exp_time', 0))
+        if expiration == 0: {
+            expirationPretty = '<span class="licenseWarning">expired</span>'
+        # We use UINT32_MAX to indicate that a license will never expire.
+        } elif expiration == 4294967295: {
+            expirationPretty = ''
+        } else: {
+            expirationSeconds = expiration * 60
+            expirationPretty = '(expires in ' + FormUtils.englishTimeInterval(expirationSeconds) + ')'
+            # Display in red if there is less than a week remaining.
+            if expiration < (7 * 24 * 60): {
+                expirationPretty = '<span class="licenseWarning">' + expirationPretty + '</span>'
+            }
+        }
+
+    } else: {
+        embeddedLicense = False
+        managementIP = '<em>Unavailable</em>'
+        license = '<em>Unavailable</em>'
+        expirationPretty = '(<em>Unavailable</em>)'
+    }
+
+    vspRestartNeeded = Nodes.present(mgmt, '/rbt/vsp/state/restart_needed') == 'true'
+
+    vspState = Nodes.present(mgmt, '/rbt/vsp/state/esxi/status', 'unknown')
+
+    if vspState == 'available': {
+        vspSpanClass = 'stateRunning'
+    } elif vspState in ('powered off',
+                        'failed creating disks',
+                        'failed installation',
+                        'failed initial config',
+                        'invalid ESXi password',
+                        'lockdown mode',
+                        'disconnected'): {
+        vspSpanClass = 'stateStopped'
+    } elif vspState in ('creating disks',
+                        'installing',
+                        'initializing',
+                        'pushing configs',
+                        'powering off'): {
+        vspSpanClass = 'stateTransitioning'
+    } else: {
+        vspSpanClass = 'stateUnknown'
+    }
+
+    primaryIP = Nodes.present(mgmt, '/rbt/vsp/proxy/net/interface/state/primary/addr/ipv4/1/ip')
+    auxIP = Nodes.present(mgmt, '/rbt/vsp/proxy/net/interface/state/aux/addr/ipv4/1/ip')
+
+    if primaryIP != '0.0.0.0' and auxIP != '0.0.0.0': {
+        vncIP = primaryIP + ' or ' + auxIP
+    } elif primaryIP != '0.0.0.0': {
+        vncIP = primaryIP
+    } else: {
+        vncIP = auxIP
+    }
+}
+
+%>
+
+<% self.beginPagelet() %>
+
+<%
+if not vspEnabled: {
+    self.write('<p>' \
+                 'This page is not available when VSP is disabled.  To use ' \
+                 'this page, enable VSP from the CLI by running <code>vsp ' \
+                 'enable</code>.'
+               '</p>')
+    self.endPagelet()
+    return
+}
+%>
+
+<%@include file="includes/setupWizardESXi.psp" %>
+
+<% if esxiInstalling: { %>
+
+<div id="esxiInstalling">
+  ESXi is currently being installed, which can take up to 10 minutes. During
+  this time, VSP functionality will not be available and the appliance's
+  performance may be degraded.
+</div>
+
+<% } %>
+
+<form method="post"
+    action="<%= self.thisPageletRequest() %>"
+    id="vspConfigForm">
+
+<% if initialWizard and not esxiInstalling: { %>
+
+  <div id="initialWizardMessage">
+    <h2>The ESXi Installation Wizard must be run
+    before using any VSP features.</h2>
+    <p>
+      This wizard will guide you through the initial configuration of VSP and
+      install ESXi. If applicable,
+      <a href="/mgmt/gui?p=setupDiskManagement">change the disk layout</a>
+      before running the wizard.
+    </p>
+    <div class="topLevel">
+      <input type="button" value="Launch ESXi Installation Wizard" id="esxiWizard" onclick="wizRender();" name="esxiWizard" />
+    </div>
+  </div>
+
+<% } %>
+
+<% if not initialWizard: { %>
+
+  <table id="resourceStatusTable">
+    <tr>
+      <td class="alignTop">
+        <fieldset class="rowFieldset" id="resources">
+          <legend>Allocated Resources</legend>
+          <div class="midLevel">
+            <%= virtCpu %> CPU cores<br />
+            <%= virtMemoryPretty %> of memory<br />
+            <%= vspSizePretty %> of disk space
+          </div>
+        </fieldset>
+      </td>
+      <td class="alignTop">
+        <fieldset class="rowFieldset" id="vspStatus">
+          <legend>VSP Status</legend>
+          <div class="midLevel">
+
+            <% if vspRestartNeeded: { %>
+
+            <div class="warningMessage" id="restartNeeded">
+              VSP must be restarted before the changes made on this page will
+              take effect.
+            </div>
+
+            <% } %>
+
+            <div id="statusDiv">
+              <div id="restartDiv">
+                <img src="/images/icon_test_running.gif" alt="" style="display: none" />
+                <%= FormUtils.renderButton(self, {'id': 'restartButton',
+                                                  'name': 'restartButton',
+                                                  'value': 'Restart VSP',
+                                                  'onclick': 'restartClicked(); return false;'}) %>
+              </div>
+              Status: <span class="<%= vspSpanClass%>"><%= vspState %></span><br />
+              ESXi Management IP Address: <%= managementIP %><br />
+              IQN: <%= iqn %>
+            </div>
+          </div>
+        </fieldset>
+      </td>
+    </tr>
+  </table>
+
+  <fieldset>
+    <legend>ESXi Reinstallation Wizard</legend>
+    <div class="midLevel">
+      <p>
+        This wizard will reinstall ESXi and allow you to reconfigure your VSP
+        and ESXi settings.
+      </p>
+      <input type="button" value="Launch ESXi Reinstallation Wizard" id="esxiWizard" onclick="wizRender();" name="esxiWizard" />
+    </div>
+  </fieldset>
+
+  <fieldset id="licenseRestore">
+    <legend>ESXi License</legend>
+    <div class="midLevel">
+      License: <%= license %> <%= expirationPretty %><br />
+
+      <% if not embeddedLicense: { %>
+
+      <%= FormUtils.formSubmitButtons(self, {'id': 'licenseButton',
+                                             'name': 'licenseButton',
+                                             'value': 'Restore Default ESXi License',
+                                             'onclick': 'licenseConfirm(); return false;'}) %>
+
+      <% } %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>ESXi Credentials</legend>
+
+    <% if not passwordSync: { %>
+
+    <div class="warningMessage">
+      RiOS has lost synchronization with ESXi.  Please enter the current ESXi
+      password to reestablish synchronization.
+      <input type="hidden" name="esxiPasswordSync" value="esxiPasswordSync" />
+    </div>
+
+    <% } %>
+
+    <div class="midLevel">
+      <table>
+        <tr>
+          <td class="nodeEntry">Username:</td>
+          <td class="nodeEntry">root</td>
+        </tr>
+        <%= nodeEntries['esxiPassword'].html(self) %>
+        <%= nodeEntries['esxiPasswordConfirm'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>VNC</legend>
+    <div class="midLevel">
+      <%= nodeEntries['vncEnabled'].html(self) %>
+      <div id="vncSubsection" class="indent">
+        <table>
+          <tr>
+            <td class="nodeEntry">IP Address:</td>
+            <td class="nodeEntry"><%= vncIP %></td>
+          </tr>
+          <%= nodeEntries['vncPort'].html(self) %>
+          <%= nodeEntries['vncPassword'].html(self) %>
+          <%= nodeEntries['vncPasswordConfirm'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <div>
+    <input type="hidden" name="_action_" value="setupVsp" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+
+<% } %>
+
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var wizard;
+var confirmationDialog;
+
+function restartClicked() {
+    // Make it clear that something important is happening.
+    Y.one('div#restartDiv img').setStyle('display', 'inline');
+    Y.all('div#restartDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', 'disabled');
+    });
+
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkIfSafeToShutDownESXi',
+        successFn: function(response) {
+            if (response == '') {
+                vspRestart();
+            } else {
+                confirmationDialog = new RBT.Dialog({
+                    alignNode: $('restartButton'),
+                    affinity: RBT.Dialog.AFFINITY_SE,
+                    content: '<p>' + response + '</p> \
+                              <p>Are you sure you wish to continue?</p>',
+                    buttons: [
+                        {
+                            label: 'Restart VSP',
+                            clickFn: function() { vspRestart(); }
+                        },
+                        {
+                            label: 'Cancel',
+                            clickFn: cancelAction
+                        }
+                    ]
+                }).render();
+            }
+        }
+    });
+}
+
+// Reset everything back to the way it was before the user clicked a button.
+function cancelAction() {
+    confirmationDialog.hide();
+    Y.one('div#restartDiv img').setStyle('display', 'none');
+    Y.all('div#restartDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', '');
+    });
+}
+
+function vspRestart() {
+    var el = document.createElement('input');
+    el.type = 'hidden';
+    el.name = 'restartButton';
+    el.value = 'Restart VSP';
+    $('vspConfigForm').appendChild(el);
+    $('vspConfigForm').submit();
+}
+
+function licenseConfirm() {
+    new RBT.Dialog({
+        alignNode: '#licenseButton',
+        affinity: RBT.Dialog.AFFINITY_SW,
+        buttons: [{label: 'Restore Default ESXi License',
+                   clickFn: licenseRestore},
+                  {label: 'Cancel',
+                   clickFn: RBT.Dialog.dismiss}],
+        content: 'This will replace the existing ESXi license with the \
+                  default ESXi license, which does not have vCenter \
+                  functionality.'
+    }).render().show();
+}
+
+function licenseRestore() {
+    var el = document.createElement('input');
+    el.type = 'hidden';
+    el.name = 'licenseButton';
+    el.value = 'Restart VSP';
+    $('vspConfigForm').appendChild(el);
+    $('vspConfigForm').submit();
+}
+
+<% if esxiInstalling: { %>
+
+Y.on('domready', function() {
+    enableElements('vspConfigForm', false);
+});
+
+<% } %>
+
+<% if not esxiAvailable: { %>
+
+Y.on('domready', function() {
+    enableElements('licenseRestore', false);
+});
+
+<% } %>
+
+function wizRender() {
+    wizard = new temp.Wizard(wizConfig);
+    wizard.render();
+
+    // By default, any response is appended to responseDiv.  Normally this is
+    // fine because responseDiv is empty on page load, but if there's an error
+    // and the user closes the wizard without refreshing the page, you can see
+    // multiple errors on top of each other, or an old error on top of the
+    // success message.  To fix that, clear the div on wizard launch.
+    $('responseDiv').innerHTML = "";
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

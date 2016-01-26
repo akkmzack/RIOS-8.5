@@ -1,0 +1,134 @@
+<%
+## Copyright 2006 - 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportTrafficSummary.psp
+## This is the template for the Traffic Summary report page.
+## Refactored to use common reports code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:TrafficSummaryPagelet" %>
+<%@page extends="TrafficSummaryPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+    self.relatedPages = [
+        'setupAdministrationPorts',
+    ]
+%>
+
+<psp:method name="prepare" params="reportOpts">
+    super(TrafficSummaryPagelet, self).prepare(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    typeField = fields.get('type', session.value('type', 'optimized'))
+    self.updateGfxParams(reportOpts, {'type': typeField})
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(TrafficSummaryPagelet, self).dialogEntries(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    dirField = fields.get('dir', session.value('dir', 'bi'))
+    typeField = fields.get('type', session.value('type', 'optimized'))
+    dirEntry = dialogEntries['dir']
+    dirEntry.value = dirField
+    if typeField != 'optimized':
+        dirEntry.disabled = True
+        dirEntry.value = 'bi'
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "$('%s').submit();" % controlFormId
+    typeOptions = (('optimized',   'Optimized'),
+                   ('passthrough', 'Pass Through'),
+                   ('both', 'Both'))
+    dialogEntries['type'] = FormUtils.NodeEntry(
+        name = 'type',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = typeOptions,
+        value = typeField,
+        )
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'tsForm',
+    'reportSpecs': {
+        'ts': {
+            'tableName': 'trafficSummaryTable',
+            'gfxId': 'trafficSummary',
+            'gfxDisplayId': 'tsGraphImg',
+         }
+    }
+}
+trafficSummaryTable = ajaxentrytable.AjaxEntryTable('trafficSummary',
+    headerSpec=(
+        '',
+        ('Port', 'reportLabelTD'),
+        ('Reduction', 'reportLabelTD'),
+        ('LAN Data', 'reportValueTD'),
+        ('WAN Data', 'reportValueTD'),
+        ('Traffic %', 'reportValueTD')),
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.td([
+            AjaxEntryTable.tdIcon('reduction_icon', 'alt_text'),
+            AjaxEntryTable.tdBlank(),
+            AjaxEntryTable.tdAttr('reduction')
+        ], 'reportValueTD'),
+        AjaxEntryTable.tdAttr('lan_value', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('wan_value', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('traffic_pct', 'reportValueTD')
+]""",
+    emptyMessage='No data available.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div class="graphPieDiv">
+  <img id="tsGraphImg" class="graphPieImg"
+    alt="Traffic Summary Chart" />
+</div>
+
+<form id="tsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Type:</th>
+          <th>Traffic:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['type'].html(self, format='horiz') %>
+          <%= dialogEntries['dir'].html(self, format='horiz') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= trafficSummaryTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+

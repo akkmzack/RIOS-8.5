@@ -1,0 +1,143 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## reportOptimizationBenefit.psp
+## This is the template for the Optimization Benefit report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, time, stats, gclclient, FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet, GfxUtils, ReportUtils" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'bytesSaved': FormUtils.NodeEntry(
+            path='/stats/actions/generate_report/app_latency_bytes_saved',
+            type='action'),
+        'connsOptimized': FormUtils.NodeEntry(
+            path='/stats/actions/generate_report/app_latency_conns_optimized',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    # Time samples are in five minute intervals, so only allow selection of
+    # hour or greater.
+    return GfxUtils.periodEntries(self.session(),
+                                  self.request().fields(),
+                                  timeScales=GfxUtils.TIME_SCALES_CMC)
+</psp:method>
+
+<psp:method name='isServerSideSH'>
+    ## Returns True if this appliance is a "server side" Steelhead.
+    #
+    # A server-side SH is defined as having at least one nonzero value for the
+    # optimized connections and zero for every other value.
+    #
+    # @return True if this appliance is a "server side" Steelhead.
+    mgmt = self.session().value('mgmt')
+    applications = ReportUtils.getOptimizationBenefitData(mgmt)
+
+    hasNonzeroOptConn = False
+    for app, statDict in applications:
+        if statDict['rtSavedRaw'] != 0 or statDict['bytesSavedRaw'] != 0:
+            return False # all other values must be zero to be a serverside SH.
+        if statDict['optConns'] > 0:
+            hasNonzeroOptConn = True
+
+    return hasNonzeroOptConn # at least one "optConns" value must be nonzero to be a serverside SH.
+</psp:method>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupStatsManagement', 'setupAdministrationPorts', 'reportAppliances')
+
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+nodeEntries = self.nodeEntries()
+
+# Options
+dialogEntries = self.dialogEntries()
+lbField = dialogEntries['lb'].value
+ubField = dialogEntries['ub'].value
+%>
+
+<script type="text/javascript">
+<!--
+var pertoboundsJS = <%= GfxUtils.timeRanges(dialogEntries['now']) %>;
+nonConfigForms.push('optimizationBenefitForm');
+//-->
+</script>
+
+<% self.beginPagelet() %>
+
+<form id="optimizationBenefitForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <input type="hidden" name="_action_" value="report" />
+  <div>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <td class="go">
+            <input type="submit" name="go" value="Go" class="formSubmitButton"
+            onclick="return submitPrep(this)" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<%
+xmlrequest = FormUtils.escapeForJsString(
+    '/mgmt/xmldata?p=optimizationBenefitApps&ub=%s&lb=%s' %
+    (ubField.replace(' ', '+'), lbField.replace(' ', '+')))
+optimizationBenefitAppsTable = ajaxentrytable.AjaxEntryTable('optimizationBenefitApps',
+    url=xmlrequest,
+    titleText='Optimization Benefit',
+    headerSpec=(
+        ('Application', 'reportLabelTD'),
+        ('Optimized Connections', 'reportValueTD'),
+        ('Round Trips Saved', 'reportValueTD'),
+        ('Round Trips Saved %', 'reportValueTD'),
+        ('Bytes Saved', 'reportValueTD'),
+        ('Bytes Saved %', 'reportValueTD')),
+    rowSpec = """[
+        AjaxEntryTable.tdAttr('name', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('optConns', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('rtSaved', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('rtSavedPct', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('bytesSaved', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('bytesSavedPct', 'reportValueTD')
+    ]""",
+    emptyMessage='No data available.')
+%>
+
+<div class="topLevel">
+  <%= optimizationBenefitAppsTable.html(self, cssClass="midLevel") %>
+</div>
+
+<%
+if self.isServerSideSH(): {
+%>
+  <p class='warning textContainer'>Optimization benefits are only reported on the client-side Steelhead. This
+  is most likely why there are optimized connections but no savings reported.
+  Please view this report on the client-side Steelhead appliance.</p>
+<%
+}
+%>
+
+<% self.endPagelet() %>

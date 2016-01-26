@@ -1,0 +1,164 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## RSP VNI IO Report
+%>
+
+<%@page imports="Nodes, PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupRSPPackages',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/rsp',
+            '/rbt/rsp2/state/vni/opt']
+</psp:method>
+
+<psp:method name="getVNIOptions">
+    mgmt = self.request().session().value('mgmt')
+    vniList = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/rsp2/state/vni/opt')
+    vniList.sort(FormUtils.alphanumericCompare)
+    return vniList
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'vniName': FormUtils.NodeEntry(
+            name='vniName',
+            label='VNI',
+            widget='select',
+            userPath='sh/web/reports/vniName',
+            userConfigAutoSave=True,
+            selectOptions=self.getVNIOptions(),
+            action='paramChanged()',
+        ),
+        'unit': FormUtils.NodeEntry(
+            name='unit',
+            label='Units',
+            widget='select',
+            userPath='sh/web/reports/rspUnit',
+            userConfigAutoSave=True,
+            selectOptions=('bps','packets/sec'),
+            action='paramChanged()',
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['vniName'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['unit'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        customControlDiv: Y.one('div#reportControls'),
+        options: createHighstockOptions(),
+        dataFormatterFn: dataFormatter,
+        statsFn: rspVniIoStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['Throughput']
+    });
+});
+
+function createHighstockOptions() {
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+
+    var unit = Y.one('select[name="unit"]').get('value');
+    var title = 'Throughput (' + unit + ')';
+    highstockOptions.yAxis[0].title.text = title;
+
+    highstockOptions.series = [{name: 'LAN In',
+                                color: RBT.Reports2.BLUE},
+                               {name: 'LAN Out',
+                                color: RBT.Reports2.AQUA},
+                               {name: 'WAN In',
+                                color: RBT.Reports2.RED},
+                               {name: 'WAN Out',
+                                color: RBT.Reports2.PINK},
+                               {name: 'Package In',
+                                color: RBT.Reports2.BROWN},
+                               {name: 'Package Out',
+                                color: RBT.Reports2.ORANGE}];
+
+    // Make the navigator shadow the first series (LAN In).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+
+    return highstockOptions;
+}
+
+function assembleDataUrl() {
+    var dataUrl ='<%= Reports2.constructDataUrl("reportRSPVNIIO") %>';
+
+    var vni = Y.one('select[name="vniName"]').get('value');
+    dataUrl = addQueryStringParameter(dataUrl, 'vni', vni);
+
+    var unit = Y.one('select[name="unit"]').get('value');
+    dataUrl = addQueryStringParameter(dataUrl, 'unit', unit);
+
+    return dataUrl;
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl(),
+        options: createHighstockOptions()
+    });
+}
+
+// A callback function that supplies the summary stats displayed in the legend.
+function rspVniIoStats(allSeriesData) {
+    var allStats = [];
+
+    var bpsUnitsSelected = Y.one('select[name="unit"]').get('value') == 'bps';
+
+    var integralUnits = bpsUnitsSelected ? 'B' : 'packets';
+    var scaleType = bpsUnitsSelected ? 'si' : 'english';
+
+    for (var i = 0; i < allSeriesData.length; i++) {
+        var integralValue = RBT.Reports2.integrate(allSeriesData[i]);
+
+        if (bpsUnitsSelected) {
+            integralValue = integralValue / 8;
+        }
+
+        allStats.push(['Total: ' +
+                       RBT.Reports2.scale(integralValue, 1, scaleType, integralUnits)]);
+    }
+
+    return allStats;
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value) {
+    var unit = Y.one('select[name="unit"]').get('value');
+    if (unit == 'packets/sec') {
+        return RBT.Reports2.scale(value, 1, 'si', 'packets/sec');
+    } else {
+        return RBT.Reports2.scale(value, 1, 'si', 'bps');
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

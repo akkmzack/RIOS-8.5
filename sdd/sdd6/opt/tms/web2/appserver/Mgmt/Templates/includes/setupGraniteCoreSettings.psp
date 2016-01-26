@@ -1,0 +1,617 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Krati Ahuja
+##
+## setupGraniteCoreSettings.psp
+##
+## Common PSP file to be shared between setupBranchStorage.psp (on EX, EVA and appliance page on CMC) and reportAppliances.psp (on CMC)
+## It contains all the information about if a granite edge is configured to which granite core (if any).
+##
+## Assumptions:
+## This file assumes the following variables to be already defined in the PSP file including
+## setupGraniteCoreSettings.psp:
+##      mgmt (standard management reference)
+##      fields (request fields dictionary)
+##      app_prod (product type of appliance connected to CMC)
+##      app_sn (serial number of appliance connected to CMC)
+##      conn (boolean variable representing if the appliance is connected to CMC)
+%>
+
+<%@page imports="RVBDUtils, eva, FormUtils:NodeEntry, json" %>
+
+<psp:method name="css_granite">
+    return '''
+#coloredDivContainer {
+  width: 700px;
+  -moz-border-radius-bottomright: 10px;
+  -moz-border-radius-topleft: 10px;
+  -webkit-border-bottom-right-radius: 10px;
+  -webkit-border-top-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  border-top-left-radius: 10px;
+  background-color: #E3E7ED;
+  padding: 5px 15px 25px;
+  position: relative;
+  min-height: 185px;
+}
+.strong {
+  font-weight: bold;
+}
+.sectionHeader {
+  padding: 1em 0 1em 0;
+}
+#dvaConnectivity {
+  height: 43px;
+  position: absolute;
+  top: 26px;
+  text-align: center;
+  right: 100px;
+}
+td.labelPaddedRight {
+  vertical-align: top;
+}
+.dvaDialogForm {
+  width: 25em;
+}
+td.addRemoveList {
+  line-height: 15px;
+}
+td.addRemoveList img {
+  float: right;
+  position: relative;
+  top: 3px;
+  margin-left: 6px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="pageletNodes_granite">
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    if RVBDUtils.isCMC() and policyType:
+        return [
+            pathPrefix + '/rbt/eva/ext/dc/config/hostname',
+            pathPrefix + '/rbt/eva/ext/dc/config/self_identifier',
+            pathPrefix + '/rbt/eva/ext/dc/config/port',
+            pathPrefix + '/rbt/eva/ext/dc/config/local_interface'
+        ]
+    else:
+        # EVA or Steelhead EX
+        return [
+            '/rbt/eva/ext/dc/action/add',
+            '/rbt/eva/ext/dc/action/remove',
+            '/rbt/eva/ext/dc/action/update',
+        ]
+</psp:method>
+
+<psp:method name="dialogEntries_granite" params="curInterfaces">
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    # For CMC we need to show a hard coded list of all inpath and primary interfaces
+    if policyType:
+        interfaces = ['primary']
+        for iface in Nodes.allInterfaceIndices:
+            interfaces.append('inpath' + iface)
+    else:
+        if RVBDUtils.isEX():
+            # Steelhead EX
+            nameFilter = lambda iface: iface == 'primary' or iface.startswith('inpath')
+        else:
+            # EVA standalone
+            nameFilter = lambda iface: iface != 'lo'
+        ifaceDict = Nodes.getMgmtSetEntries(mgmt, '/net/interface/config')
+        filterIfaces = lambda iface: iface not in curInterfaces \
+                                     and nameFilter(iface) \
+                                     and ifaceDict[iface].get('enable', '') == 'true'
+        interfaces = FormUtils.sortInterfacesByName(filter(filterIfaces, ifaceDict.keys()))
+
+    dialogEntriesDict = {
+        'addDVAPeer_hostname': NodeEntry(
+            name='addDVAPeer_hostname',
+            label='Hostname/IP',
+            validate='hostname'),
+        'addDVAPeer_identifier': NodeEntry(
+            name='addDVAPeer_identifier',
+            tooltip='This Identifier will be used by the Granite Core to recognize this Granite Edge. Granite Edge Identifiers are Case Sensitive.',
+            hint='(Case Sensitive)',
+            label='Granite Edge Identifier',
+            validate='validateEdgeIdentifier'),
+        'addDVAPeer_port': NodeEntry(
+            name='addDVAPeer_port',
+            label='Port',
+            validate='port',
+            value='7970',
+            widgetClass='small',
+            inputOptional=True),
+        'addDVAPeer_interface': NodeEntry(
+            name='addDVAPeer_interface',
+            label='Local Interface',
+            selectOptions=interfaces,
+            value='primary')
+    }
+
+    # For CMC, set the path to view the configured page
+    if policyType:
+        dialogEntriesDict['addDVAPeer_hostname'].path = '/rbt/eva/ext/dc/config/hostname'
+        dialogEntriesDict['addDVAPeer_identifier'].path = '/rbt/eva/ext/dc/config/self_identifier'
+        dialogEntriesDict['addDVAPeer_port'].path = '/rbt/eva/ext/dc/config/port'
+        dialogEntriesDict['addDVAPeer_interface'].path = '/rbt/eva/ext/dc/config/local_interface'
+
+    return dialogEntriesDict
+</psp:method>
+
+<%
+# Default values
+dva = identifier = port = ''
+addr = '--'
+dvaFailoverPeerAddress = dvaFailoverPeerPort = activeDVA = ''
+localIntfs = hostnames = []
+redundantWANSupport = False
+policyName_granite, pathPrefix_granite, policyType_granite = Nodes.cmcDecodeNodeMode(fields)
+if not policyType_granite: {
+    statePrefix = ''
+    if RVBDUtils.isCMC() and 'appliance' in fields: {
+        statePrefix = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+    }
+
+    dvas = mgmt.getChildren(statePrefix + '/rbt/eva/ext/dc/state').values()
+    dvaConnDict = {}
+    if len(dvas): {
+        dva = dvas[0]
+        dvaConfigDict =  Nodes.getTreeifiedSubtree(mgmt, statePrefix + '/rbt/eva/ext/dc/config/%s' % dva)
+        dvaStateDict =  Nodes.getTreeifiedSubtree(mgmt, statePrefix + '/rbt/eva/ext/dc/state/%s' % dva)
+        addr = dvaStateDict.get('addr', '--')
+        identifier = dvaConfigDict.get('self_identifier', '')
+        port = dvaConfigDict.get('port', '')
+        dvaFailoverPeerAddress = dvaConfigDict.get('ha_peer_addr', '')
+        dvaFailoverPeerPort = dvaConfigDict.get('ha_peer_port', '')
+        dvaFailoverPeerIps = [ip for ip, info
+                              in dvaConfigDict.get('ha_peer_ip', {}).items()
+                              if ip != dvaFailoverPeerAddress]
+
+        # get (priority, interfacename, port) tuples from the config dict, and sort them (by priority)
+        hostnames = sorted([(info['priority'], hostname, info['port']) \
+                            for hostname, info \
+                            in dvaConfigDict.get('hostname', {}).items() \
+                            if hostname != dva])
+        # since we don't actually show prioirity yet, get rid of the values.  this likely won't
+        # be necessary in the future, when we allow users to adjust priorities.
+        hostnames = [(hostname, port) for priority, hostname, port in hostnames]
+        # get (priority, interfacename) tuples from the config dict, and sort them (by priority)
+        localIntfs = sorted([(info['priority'], intf) for intf, info in dvaConfigDict.get('local-intf', {}).items()])
+        # since we don't actually show prioirity yet, get rid of the values.  this likely won't
+        # be necessary in the future, when we allow users to adjust priorities.
+        localIntfs = [intf for priority, intf in localIntfs]
+
+        dvaConnDict = eva.dvaConnectionStatus(mgmt, dva, fields)
+
+        # if no redundant remote hostnames were found, this must be a CMC viewing
+        # an EX box which doesn't support redundant WAN link
+        redundantWANSupport = dvaConfigDict.get('hostname', None) is not None
+        # if we are on CMC, we might be getting nodes from an EX which doesn't support Redundant WAN links,
+        # and will only have the legacy node for local interface
+        if not redundantWANSupport: {
+            local_interface = dvaConfigDict.get('local_interface', None)
+            localIntfs.append(local_interface)
+        }
+    }
+}
+dialogEntries = self.dialogEntries_granite(localIntfs)
+%>
+
+<div id="coloredDivContainer">
+<form method="post" action="<%= self.thisPageletRequest() %>" id="dvaPeerForm">
+  <div id="dvaSettings">
+    <p class="strong">Granite Core Settings</p>
+  <% if not policyType_granite and dva != '': { %>
+    <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+    <table><tr>
+      <td class="nodeEntry labelPaddedRight">Main Hostname/IP:</td>
+      <td class="nodeEntry" id="dvaHostname"><%= dva %>
+      <% if not RVBDUtils.isCMC(): { %>
+        <!-- CMC appliance details report does not support this, EVA and Steelhead EX do. -->
+        (<a href="#" style="color: #33C;" onclick="veShowActionDialog(editHostnameDialog); return false;">edit</a>)
+      <% } %>
+      </td>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">IP Address:</td>
+      <td class="nodeEntry" id="dvaIPAddress"><%= addr %></td>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Port:</td>
+      <td class="nodeEntry" id="dvaPort"><%= port %></td>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Granite Edge Identifier:</td>
+      <td class="nodeEntry" id="dvaSelfIdentifier"><%= identifier %></td>
+     <% if redundantWANSupport: { %>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Redundant Remote Interfaces:</td>
+      <td class="nodeEntry addRemoveList" id="dvaRedundantHostnames">
+      <% if not RVBDUtils.isCMC(): { %>
+       <% for hostname, port in hostnames: { %>
+        <!-- CMC appliance details report does not support adding/removing hostnames, EVA and Steelhead EX do. -->
+        <%= hostname %>:<%= port %>
+        <a href="#" onclick="return remHostClick('<%= hostname %>');">
+          <img src="/images/aet_edit_close.png" />
+        </a>
+        <br />
+       <% } %>
+        <a href="#" style="color: #33C;" onclick="veShowActionDialog(addHostnameDialog); return false;">Add Hostname/IP</a>
+      <% } else: { %>
+        <!-- only show the current hostnames and ports for CMC -->
+        <%= '\n<br />'.join(['%s:%s' % hostPort for hostPort in hostnames]) %>
+      <% } # end if not RVBDUtils.isCMC() %>
+      </td>
+     <% } # end if redundantWANSupport %>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Local Interfaces:</td>
+      <td class="nodeEntry addRemoveList" id="dvaNetworkInterfaces">
+      <% if not RVBDUtils.isCMC(): { %>
+       <% for interface in localIntfs: { %>
+        <!-- CMC appliance details report does not support adding/removing interfaces, EVA and Steelhead EX do. -->
+        <%= interface %>
+        <a href="#" onclick="return remIntfClick('<%= interface %>');">
+          <img src="/images/aet_edit_close.png" />
+        </a>
+        <br />
+       <% } %>
+        <a href="#" style="color: #33C;" onclick="veShowActionDialog(addInterfaceDialog); return false;">Add Interface</a>
+      <% } else: {%>
+        <!-- only show the current hostnames and ports for CMC -->
+        <%= '\n<br />'.join(localIntfs) %>
+      <% } # end if not RVBDUtils.isCMC() %>
+      </td>
+    <% if dvaFailoverPeerAddress: { %>
+    </tr><tr>
+      <td class="sectionHeader strong">Granite Core Failover Settings</td>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Failover Granite Core:</td>
+      <td class="nodeEntry" id="dvaFailoverPeer"><%= dvaFailoverPeerAddress %></td>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Port:</td>
+      <td class="nodeEntry" id="dvaFailoverPeer"><%= dvaFailoverPeerPort %></td>
+     <% if dvaFailoverPeerIps: { %>
+    </tr><tr>
+      <td class="nodeEntry labelPaddedRight">Redundant Remote Interfaces:</td>
+      <td class="nodeEntry" id="dvaFailoverPeer"><%= '<br /> '.join(dvaFailoverPeerIps) %></td>
+     <% } %>
+    <% } %>
+    </tr></table>
+    <% if not RVBDUtils.isCMC(): { %>
+      <!-- On CMC we provide remove core functionality via Manage > Appliance page -->
+      <div class="midLevel">
+        <%= FormUtils.renderButton(self, {
+            'name': 'removeDVAPeer',
+            'value': 'Remove Core',
+            'onclick': ('veAJAXSubmit({formEl: this.form, reqMethod: \'removeDVAPeer\', '
+                        'respMethod: \'dvaWaitForResponse\', liveStat: liveStatus_dvas, '
+                        'liveStatMsg: \'Removing Core...\', onSuccess: veReloadPage}); '
+                        'return false;')
+        }) %>
+      </div>
+    <% } %>
+  <% } else: { %>
+    <table><tr>
+      <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+      <%= dialogEntries['addDVAPeer_identifier'].html(self) %>
+      <%= dialogEntries['addDVAPeer_port'].html(self) %>
+      <%= dialogEntries['addDVAPeer_interface'].html(self) %>
+      <td class="nodeEntry">
+        <% if policyType_granite: { %>
+          <!-- Appliance page on CMC -->
+          <%= FormUtils.formSubmitButtons(self, {
+              'name': 'addDVAPeerCMC_button',
+              'value': 'Apply' }) %>
+          <input type="hidden" name="_action_" value="addDVAPeer_CMC" />
+        <% } else: { %>
+          <!-- EVA or Steelhead EX -->
+          <%= FormUtils.renderButton(self, {
+              'name': 'addDVAPeer_button',
+              'value': 'Add Core',
+              'title': 'Once the Granite Core connects to this Edge, the Edge Service will restart, and you will be temporarily unable to see the Edge configuration and reports.',
+              'onclick': 'addDVAPeer(); return false;' }) %>
+        <% } %>
+      </td>
+    </tr></table>
+    <% } %>
+    </div>
+</form>
+
+  <div id="dvaConnectivity" class="hidden">
+    <img id="dvaConnImg" src="/images/img-transparent.png" alt="" />
+    <div id="dvaConnDiv"></div>
+  </div>
+</div>
+
+<% if not RVBDUtils.isCMC() and dva != '': { %>
+<!-- Only EVA or EX appliances can update granite core hostnames or interfaces -->
+<form id="editHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="editHostnameDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+      <strong>Update Granite Core Hostname</strong><br /><br />
+      <table>
+        <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+      </table>
+    </div>
+</form>
+<form id="addHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="addHostnameDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+      <strong>Add Hostname/IP for Granite Core Connection</strong><br /><br />
+      <table>
+        <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+        <%= dialogEntries['addDVAPeer_port'].html(self) %>
+      </table>
+    </div>
+</form>
+<form id="removeHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeHostnameDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+      <input type="hidden" id="removeHostnameInput" name="removeDVAPeer_hostname" value="" />
+      <div>Are you sure you want to remove <span id="removeHostnameSpan"></span>?</div>
+    </div>
+</form>
+<form id="addInterfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="addInterfaceDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+      <strong>Add Local Interface for Granite Core Connection</strong><br /><br />
+      <table>
+       <% if dialogEntries['addDVAPeer_interface'].selectOptions : { %>
+        <%= dialogEntries['addDVAPeer_interface'].html(self) %>
+       <% } else: { %>
+         <tr>
+           <td>
+             <p>There are no more interfaces configured with IP addresses.</p>
+             <p>
+               To configure your appliance's interfaces please visit
+               the <a href="/mgmt/gui?p=setupHostInterfaces">Networking Configuration</a>
+               pages.
+             </p>
+           </td>
+         </tr>
+       <% }%>
+      </table>
+    </div>
+</form>
+<form id="removeInterfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeInterfaceDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= dva %>" />
+      <input type="hidden" id="removeInterfaceInput" name="removeDVAPeer_interface" value="" />
+      <div>Are you sure you want to remove <span id="removeInterfaceSpan"></span>?</div>
+    </div>
+</form>
+<% } %>
+
+<%
+js_granite = ''
+# Only for Steelhead EXs, EVAs and appliance details report on CMC for appliances connected to a granite core
+if dva != '': {
+    if not RVBDUtils.isCMC() or (RVBDUtils.isCMC() and 'appliance' in fields and 'ex' == app_prod and 'true' == conn): {
+        js_granite += '''
+Y.one('#dvaConnectivity').removeClass('hidden');
+// show the correct connection status
+updateDVAStatus(%s);
+        ''' % json.dumps(dvaConnDict)
+    }
+}
+
+# for EVA or Steelhead EX
+if not RVBDUtils.isCMC(): {
+    js_granite += '''
+var liveStatus_dvas = new LiveStatus({ attachPoint: '#dvaSettings' }).render();
+    '''
+    if dva != '': {
+        js_granite += '''
+// set up the auto-updater (if so desired)
+if (window.location.search.indexOf('dynstatus=off') === -1) {
+    var updater = new AjaxUpdater('/mgmt/xmldata?p=edgeStatus');
+    updater.repeatTime = 10000; // 10 seconds
+    updater.update = function (xhr) {
+        var statusXML, mgmtConnected, lunsConnected,
+            dvaConn = {},
+            docEl = xhr.responseXML.documentElement;
+
+        statusXML = docEl.getElementsByTagName('dvaConnectionStatus')[0];
+        dvaConn.mgmtConnected = statusXML.getAttribute('mgmtConnected') === 'true';
+        dvaConn.lunsConnected = statusXML.getAttribute('lunsConnected') === 'true';
+        dvaConn.failoverEnabled = statusXML.getAttribute('failoverEnabled') === 'true';
+        dvaConn.peerConnected = statusXML.getAttribute('peerConnected') === 'true';
+        dvaConn.failoverActive = statusXML.getAttribute('failoverActive') === 'true';
+        updateDVAStatus(dvaConn);
+
+        function updateXML(table, tagName) {
+            var xml = docEl.getElementsByTagName(tagName)[0].cloneNode(true);
+            if (table.editName) {
+                table.restEditDiv();
+                table.editAfterLoad = ["name", table.editName];
+            } else {
+                table.editAfterLoad = null;
+            }
+            table.setData(xml);
+            table.update();
+        }
+        updateXML(targetStateTable, 'targetState');
+        updateXML(connectedInitiatorsTable, 'connectedInitiators');
+        updateXML(configuredInitiatorsTable, 'configuredInitiators');
+        updateXML(configuredGroupsTable, 'configuredGroups');
+        updateXML(iscsiLUNsTable, 'iscsiLUNs');
+        updateXML(localLUNsTable, 'localLUNs');
+    };
+}
+// setup the Core Hostname edit dialog
+var editHostnameDialog = veCreateActionDialog({
+    srcNode: '#editHostnameDialog',
+    alignNode: '#dvaHostname',
+    actionButtonText: 'Update Hostname',
+    actionFunc: veAJAXSubmit,
+    actionArgs: [{
+        formEl: Y.one('#editHostnameDialogForm'),
+        reqMethod: 'updateDVAPeerHostname',
+        respMethod: 'dvaWaitForResponse',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Updating Granite Core Hostname...',
+        onSuccess: veReloadPage
+    }]
+});
+// setup the Core Hostname Add/Remove dialogs
+var addHostnameDialog = veCreateActionDialog({
+    srcNode: '#addHostnameDialog',
+    alignNode: '#dvaRedundantHostnames',
+    actionButtonText: 'Add Hostname/IP',
+    actionFunc: veAJAXSubmit,
+    actionArgs: [{
+        formEl: Y.one('#addHostnameDialogForm'),
+        reqMethod: 'addDVAPeerHostname',
+        respMethod: 'dvaWaitForResponse',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Adding Hostname...',
+        onSuccess: veReloadPage
+    }]
+});
+var removeHostnameDialog = veCreateActionDialog({
+    srcNode: '#removeHostnameDialog',
+    alignNode: '#dvaRedundantHostnames',
+    actionButtonText: 'Remove Hostname',
+    actionFunc: veAJAXSubmit,
+    actionArgs: [{
+        formEl: Y.one('#removeHostnameDialogForm'),
+        reqMethod: 'removeDVAPeerHostname',
+        respMethod: 'dvaWaitForResponse',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Removing Hostname...',
+        onSuccess: veReloadPage
+    }]
+});
+function remHostClick(hostname) {
+    Y.one('#removeHostnameInput').set('value', hostname);
+    Y.one('#removeHostnameSpan').setContent(hostname);
+    veShowActionDialog(removeHostnameDialog);
+    return false;
+}
+
+// setup the interfaces add/remove dialogs
+var addInterfaceDialog = veCreateActionDialog({
+    srcNode: '#addInterfaceDialog',
+    alignNode: '#dvaNetworkInterfaces',
+    actionButtonText: %(actionButtonText)s,
+    actionFunc: veAJAXSubmit,
+    actionArgs: [
+        { formEl: Y.one('#addInterfaceDialogForm'),
+          reqMethod: 'addDVAPeerInterface',
+          respMethod: 'dvaWaitForResponse',
+          liveStat: liveStatus_dvas,
+          liveStatMsg: 'Adding Interface...',
+          onSuccess: veReloadPage
+        }
+    ],
+    cancelText: %(cancelText)s
+});
+var removeInterfaceDialog = veCreateActionDialog({
+    srcNode: '#removeInterfaceDialog',
+    alignNode: '#dvaNetworkInterfaces',
+    actionButtonText: 'Remove Interface',
+    actionFunc: veAJAXSubmit,
+    actionArgs: [{
+        formEl: Y.one('#removeInterfaceDialogForm'),
+        reqMethod: 'removeDVAPeerInterface',
+        respMethod: 'dvaWaitForResponse',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Removing Interface...',
+        onSuccess: veReloadPage
+    }]
+});
+function remIntfClick(interface) {
+    Y.one('#removeInterfaceInput').set('value', interface);
+    Y.one('#removeInterfaceSpan').set('text', interface);
+    veShowActionDialog(removeInterfaceDialog);
+    return false;
+}
+        ''' % {
+            # don't show a clickable button if there are no interfaces to add
+            'actionButtonText': (dialogEntries['addDVAPeer_interface'].selectOptions
+                                 and "'Add Interface'"
+                                 or 'null'),
+            'cancelText': (dialogEntries['addDVAPeer_interface'].selectOptions
+                           and "'Cancel'"
+                           or "'Close'")
+        }
+    } else: {
+        js_granite += '''
+// tooltip warning how adding a core may cause the edge process to restart
+var addCoreTooltip = new RBT.Tooltip({ triggerNode: 'input[name=addDVAPeer_button]', addTriggerClass: false }).render();
+Y.one('input[name=addDVAPeer_button]').setStyle('cursor','help');
+        '''
+    }
+}
+
+js_granite += '''
+function addDVAPeer() {
+    veAJAXSubmit({
+        formEl: '#dvaPeerForm',
+        reqMethod: 'addDVAPeer',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Adding Granite Core... This may take up to a minute to complete.',
+        onSuccess: veReloadPage
+    });
+}
+
+// Function used to display image based on connection status to
+// granite core (if configured)
+function updateDVAStatus(dvaConn) {
+    var connMsg = '',
+        connImgTitle = '',
+        connImgClass = 'connStatus_',
+        connImg = Y.one('#dvaConnImg'),
+        connDiv = Y.one('#dvaConnDiv');
+
+    connImgClass += (dvaConn.mgmtConnected ? 't' : 'f');
+    connImgClass += (dvaConn.lunsConnected ? 't' : 'f');
+    connImgClass += (dvaConn.failoverEnabled ? 't' : 'f');
+    connImgClass += (dvaConn.peerConnected ? 't' : 'f');
+    connImgClass += (dvaConn.failoverActive ? 't' : 'f');
+
+    if (dvaConn.failoverActive) {
+        if (dvaConn.peerConnected) {
+            connMsg = 'NOT Connected to Granite Core<br />Connected to Failover Granite Core';
+            connImgTitle = 'NOT Connected to Granite Core, Connected to Failover Granite Core';
+        } else {
+            connMsg = 'No Granite Core Connection';
+            connImgTitle = 'No Granite Core Connection';
+        }
+    } else {
+        if (dvaConn.mgmtConnected) {
+            connMsg = 'Connected to Granite Core';
+            connImgTitle = 'Connected to Granite Core';
+        } else {
+            connMsg = 'NOT Connected to Granite Core';
+            connImgTitle = 'NOT Connected to Granite Core';
+        }
+        if (dvaConn.failoverEnabled) {
+            if (dvaConn.peerConnected) {
+                connMsg += '<br /> Failover Granite Core ready';
+                connImgTitle += ', Failover Granite Core ready';
+            } else {
+                connMsg += '<br /> Failover Granite Core NOT ready';
+                connImgTitle += ', Failover Granite Core NOT ready';
+            }
+        }
+    }
+    if (!dvaConn.lunsConnected) {
+        connMsg += '<br />' +
+                   '(<a href="#" onclick="return branchRadioTab.switchTo(\\\'luns\\\');">' +
+                   'LUNs Not Connected' +
+                   '</a>)';
+        connImgTitle += ', but some LUNs not connected';
+    }
+
+    connDiv.setContent(connMsg);
+    connImg.set('title', connImgTitle);
+    connImg.setAttribute('alt', connImgTitle);
+    connImg.setAttribute('class', '');
+    connImg.addClass(connImgClass);
+}
+'''
+
+self.addPageletJavascript(js_granite)
+%>

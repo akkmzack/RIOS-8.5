@@ -1,0 +1,288 @@
+<%
+## Copyright 2013, Riverbed Technology, Inc., All rights reserved.
+## Author: Jeremy Hou
+##
+## setupGraniteConnection.psp
+##
+## PSP file for setting up a granite edge - either for direct connection to a Granite Core
+## or for connecting to an already-connected Granite Edge as Standby Peer.
+##
+## Assumptions:
+## This file assumes the following variables to be already defined in the PSP file including
+## setupGraniteConnection.psp:
+##      mgmt (standard management reference)
+##      fields (request fields dictionary)
+##      configDict (dictionary of granite core configurations)
+##      isPolicyPage (boolean - whether or not the current page is a Policy Page on CMC)
+##      app_prod (product type of appliance connected to CMC)
+##      app_sn (serial number of appliance connected to CMC)
+##      conn (boolean variable representing if the appliance is connected to CMC)
+%>
+<psp:method name="dialogEntries_connect">
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    # For CMC we need to show a hard coded list of all inpath and primary interfaces
+    if policyType:
+        # CMC
+        mgmtIfaces = ['primary']
+        mpioIfaces = ['primary', 'aux']
+        edgeHAIfaces = ['primary', 'aux']
+        for iface in Nodes.allInterfaceIndices:
+            mgmtIfaces.append('inpath' + iface)
+            mpioIfaces.append('inpath' + iface)
+
+            mgmtIfaces.append('eth' + iface)
+            mpioIfaces.append('eth' + iface)
+            edgeHAIfaces.append('eth' + iface)
+
+    else:
+        ifaceList = [
+            iface
+            for iface, info
+            in Nodes.getMgmtSetEntries(mgmt, '/net/interface/config').items()
+            if info.get('enable', '') == 'true'
+        ]
+        if RVBDUtils.isEX():
+            # Steelhead EX
+            mpioIfaces = FormUtils.sortInterfacesByName(filter(
+                eva.mpioRegex.match,
+                ifaceList
+            ))
+            edgeHAIfaces = FormUtils.sortInterfacesByName(filter(
+                eva.edgeHARegex.match,
+                ifaceList
+            ))
+            mgmtIfaces = FormUtils.sortInterfacesByName(filter(
+                eva.mgmtRegex.match,
+                ifaceList
+            ))
+        else:
+            # EVA standalone
+            mgmtIfaces = FormUtils.sortInterfacesByName(filter(
+                lambda iface: iface != 'lo',
+                ifaceList
+            ))
+            edgeHAIfaces = mgmtIfaces[:]
+            mpioIfaces = mgmtIfaces[:]
+
+
+    dialogEntriesDict = {
+        'connection_type': NodeEntry(
+            name='connection_type',
+            widget='radio',
+            value='core',
+            enableDiv={
+                'core': 'graniteCoreConfig',
+                'failover': 'failoverConfig'
+            },
+            label={
+                'core': 'Connect to a Granite Core',
+                'failover': 'Connect to an active Granite Edge as Standby Peer for High Availability'
+            }),
+        'addDVAPeer_hostname': NodeEntry(
+            name='addDVAPeer_hostname',
+            label='Hostname/IP',
+            widgetClass='wide2',
+            validate='hostname'),
+        'addDVAPeer_identifier': NodeEntry(
+            name='addDVAPeer_identifier',
+            tooltip='This Identifier will be used by the Granite Core to recognize this Granite Edge. Granite Edge Identifiers are Case Sensitive.',
+            hint='<span class="hintBlock">(Case Sensitive)</span>',
+            widgetClass='wide2',
+            label='Granite Edge Identifier',
+            validate='RBT.VE.validateEdgeIdentifier'),
+        'addDVAPeer_port': NodeEntry(
+            name='addDVAPeer_port',
+            label='Port',
+            validate='port',
+            value='7970',
+            widgetClass='small',
+            inputOptional=True),
+        'addDVAPeer_interface': NodeEntry(
+            name='addDVAPeer_interface',
+            label='Local Interface',
+            selectOptions=mgmtIfaces,
+            value='primary'),
+        'addDVAPeerLocal_interface': NodeEntry(
+            name='addDVAPeerLocal_interface',
+            label='Local Interface',
+            selectOptions=mgmtIfaces,
+            value='primary'),
+        'addMPIO_interface': NodeEntry(
+            name='addMPIO_interface',
+            label='Local Interface',
+            selectOptions=mpioIfaces,
+            value='primary'),
+        'peer_serial': NodeEntry(
+            name='peer_serial',
+            label='Active Peer Serial Number',
+            tooltip='Enter the Serial Number of the Active Peer.  You can find this on the Support page at the Active Peer.',
+            type='string',
+            validate='nonempty'),
+        'peer_self_id': NodeEntry(
+            name='peer_self_id',
+            label='Active Peer Edge ID',
+            tooltip='Enter the Edge ID of the Active Peer.  You can find this on the Branch Storage page at the Active Peer.',
+            type='string',
+            validate='nonempty'),
+        'peer_ip': NodeEntry(
+            name='peer_ip',
+            label='Active Peer IP Address',
+            type='RBT.VE.validateFirstIP'),
+        'ha_interface': NodeEntry(
+            name='ha_interface',
+            label='Local Interface',
+            tooltip='Specify the Local Interface to use for the connection to this High Availability  Peer IP Address.',
+            selectOptions=edgeHAIfaces),
+        'second_peer_ip': NodeEntry(
+            name='second_peer_ip',
+            label='Second Peer IP Address',
+            tooltip='Must be a different IP address from the one above.',
+            validate='RBT.VE.validateSecondIP'),
+        'second_ha_interface': NodeEntry(
+            name='second_ha_interface',
+            label='Second Local Interface',
+            tooltip='Specify a different Local Interface to use for the connection to this second High Availability Peer IP Address.',
+            selectOptions=edgeHAIfaces),
+        'standby_dc_interface': NodeEntry(
+            name='standby_dc_interface',
+            label='Local Interface for Granite Core connections',
+            tooltip='Specify a Local Interface for Granite Core connections when failover is triggered',
+            selectOptions=mgmtIfaces)
+    }
+
+    # For CMC, set the path to view the configured page
+    if policyType:
+        dialogEntriesDict['addDVAPeer_hostname'].path = '/rbt/eva/ext/dc/config/hostname'
+        dialogEntriesDict['addDVAPeer_identifier'].path = '/rbt/eva/ext/dc/config/self_identifier'
+        dialogEntriesDict['addDVAPeer_port'].path = '/rbt/eva/ext/dc/config/port'
+        dialogEntriesDict['addDVAPeer_interface'].path = '/rbt/eva/ext/dc/config/local_interface'
+        #TODO Need to add failover IPs and local interfaces for CMC
+        #TODO Need to add redundant IPs to the 'Add Core' action
+
+    return dialogEntriesDict
+</psp:method>
+
+<psp:method name="css">
+    return '''
+.hintBlock {
+  display: block;
+}
+'''
+</psp:method>
+
+<%
+dialogEntries = self.dialogEntries_connect()
+%>
+<div id="coloredDivContainer">
+<form method="post" action="<%= self.thisPageletRequest() %>" id="dvaPeerForm">
+  <table id="firstConnectConfig">
+    <tr>
+    <td>
+      <!-- Setup options for Connecting to granite core -->
+      <p class="strong">
+        <%= dialogEntries['connection_type'].html(self, format='inline', value='core') %>
+      </p>
+      <table id="graniteCoreConfig">
+        <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+        <%= dialogEntries['addDVAPeer_identifier'].html(self) %>
+        <%= dialogEntries['addDVAPeer_port'].html(self) %>
+        <%= dialogEntries['addDVAPeer_interface'].html(self) %>
+        <tr>
+          <td class="nodeEntry">
+            <div class="midLevel">
+             <% if isPolicyPage: { # Appliance page on CMC %>
+              <%= FormUtils.formSubmitButtons(self, {
+                  'name': 'addDVAPeerCMC_button',
+                  'value': 'Apply' }) %>
+              <input type="hidden" name="_action_" value="addDVAPeer_CMC" />
+             <% } else: { # EVA or Steelhead EX %>
+              <%= FormUtils.renderButton(self, {
+                  'name': 'addDVAPeer_button',
+                  'value': 'Add Core',
+                  'title': ('Once the Granite Core connects to this Edge, '
+                            'the Edge Service will restart, and you will be temporarily '
+                            'unable to see the Edge configuration and reports.'),
+                  'onclick': 'addDVAPeer(); return false;' }) %>
+             <% } %>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+    <td id="verticalDivider">
+    </td>
+    <td>
+      <!-- Setup options for becoming failover standby peer -->
+      <p class="strong">
+        <%= dialogEntries['connection_type'].html(self, format='inline', value='failover') %>
+      </p>
+      <table id="failoverConfig">
+        <%= dialogEntries['peer_ip'].html(self) %>
+        <%= dialogEntries['peer_serial'].html(self) %>
+        <%= dialogEntries['peer_self_id'].html(self) %>
+        <%= dialogEntries['ha_interface'].html(self) %>
+        <%= dialogEntries['second_peer_ip'].html(self) %>
+        <%= dialogEntries['second_ha_interface'].html(self) %>
+        <%= dialogEntries['standby_dc_interface'].html(self) %>
+        <tr>
+          <td>
+            <div class="midLevel">
+              <%= FormUtils.renderButton(self, {
+                  'name': 'haConnect_button',
+                  'value': 'Connect to High Availability Peer',
+                  'title': ('Once the High Availability relationship is established, the Granite '
+                            'Edge service will restart, and you will be temporarily '
+                            'unable to see the Edge configuration and reports.'),
+                  'onclick': 'haConnect(); return false;'
+              }) %>
+            </div>
+          </td>
+        </tr>
+        <% # TODO:  Add button for saving Edge HA config for CMC %>
+      </table>
+    </td>
+    </tr>
+  </table>
+</form>
+</div>
+<div id="spacerDiv"></div>
+<br style="clear: both;" />
+<%
+js_graniteConnection = '''
+var liveStatus_connect = new LiveStatus({ attachPoint: '#firstConnectConfig' }).render();
+// tooltip warning how adding a core may cause the edge process to restart
+var addCoreTooltip = new RBT.Tooltip({
+    triggerNode: 'input[name=addDVAPeer_button]',
+    addTriggerClass: false
+}).render();
+Y.one('input[name=addDVAPeer_button]').setStyle('cursor','help');
+var edgeHAConnectTooltip = new RBT.Tooltip({
+    triggerNode: 'input[name=haConnect_button]',
+    addTriggerClass: false
+}).render();
+Y.one('input[name=haConnect_button]').setStyle('cursor','help');
+
+function addDVAPeer() {
+    RBT.VE.ajaxSubmit({
+        formEl: '#dvaPeerForm',
+        reqMethod: 'addDVAPeer',
+        liveStat: liveStatus_connect,
+        liveStatMsg: 'Adding Granite Core... This may take up to a minute to complete.',
+        onSuccess: RBT.VE.reloadPage
+    });
+}
+function haConnect() {
+    RBT.VE.ajaxSubmit({
+        formEl: '#dvaPeerForm',
+        reqMethod: 'haConnect',
+        liveStat: liveStatus_connect,
+        liveStatMsg: 'Connecting to Active High Availability Peer.. This may take up to a minute to complete.',
+        onSuccess: RBT.VE.reloadPage
+    });
+}
+'''
+
+self.addPageletJavascript(js_graniteConnection)
+%>

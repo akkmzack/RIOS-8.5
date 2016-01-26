@@ -1,0 +1,166 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+##
+## reportSRDFServerDetail.psp
+## This is the template for the SRDF Server Detail report page.
+## Refactored to use common reports code.
+##
+%>
+
+<% # Note: This .psp template extends SRDFReportPagelet just like reportSRDFOverview.psp does.
+   # This is because this report uses the same statsd data that the overview template uses. %>
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, Nodes, RVBDUtils, ProductReportContext:SRDFReportPagelet" %>
+<%@page extends="SRDFReportPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+mgmt = self.session().value('mgmt')
+symmId = req.fields().get('symmId', '')
+selApp = self.session().value('appliance', '')
+rdfApp = (selApp) and (selApp.split('_')[1]) or ('')
+
+# Make sure an RDF Server is selected
+if not symmId: {
+    self.response().sendRedirect('/mgmt/gui?p=reportSRDFOverview')
+}
+
+# Handle CMC
+rdfAppPrettyName = ''
+if RVBDUtils.isCMC(): {
+    import cmc
+
+    # Make sure an Appliance is selected when page is running on a CMC
+    if not rdfApp: {
+        self.response().sendRedirect('/mgmt/gui?p=reportSRDFOverview')
+    }
+
+    # Get Pretty name of Selected Appliance
+    rdfAppPrettyName = cmc.appPrettyName(mgmt, sn=rdfApp)
+}
+
+reportOpts = {
+    'controlFormId': 'srdfServerDetailForm',
+    'srdfReportType' : 'srdfServerDetail',
+    'reportSpecs': {
+        'srdfserverlan': {
+            'gfxId': 'srdfServerDetailLan',
+            'gfxDisplayId': 'srdfServerDetailLanGraphImg',
+            'order': 1
+        },
+        'srdfserverwan': {
+            'gfxId': 'srdfServerDetailWan',
+            'gfxDisplayId': 'srdfServerDetailWanGraphImg',
+            'order': 2
+        },
+        'srdfserverdatareduct': {
+            # NOTE: This isn't the best name, but the reports require it.
+            # This is the general SRDF reports table.
+            'tableName': 'srdfServerDetailDataReductionTable',
+            'gfxId': 'srdfServerDetailDataReduction',
+            'gfxDisplayId': 'srdfServerDetailDataReductionGraphImg',
+            'order': 3
+        },
+    },
+}
+
+srdfServerDetailDataReductionTable = ajaxentrytable.AjaxEntryTable('srdfServerDetailDataReduction',
+    headerSpec=['', 'RDF Group', 'LAN Data', 'Avg. LAN', 'WAN Data', 'Avg. WAN', 'Data Reduction'],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+		AjaxEntryTable.tdLink('rdfGroup_href', 'rdfGroup'),
+        AjaxEntryTable.tdAttr('lanTraffic'),
+		AjaxEntryTable.tdAttr('avgLanThroughput'),
+        AjaxEntryTable.tdAttr('wanTraffic'),
+		AjaxEntryTable.tdAttr('avgWanThroughput'),
+		AjaxEntryTable.tdAttr('dataReduction')
+]""",
+    emptyMessage='No information available about Bandwidth Capcity Increase.')
+
+# Setup Report
+# Note: Not calling setupReport() because beginPagelet() need to be specialized
+self.prepare(reportOpts)
+dialogEntries = self.dialogEntries(reportOpts)
+self.finalize(dialogEntries, reportOpts)
+
+# If RDF Server is not valid
+if (not reportOpts['rdf_server']): {
+    # Setup invalid page message
+    invalidMsgText = 'No Symmetrix exists with name %s' % symmId
+    if rdfAppPrettyName: {
+        invalidMsgText = '%s for %s' % (invalidMsgText, rdfAppPrettyName)
+    }
+
+    # Setup Invalid SRDF Server Detail Page
+    self.beginPagelet(None, noReportHTML=True)
+%>
+<div><%= FormUtils.escapeForJsString(invalidMsgText) %>.</div>
+<%
+    self.endPagelet()
+    return
+} else: {
+    self.beginPagelet(reportOpts)
+    dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+}
+%>
+
+<div><strong><span id="srdfServerDetailTitle"></span></strong></div>
+
+<div id="srdfServerDetailLanGraphDiv" class="graphDiv">
+  <img id="srdfServerDetailLanGraphImg" class="graphImg"
+    alt="LAN Throughput Graph" />
+</div>
+
+<div id="srdfServerDetailWanGraphDiv" class="graphDiv">
+  <img id="srdfServerDetailWanGraphImg" class="graphImg"
+    alt="WAN Throughput Graph" />
+</div>
+
+<div id="srdfServerDetailBwCapIncGraphDiv" class="graphDiv">
+  <img id="srdfServerDetailDataReductionGraphImg" class="graphImg"
+    alt="Data Reduction Graph" />
+</div>
+
+
+<form id="srdfServerDetailForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+  <%= srdfServerDetailDataReductionTable.html(self, cssClass="midLevel") %>
+
+  <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+
+<%
+# Set the title, since this page does not show up in the navigation window and automatically gets a title.
+titleText = 'Symmetrix %s' % symmId
+if RVBDUtils.isCMC() and rdfAppPrettyName: {
+    titleText = "%s for %s" % (titleText, rdfAppPrettyName)
+}
+self.addOnload('setElementText("srdfServerDetailTitle", "%s");' % FormUtils.escapeForJsString(titleText))
+%>
+
+<% self.endPagelet() %>

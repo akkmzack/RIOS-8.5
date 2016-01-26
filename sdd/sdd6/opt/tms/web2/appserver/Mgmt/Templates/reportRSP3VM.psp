@@ -1,0 +1,195 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## reportRSP3VM.psp
+## This is the template for the RSP VM Statistics page.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, Nodes, ProductReportContext:RSP3VMPagelet" %>
+<%@page extends="RSP3VMPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+session = self.session()
+mgmt = session.value('mgmt')
+fields = self.request().fields()
+
+# Get the list of slots that are installed.
+installedSlots = []
+for slot in Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/rsp3/state/slot'): {
+    if Nodes.present(mgmt, '/rbt/rsp3/state/slot/%s/installed' % slot) == 'true': {
+        installedSlots.append(slot)
+    }
+}
+
+installedSlots.sort()
+
+reportOpts = {
+    'controlFormId': 'rsp3VmForm',
+    'reportSpecs': {
+        'cpu': {
+            'tableName': 'vmCpuTable',
+            'gfxId': 'rsp3VmCpuUtil',
+            'gfxDisplayId': 'rsp3VmCpuImg',
+        },
+        'memory': {
+            'tableName': 'vmMemoryTable',
+            'gfxId': 'rsp3VmMemory',
+            'gfxDisplayId': 'rsp3VmMemoryImg',
+        },
+        'diskOps': {
+            'tableName': 'vmDiskOpsTable',
+            'gfxId': 'rsp3VmDiskOps',
+            'gfxDisplayId': 'rsp3VmDiskOpsImg',
+        },
+        'diskTput': {
+            'tableName': 'vmDiskTputTable',
+            'gfxId': 'rsp3VmDiskTput',
+            'gfxDisplayId': 'rsp3VmDiskTputImg',
+        }
+    }
+}
+
+vmCpuTable = ajaxentrytable.AjaxEntryTable('vmCpu',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about VM CPU Utilization.')
+
+vmMemoryTable = ajaxentrytable.AjaxEntryTable('vmMemory',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about VM Memory Usage.')
+
+vmDiskOpsTable = ajaxentrytable.AjaxEntryTable('vmDiskOps',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about VM Disk IO.')
+
+vmDiskTputTable = ajaxentrytable.AjaxEntryTable('vmDiskTput',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about VM Disk Throughput.')
+
+if not installedSlots: {
+    self.setupReport(reportOpts)
+%>
+
+<p>At least one slot must be installed to view this report.</p>
+
+<%
+} else: {
+    # Determine the current value for the slot name and CPU metric.
+    slotName = fields.get('slotName', session.value('slotName', installedSlots[0]))
+    cpuMetric = fields.get('cpuMetric', session.value('cpuMetric', 'percent'))
+
+    # Ensure that the current slot name corresponds to an installed slot.
+    if slotName not in installedSlots: {
+        slotName = installedSlots[0]
+    }
+
+    # Pass the various graph options to the reports framework.
+    reportOpts['reportSpecs']['cpu']['extraGfxParams'] = {'slotName': slotName,
+                                                          'cpuMetric': cpuMetric}
+    reportOpts['reportSpecs']['memory']['extraGfxParams'] = {'slotName': slotName}
+    reportOpts['reportSpecs']['diskOps']['extraGfxParams'] = {'slotName': slotName}
+    reportOpts['reportSpecs']['diskTput']['extraGfxParams'] = {'slotName': slotName}
+
+    dialogEntries = self.setupReport(reportOpts)
+
+    # Create the widgets we need for the form.
+    formSubmitAction = '$("rsp3VmForm").submit()'
+    cpuMetricSelectOptions = (('percent', 'Percent'),
+                              ('absolute', 'Absolute'))
+
+    dialogEntries['slotName'] = FormUtils.NodeEntry(name = 'slotName',
+                                                    widget = 'select',
+                                                    action = formSubmitAction,
+                                                    selectOptions = installedSlots,
+                                                    value = slotName)
+    dialogEntries['cpuMetric'] = FormUtils.NodeEntry(name = 'cpuMetric',
+                                                     widget = 'select',
+                                                     action = formSubmitAction,
+                                                     selectOptions = cpuMetricSelectOptions,
+                                                     value = cpuMetric)
+%>
+
+<div id="rsp3VmCpuGraphDiv" class="graphDiv">
+  <img id="rsp3VmCpuImg" class="graphImg" src="" alt="VM CPU Utilization Graph" />
+</div>
+
+<%= vmCpuTable.html(self, cssClass="midLevel") %>
+
+<div id="rsp3VmMemoryGraphDiv" class="graphDiv">
+  <img id="rsp3VmMemoryImg" class="graphImg" src="" alt="VM Memory Usage Graph" />
+</div>
+
+<%= vmMemoryTable.html(self, cssClass="midLevel") %>
+
+<div id="rsp3VmDiskOpsGraphDiv" class="graphDiv">
+  <img id="rsp3VmDiskOpsImg" class="graphImg" src="" alt="VM Disk IO Graph" />
+</div>
+
+<%= vmDiskOpsTable.html(self, cssClass="midLevel") %>
+
+<div id="rsp3VmDiskTputGraphDiv" class="graphDiv">
+  <img id="rsp3VmDiskTputImg" class="graphImg" src="" alt="VM Disk Throughput Graph" />
+</div>
+
+<%= vmDiskTputTable.html(self, cssClass="midLevel") %>
+
+<form id="rsp3VmForm"
+      class="graphControlForm"
+      method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="report" />
+  </div>
+  <table class="reportParameters">
+    <thead>
+      <tr>
+        <th>Period:</th>
+        <th>Slot:</th>
+        <th>CPU Metric:</th>
+        <th>Refresh:</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <%= GfxUtils.periodHtml(self, dialogEntries) %>
+        </td>
+        <%= dialogEntries['slotName'].html(self, format='horiz') %>
+        <%= dialogEntries['cpuMetric'].html(self, format='horiz') %>
+        <%= dialogEntries['refresh'].html(self, format='horiz') %>
+        <td class="go">
+          <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</form>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>

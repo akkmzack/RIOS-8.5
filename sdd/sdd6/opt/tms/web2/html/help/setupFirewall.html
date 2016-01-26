@@ -1,0 +1,776 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring a Management ACL</title>
+    <link rel="StyleSheet" href="css/managing.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="managing.10.01.html#282565">Chapter 8	Managing Steelhead Appliances</a> : Configuring a Management ACL</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="282565">Configuring a Management ACL</a></div>
+      <div class="Body"><a name="282569">You can secure access to a Steelhead appliance using an internal management Access Control List (ACL) in </a>the Configure &gt; Security &gt; Management ACL page.</div>
+      <div class="Body"><a name="283231">Steelhead appliances are subject to the network policies defined by a corporate security policy, particularly </a>in large networks. Using an internal management ACL, you can:</div>
+      <li class="Bullet"><a name="284010">restrict access to certain interfaces or protocols of a Steelhead appliance.</a></li>
+      <li class="Bullet"><a name="283992">restrict inbound IP access to a Steelhead appliance, protecting it from access by hosts that do not have </a>permission without using a separate device (such as a router or firewall). </li>
+      <li class="Bullet"><a name="284003">specify which hosts or groups of hosts can access and manage a Steelhead appliance by IP address, </a>simplifying the integration of Steelhead appliances into your network. </li>
+      <div class="Body"><a name="285226">The management ACL provides the following safeguards to prevent accidental disconnection from the </a>Steelhead appliance, the CMC, and the embedded Shark feature:</div>
+      <li class="Bullet"><a name="282598">It detects the IP address you are connecting from and displays a warning if you add a rule that denies </a>connections to that address.</li>
+      <li class="Bullet"><a name="282602">It always allows the default Steelhead appliance ports 7800, 7801, 7810, 7820, and 7850.</a></li>
+      <li class="Bullet"><a name="282603">It always allows a previously connected CMC to connect and tracks any changes to the IP address of </a>the CMC to prevent disconnection.</li>
+      <li class="Bullet"><a name="282604">It converts well-known port and protocol combinations such as SSH, Telnet, HTTP, HTTPS, SNMP, and </a>SOAP into their default management service and protects these services from disconnection: for example, if you specify protocol 6 (TCP) and port 22, the management ACL converts this port and protocol combination into SSH and protects it from denial. </li>
+      <li class="Bullet"><a name="282605">It tracks changes to default service ports and automatically updates any references to changed ports in </a>the access rules. </li>
+      <div class="HeadingProcedure"><a name="285347">To set up a management ACL </a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="282617">Choose Configure &gt; Security &gt; Management ACL to display the Management ACL page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="293709">Under Management ACL Settings, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 144.43776pt">
+            <div class="CellHeading"><a name="526819">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.43848pt">
+            <div class="CellHeading"><a name="526821">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526823">Enable Management ACL </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526828">Secures access to a Steelhead appliance using a management ACL.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283968">Click </a><span class="Bold">Apply</span> to apply your changes to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283199">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="283938">If you add, delete, edit, or move a rule that could disconnect connections to the Steelhead appliance, a </a>warning message appears. Click <span style="font-weight: bold">Confirm</span> to override the warning and allow the rule definition anyway. Use caution when overriding a disconnect warning. </div>
+      <div class="Heading2"><a name="283133">ACL Management Rules</a></div>
+      <div class="Body"><a name="282828">The management ACL contains rules that define a match condition for an inbound IP packet. You set a rule </a>to allow or deny access to a matching inbound IP packet. When you add a rule on a Steelhead appliance, the destination specifies the Steelhead appliance itself, and the source specifies a remote host. </div>
+      <div class="Body"><a name="282838">The ACL rules list contains default rules that allow you to use the management ACL with branch service </a>RiOS features, such as DNS caching. These default rules allow access to certain ports required by these features. The list also includes default rules that allow access to the CMC and the embedded Shark feature. If you delete a default ACL rule and need to restore it, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupFirewall.html#426570', '');" title="Configuring a Management ACL">Restoring Default Access Rules</a></span>.</div>
+      <div class="HeadingProcedure"><a name="283621">To add an ACL management rule</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285658">Under Management ACL Settings, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.12528pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 145.23264pt">
+            <div class="CellHeading"><a name="526718">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 322.89264pt">
+            <div class="CellHeading"><a name="526720">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526722">Add a New Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526724">Displays the controls for adding a new rule.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526726">Action</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526728">Select one of the following rule types from the drop-down list:</a></div>
+            <li class="CellBullet"><span class="Bold"><a name="526734">Allow</a></span> - Allows a matching packet access to the Steelhead appliance. This is the default action.</li>
+            <li class="CellBullet"><span class="Bold"><a name="526736">Deny</a></span> - Denies access to any matching packets.</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526738">Service</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526740">Optionally, select Specify Protocol, or HTTP, HTTPS, SOAP, SNMP, SSH, </a>Telnet. When specified, the Destination Port is dimmed and unavailable.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526742">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526744">(Appears only when Service is set to Specify Protocol.) Optionally, select All, </a>TCP, UDP, or ICMP from the drop-down list. The default setting is All. When set to All or ICMP, the Service and Destination Ports are dimmed and unavailable.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526746">Source Network</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526748">Optionally, specify the source subnet of the inbound packet; for example, </a>1.2.3.0/24.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526750">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526752">Optionally, specify the destination port of the inbound packet, either a single </a>port value or a port range of port1-port2, where port1 must be less than port2. Leave it blank to specify all ports.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526754">Interface</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526756">Optionally, select an interface name from the drop-down list. Select All to </a>specify all interfaces. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526758">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526760">Optionally, describe the rule to facilitate administration.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526762">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526764">Optionally, select a rule number from the drop-down list. By default, the rule </a>goes to the end of the table (just above the default rule).</div>
+            <div class="CellBody"><a name="526768">Steelhead appliances evaluate rules in numerical order starting with rule </a><span style="font-weight: bold">1</span>. If the conditions set in the rule match, then the rule is applied, and the system moves on to the next packet. If the conditions set in the rule do not match, the system consults the next rule: for example, if the conditions of rule 1 do not match, rule 2 is consulted. If rule 2 matches the conditions, it is applied, and no further rules are consulted. </div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="526769">The default rule, Allow, which allows all remaining traffic from </a>everywhere that has not been selected by another rule, cannot be removed and is always listed last.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526771">Log Packets</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526773">Tracks denied packets in the log. By default, packet logging is enabled. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526775">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526780">Adds the rule to the list. The Management Console redisplays the Rules table </a>and applies your modifications to the running configuration, which is stored in memory. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526782">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526784">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526786">Move Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="526788">Moves the selected rules. Click the arrow next to the desired rule position; the </a>rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="444835">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="285843">Usage Notes</a></div>
+      <li class="Bullet"><a name="285844">When you change the default port of services such as SSH, HTTP, HTTPS, on either the client or server-</a>side Steelhead appliance and create a management ACL rule denying that service, the rule will not work as expected. The Steelhead appliance on the other end (either server or client) of an in-path deployment does not know that the default service port has changed, and consequently optimizes the packets to that service port. To work-around this problem, add a pass-through rule to the client-side Steelhead appliance for the management interfaces. The pass-through rule prevents the traffic from coming from the local host when optimized.</li>
+      <li class="Bullet"><a name="285857">A management ACL rule that denies access from port 20 on the server-side Steelhead appliance in an </a>out-of-path deployment prevents data transfer using active FTP. In this deployment, the FTP server and client cannot establish a data connection because the FTP server initiates the SYN packet and the management rule on the server-side Steelhead appliance blocks the SYN packet. To work-around this problem:</li>
+      <li class="BulletSubBullet2"><a name="286268">use passive FTP instead of active FTP. With passive FTP, the FTP client initiates both connections to </a>the server. For details on active and passive FTP, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'advanced-networking.08.08.html#455433', '');" title="QoS Overview">Bypassing LAN Traffic</a></span>.</li>
+      <div class="Indent1"><a name="286297">&#8212;or&#8212;</a></div>
+      <li class="BulletSubBullet2"><a name="286282">add a rule to either allow source port 20 on the server-side Steelhead appliance or allow the IP </a>address of the FTP server.</li>
+      <div class="Heading4"><a name="426570">Restoring Default Access Rules</a></div>
+      <div class="HeadingProcedure" style="color: #000000; font-style: normal; font-variant: normal; text-transform: none; vertical-align: baseline"><span style="color: #000000; font-family: &quot;Microsoft Sans Serif&quot;; font-size: 10.0pt; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><a name="464307">This section describes how to restore the default ACL rules.</a></span></div>
+      <div class="HeadingProcedure"><a name="525470">To restore the default ACL management rules for PFS</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="525471">Under Management ACL Settings, add a PFS ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="525474">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="525476">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525478">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525480">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525482">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525484">TCP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525486">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525488">445</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525490">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525492">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525494">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525496">PFS Support</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525498">Click </a><span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525499">Under Management ACL Settings, add a second PFS ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="525502">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="525504">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525506">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525508">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525510">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525512">TCP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525515">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525517">139</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525519">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525521">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525523">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525525">PFS Support</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525527">Click </a><span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525528">Add a third PFS ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="525531">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="525533">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525535">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525537">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525539">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525541">UDP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525543">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525545">137-138</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525547">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525549">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525551">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525553">PFS Support</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525555">Click </a><span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="525559">To restore the default ACL management rules for RSP</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="525563">Under Management ACL Settings, add a RSP ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="525566">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="525568">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525570">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525572">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525574">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525576">TCP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525579">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525581">8222</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525583">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525585">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525587">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525592">Allow </a></span>RSP<span class="Bold" style="font-weight: normal"> Console</span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="438684">Click </a><span style="font-weight: bold">Add</span>. </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="525602">Under Management ACL Settings, add a second RSP ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="525605">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="525607">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525609">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525611">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525613">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525615">TCP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525618">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525620">8333</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525622">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525624">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="525626">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="525631">Allow </a></span>RSP<span class="Bold" style="font-weight: normal"> Console</span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="434119">Click Add.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="285069">To restore the default ACL management rule for DNS caching</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285070">Under Management ACL Settings, add a DNS Caching ACL rule with the following properties.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.58464pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.78368pt">
+            <div class="CellHeading"><a name="285073">Property</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 328.80096pt">
+            <div class="CellHeading"><a name="285075">Value</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285077">Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="285079">Allow</a></span> </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285081">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285083">UDP</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285086">Destination Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285088">53</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285090">Rule Number</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="285092">1</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="285094">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="285096">DNS Caching</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285098">Click </a><span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="284589">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupPFS_settings.html#282886', '');" title="Configuring PFS" name="525692">Configuring PFS</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupCachingDNS.html#283637', '');" title="Enabling DNS Caching" name="436953">Enabling DNS Caching</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'branch-services_cx.07.05.html#283881', '');" title="Installing and Configuring RSP" name="442443">Installing and Configuring RSP</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

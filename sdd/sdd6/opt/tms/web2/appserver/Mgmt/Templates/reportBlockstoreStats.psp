@@ -1,0 +1,257 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+## Author: Yoganshi Shah
+##
+## reportBlockstoreStats.psp
+## This is the template for the EVA Blockstore Stats report page.
+##
+%>
+
+<%@page imports="Nodes, RVBDUtils, ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:EVABlockstoreStatsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="EVABlockstoreStatsPagelet" %>
+<%@page indentType="braces" %>
+
+
+<psp:method name="css">
+    return '''
+table.reportParameters select {
+    margin-right: 20px;
+}
+.timestamp table tr{
+    line-height: 18px;
+}
+.label {
+    font-weight: bold;
+}
+'''
+</psp:method>
+
+
+<psp:method name="getLUNOptions">
+    options = [('0', 'All')]
+    session = self.session()
+    mgmt = session.value('mgmt')
+    fields = self.request().fields()
+    basePath = ''
+    if RVBDUtils.isCMC():
+        # Get selected appliance
+        app, app_prod, app_sn = Nodes.parseApplianceParam(fields.get('appliance', session.value('appliance', '')))
+        if app_sn:
+            # Setup the base node path for the state of the selected appliance
+            basePath = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+        else:
+            return options
+    luns = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/vlun/state' % basePath)
+    for lun in luns:
+        lunId = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/state/%s/subclass_id' % (basePath, lun))
+        alias = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/config/%s/alias' % (basePath, lun))
+        lun = lun.replace("\\/", "/")
+        lun = lun.replace("\\\\", "\\")
+        if alias:
+            options.append((lunId, '%s (%s)' % (alias, lun)))
+        else:
+            options.append((lunId, lun))
+    return options
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(EVABlockstoreStatsPagelet, self).dialogEntries(reportOpts)
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "document.getElementById('%s').submit();" % controlFormId
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    lunOptions = self.getLUNOptions()
+    lunField = fields.get('lun', session.value('lun', '0'))
+    self.updateGfxParams(reportOpts, {'lun': lunField})
+    dialogEntries['lun'] = FormUtils.NodeEntry(
+        name = 'lun',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = lunOptions,
+        value = lunField,
+        )
+    return dialogEntries
+</psp:method>
+
+
+<%
+reportOpts = {
+    'controlFormId': 'evaBlockstoreStatsForm',
+    'reportSpecs': {
+        'evaBlockstoreStatsHitMiss': {
+            'tableName': 'evaBlockstoreStatsHitMissTable',
+            'gfxId': 'evaBlockstoreStatsHitMiss',
+            'gfxDisplayId': 'evaBlockstoreStatsHitMissGraphImg',
+            'order': 1
+        },
+        'evaBlockstoreStatsUncmtd': {
+            'tableName': 'evaBlockstoreStatsUncmtdTable',
+            'gfxId': 'evaBlockstoreStatsUncmtd',
+            'gfxDisplayId': 'evaBlockstoreStatsUncmtdGraphImg',
+            'order': 2
+        },
+        'evaBlockstoreStatsCommitIO': {
+            'tableName': 'evaBlockstoreStatsCommitIOTable',
+            'gfxId': 'evaBlockstoreStatsCommitIO',
+            'gfxDisplayId': 'evaBlockstoreStatsCommitIOGraphImg',
+            'order': 3
+        },
+        'evaBlockstoreStatsCommitDelay': {
+            'tableName': 'evaBlockstoreStatsCommitDelayTable',
+            'gfxId': 'evaBlockstoreStatsCommitDelay',
+            'gfxDisplayId': 'evaBlockstoreStatsCommitDelayGraphImg',
+            'order': 4
+        }
+    },
+    'onApplianceChange': '$("evaBlockstoreStatsForm").submit()'
+}
+evaBlockstoreStatsHitMissTable = ajaxentrytable.AjaxEntryTable(
+    'evaBlockstoreStatsHitMiss',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaBlockstoreStatsUncmtdTable = ajaxentrytable.AjaxEntryTable(
+    'evaBlockstoreStatsUncmtd',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaBlockstoreStatsCommitIOTable = ajaxentrytable.AjaxEntryTable(
+    'evaBlockstoreStatsCommitIO',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaBlockstoreStatsCommitDelayTable = ajaxentrytable.AjaxEntryTable(
+    'evaBlockstoreStatsCommitDelay',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+lun = self.request().session().value('lun', '0')
+self.hasHelp = True
+
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+lun_type = ''
+lastWriteTimestamp = 'n/a'
+lastCommitTimestamp = 'n/a'
+
+# only for EVA or Steelhead EX
+if not RVBDUtils.isCMC(): {
+    luns = ProductGfxContext.fetchChildren(mgmt, '/rbt/eva/ext/vlun/state', fields)
+    for l in luns: {
+        lun_id = ProductGfxContext.fetchNode(mgmt, '/rbt/eva/ext/vlun/state/%s/subclass_id' % l, fields)
+        if lun_id == lun: {
+            lun_type = ProductGfxContext.fetchNode(mgmt, '/rbt/eva/ext/vlun/config/%s/member_lun_type' % l, fields)
+            if lun_type != 'iscsi': {
+                break
+            }
+            lastWriteTimestamp = ProductGfxContext.fetchNode(mgmt, '/rbt/eva/ext/vlun/state/%s/last_write_timestamp' % l, fields)
+            lastCommitTimestamp = ProductGfxContext.fetchNode(mgmt, '/rbt/eva/ext/vlun/state/%s/last_commit_timestamp' % l, fields)
+            break
+        }
+    }
+
+    import eva
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('veRefreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+
+if lun != '0' and lun_type == 'iscsi': {
+%>
+<br />
+<div class="timestamp">
+  <table>
+  <tr><td class="label">Last Write Timestamp:</td><td><%= lastWriteTimestamp %></td></tr>
+  <tr><td class="label">Last Commit Timestamp:</td><td><%= lastCommitTimestamp %></td></tr>
+  </table>
+</div>
+<% } %>
+
+<div id="evaBlockstoreStatsHitMissGraphDiv" class="graphDiv">
+  <img id="evaBlockstoreStatsHitMissGraphImg" src="" class="graphImg"
+    alt="LUN Hit/Miss/Prefetch Data" />
+</div>
+<%= evaBlockstoreStatsHitMissTable.html(self, cssClass="midLevel") %>
+
+<div id="evaBlockstoreStatsUncmtdGraphDiv" class="graphDiv">
+  <img id="evaBlockstoreStatsUncmtdGraphImg" src="" class="graphImg"
+    alt="LUN Uncommitted Data" />
+</div>
+<%= evaBlockstoreStatsUncmtdTable.html(self, cssClass="midLevel") %>
+
+<div id="evaBlockstoreStatsCommitIOGraphDiv" class="graphDiv">
+  <img id="evaBlockstoreStatsCommitIOGraphImg" src="" class="graphImg"
+    alt="LUN Commit Throughput" />
+</div>
+<%= evaBlockstoreStatsCommitIOTable.html(self, cssClass="midLevel") %>
+
+<div id="evaBlockstoreStatsCommitDelayGraphDiv" class="graphDiv">
+  <img id="evaBlockstoreStatsCommitDelayGraphImg" src="" class="graphImg"
+    alt="LUN Commit Delay Data" />
+</div>
+<%= evaBlockstoreStatsCommitDelayTable.html(self, cssClass="midLevel") %>
+
+<form id="evaBlockstoreStatsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <%= reportOpts.get('groupHdr', '') %>
+          <th>LUN:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+            <%= reportOpts.get('groupCol', '') %>
+            <%= dialogEntries['lun'].html(self, format='horiz') %>
+            <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+<%
+self.endPagelet()
+%>

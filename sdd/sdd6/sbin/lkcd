@@ -1,0 +1,477 @@
+#!/bin/sh
+#
+# Crash dump initialization script.
+#
+# Copyright 1999 Silicon Graphics, Inc. All rights reserved.
+#
+
+###########################################################################
+# Configuration Variables
+###########################################################################
+CONFIG_FILE=/etc/sysconfig/dump
+LCRASH=/sbin/lcrash
+KERNELVER=$(uname -r)
+MAP=/boot/System.map-$KERNELVER
+KERNTYPES=/boot/Kerntypes-$KERNELVER
+DUMPCONFIG=/sbin/lkcd_config
+DUMPSYSDEVICE=/dev/dump
+KEXEC=/sbin/kexec
+
+# Copied from incude/linux/dump.h. Any change to this flag in dump.h
+# should be reflected here.
+DUMP_FLAGS_SOFTBOOT=0x00000002
+DUMP_FLAGS_NETDUMP=0x40000000
+DUMP_FLAGS_DISKDUMP=0x80000000
+
+###########################################################################
+# Functions
+###########################################################################
+#
+# Name: config_lkcd()
+# Func: Configure the kernel crash dump mechanism.
+#
+config_lkcd()
+{
+	if [ ! -e $DUMPCONFIG ] ; then
+		echo "Error: $DUMPCONFIG does not exist!" >&2
+		exit 1
+	fi
+
+	# make sure dump variables exist
+	if [ ! -e $DUMPSYSDEVICE ] ; then
+		echo "DUMPSYSDEVICE does not exist!" >&2
+		exit 1
+	fi
+
+	if [ ! "$DUMP_LEVEL" ] ; then
+		echo "DUMP_LEVEL not defined in $CONFIG_FILE!" >&2
+		exit 1
+	fi
+
+	if [ ! "$DUMP_COMPRESS" ] ; then
+		echo "DUMP_COMPRESS not defined in $CONFIG_FILE!" >&2
+		exit 1
+	fi
+
+	if [ ! "$DUMP_FLAGS" ] ; then
+		echo "DUMP_FLAGS not defined in $CONFIG_FILE!" >&2
+		exit 1
+	fi
+
+	if [ ! "$PANIC_TIMEOUT" ] ; then
+		echo "PANIC_TIMEOUT not defined in $CONFIG_FILE!" >&2
+		exit 1
+	fi
+
+	# set up the configurables in /proc.
+	echo "$PANIC_TIMEOUT" > /proc/sys/kernel/panic
+
+	/sbin/modprobe dump 1>/dev/null 2>&1
+	if [ "$DUMP_COMPRESS" = "1" ]; then
+		/sbin/modprobe dump_rle 1>/dev/null 2>&1
+	elif [ "$DUMP_COMPRESS" = "2" ]; then
+		/sbin/modprobe dump_gzip 1>/dev/null 2>&1
+	fi
+	if [ $(($DUMP_FLAGS & $DUMP_FLAGS_DISKDUMP)) -ne 0 ]; then
+		/sbin/modprobe dump_blockdev 1>/dev/null 2>&1
+	elif [ $(($DUMP_FLAGS & $DUMP_FLAGS_NETDUMP)) -ne 0 ]; then
+		/sbin/modprobe dump_netdev 1>/dev/null 2>&1
+	fi
+
+	# now run dumpconfig
+	$DUMPCONFIG -d $DUMPDEV -l $DUMP_LEVEL -f $DUMP_FLAGS \
+	-c $DUMP_COMPRESS  -t $TARGET_HOST -p $SOURCE_PORT -P $TARGET_PORT \
+	-e $ETH_ADDRESS
+
+	if [ $? -ne 0 ] ; then
+		echo "$DUMPCONFIG failed!" >&2
+		exit 1
+	fi
+
+	# Set things up for kexec based dumping if applicable
+	if [ $((DUMP_FLAGS & $DUMP_FLAGS_SOFTBOOT)) != 0 ]; then
+
+		if [ ! -e /proc/sys/kernel/dump/addr ] ; then
+			return
+		fi
+
+		DUMP_ADDR=`cat /proc/sys/kernel/dump/addr`
+
+		if [ $DUMP_COMPRESS != 2 ]; then
+			echo "You need gzip compression for kexec based dumping" >&2
+			echo "Aborting configure" >&2
+			exit 1
+		fi
+
+		if [ $DUMP_ADDR != 0 ] ; then
+			echo "Preloading kernel for kexec based dumping"
+		else
+			return
+		fi
+
+		if [ ! -e "$KEXEC_IMAGE" ] ; then
+			echo "KEXECIMAGE does not exist!" >&2
+			exit 1
+		fi
+
+		# Preload the kernel image to switch to on panic
+		echo $KEXEC -l \
+		--command-line="$KEXEC_CMDLINE crashdump=$DUMP_ADDR" \
+		$KEXEC_IMAGE
+
+		$KEXEC -l \
+		--command-line="$KEXEC_CMDLINE crashdump=$DUMP_ADDR" \
+		$KEXEC_IMAGE
+	fi
+	return
+}
+
+#
+# Name: save_lkcd()
+# Func: Save the crash dump to the appropriate location.
+#
+save_lkcd()
+{
+	if [ ! "$DUMP_SAVE" ] ; then
+		echo "DUMP_SAVE not defined in $CONFIG_FILE!" >&2
+		exit 1
+	fi
+
+	# look for lcrash
+	if [ ! -e $LCRASH ] ; then
+		echo "Error: $LCRASH does not exist!" >&2
+		exit 1
+	fi
+
+	#get the bounds limit value
+	if [ ! "$BOUNDS_LIMIT" ] || [ $BOUNDS_LIMIT -eq 0 ] ; then
+		echo "Dump repository management has been turned off" >&2
+	#make BOUNDS_LIMIT an absurd value
+		BOUNDS_LIMIT=9999
+	fi
+
+	# get the bounds value
+	if [ ! -e "$DUMPDIR/bounds" ] ; then
+		BOUNDS=0
+	else
+		BOUNDS=`cat $DUMPDIR/bounds` 2>&1
+		if [ ! "$BOUNDS" ] ; then
+			BOUNDS=0
+		elif [ $BOUNDS -ge $BOUNDS_LIMIT ] ; then
+			echo "0" > $DUMPDIR/bounds 2>&1
+			if [ $? -ne 0 ] ; then
+				echo "Error: Could not reset bounds." >&2
+			else
+				BOUNDS=0
+			fi
+		fi
+	fi
+
+
+	#rename old dump directory to something temp
+	if [ -d $DUMPDIR/$BOUNDS ] ; then
+		mv $DUMPDIR/$BOUNDS $DUMPDIR/$BOUNDS.temp
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to move old directory" >&2
+			return
+		fi
+	elif [ -f $DUMPDIR/dump.$BOUNDS ] ; then
+		mv $DUMPDIR/dump.$BOUNDS $DUMPDIR/dump.$BOUNDS.temp
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to move old file" >&2
+			return
+		fi
+	fi
+
+	# save the crash dump
+	if [ $DUMP_SAVE -eq 1 ] ; then
+		$LCRASH -p -s $DUMPDIR -d $DUMPDEV  2>&1
+		local rc=$?
+		if [ $rc -ne 0 ] ; then
+			echo "Info: could not save crash dump: lcrash returned with $rc. Maybe there was no dump?" >&2
+			restore_dump
+	# An out of order save spoils the settings; configure again
+			echo "Reconfiguring LKCD...." >&2
+			config_lkcd
+			exit 1
+		elif [ ! -e "$DUMPDIR/dump.$BOUNDS" ] ; then
+			restore_dump
+			return
+		fi
+	fi
+
+		
+	#delete old dump directory or the old dump file
+	if [ -d $DUMPDIR/$BOUNDS.temp ] ; then
+		rm -rf  $DUMPDIR/$BOUNDS.temp
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to delete old directory" >&2
+		#we don't return because it is not such a critical error
+		fi
+	elif [ -f $DUMPDIR/dump.$BOUNDS.temp ] ; then
+		rm $DUMPDIR/dump.$BOUNDS.temp
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to move old file" >&2
+		fi
+	fi
+
+	if [ ! -e $MAP ] ; then
+		echo "Error: map file $MAP does not exist." >&2
+		return
+	elif [ ! -e $KERNTYPES ] ; then
+		echo "Error: kerntypes file $KERNTYPES does not exist." >&2
+		return
+	else 
+		mkdir $DUMPDIR/$BOUNDS
+		if [ $? -ne 0 ] ; then
+			echo "Error: unable to create directory $DUMPDIR/$BOUNDS." >&2
+			return
+		fi
+
+		cd $DUMPDIR/$BOUNDS
+		if [ -f $DUMPDIR/dump.$BOUNDS ] ; then
+			/bin/mv $DUMPDIR/dump.$BOUNDS $DUMPDIR/$BOUNDS/
+		fi
+		/bin/cp -f $MAP $DUMPDIR/$BOUNDS/map.$BOUNDS
+		/bin/cp -f $LCRASH $DUMPDIR/$BOUNDS/lcrash.$BOUNDS
+		/bin/cp -f $KERNTYPES $DUMPDIR/$BOUNDS/kerntypes.$BOUNDS
+
+		local RET=0
+		echo -n "Generating crash report - this may take a few minutes"
+		if [ ! -e /usr/bin/ksymoops ] ; then
+			echo "Warning: ksymoops not found in /usr/bin." >&1
+			RET=1
+		else
+			# run lcrash's "module -p" command
+			echo | \
+			 $LCRASH map.$BOUNDS dump.$BOUNDS kerntypes.$BOUNDS \
+<<EOF 1>/dev/null 2>&1
+module -p | cat >temp_ksyms
+quit
+EOF
+			if [ $? -ne 0 ] ; then
+				RET=1
+			else
+				echo | /usr/bin/ksymoops -s temp_map -k temp_ksyms -L \
+					-m $MAP -o /lib/modules/$KERNELVER/ 1>/dev/null
+				awk '{ \
+					if(/\[/)
+						{print $1,"T",$3$2} \
+					else
+						{print $1,$2,$3} \
+				   	}' temp_map > map.$BOUNDS
+				/bin/rm -f temp_ksyms
+        		        /bin/rm -f temp_map
+			fi
+		fi
+
+		$LCRASH -r map.$BOUNDS dump.$BOUNDS kerntypes.$BOUNDS \
+			> analysis.$BOUNDS 2>&1
+		local rc=$?
+		if [ ! -s analysis.$BOUNDS ] ; then
+			echo "Error: could not create crash report (exit code $rc)" >&2
+			exit 1
+		fi
+		if [ $RET -eq 1 ] ; then
+			echo "Cannot include module symbols in map.$BOUNDS." >&2
+			exit 1
+		fi
+	fi
+
+	return
+}
+
+#
+# Name: query_lkcd()
+# Func: Check if lkcd has been configured. If yes, print out details
+#
+query_lkcd()
+{
+	if [ ! -e $DUMPCONFIG ] ; then
+		echo "Error: $DUMPCONFIG does not exist!" >&2
+		exit 1
+	fi
+
+	# Now run DUMPCONFIG
+	$DUMPCONFIG -q
+
+	if [ $? -ne 0 ] ; then
+		echo "$DUMPCONFIG failed!" >&2
+		exit 1
+	fi
+
+	return
+}
+
+#
+# Name: dump_lkcd()
+# Func: Take a manual dump
+#
+dump_lkcd()
+{
+	if [ ! -e $DUMPCONFIG ] ; then
+		echo "Error: $DUMPCONFIG does not exist!" >&2
+		exit 1
+	fi
+
+	# Now run DUMPCONFIG
+	$DUMPCONFIG -m
+
+	if [ $? -ne 0 ] ; then
+		echo "$DUMPCONFIG failed!" >&2
+		exit 1
+	fi
+
+	return
+
+}
+
+# Name: restore_dump()
+# Func: Restore the previous dump. Called only when lkcd save fails
+#
+restore_dump()
+{
+	if [ -d $DUMPDIR/$BOUNDS.temp ] ; then
+		mv  $DUMPDIR/$BOUNDS.temp $DUMPDIR/$BOUNDS
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to restore old dump directory" >&2
+		fi
+	elif [ -f $DUMPDIR/dump.$BOUNDS.temp ] ; then
+		mv $DUMPDIR/dump.$BOUNDS.temp $DUMPDIR/dump.$BOUNDS
+		if [ $? -ne 0 ] ; then
+			echo "Error: Unable to restore old dump file" >&2
+		fi
+	fi
+}
+
+#
+# Name: usage()
+# Func: Print out usage information and exit (with an exit code of 1)
+#
+usage()
+{
+	echo "Usage: $0 <config|save|query|dump>" >&2
+	exit 1
+}
+
+#
+# Name: check_root()
+# Func: Verify that the caller of this script is root.
+#
+check_root()
+{
+	kill -s 0 1 2>&-
+	if [ $? = 1 ]; then
+		echo "Error: this script must be run by root." >&2
+		return 0
+	fi
+	return 1
+}
+
+###########################################################################
+# Main Script
+###########################################################################
+
+# make sure the user is root.
+check_root
+if [ $? = 0 ] ; then
+	exit 1
+fi
+
+# make sure the $CONFIG_FILE exists.
+if [ ! -e "$CONFIG_FILE" ] ; then
+	echo "Error: $CONFIG_FILE missing or is not executable!" >&2
+	exit 1
+fi
+
+# source the configuration file.
+. $CONFIG_FILE
+
+if [ ! "$DUMP_ACTIVE" ] ; then
+	echo "DUMP_ACTIVE not defined in $CONFIG_FILE!" >&2
+	exit 1
+fi
+
+# bail out if dumps are not active.
+if [ $DUMP_ACTIVE -eq 0 ] ; then
+	exit 0
+fi
+
+# make sure dump variables exist
+if [ ! "$DUMPDEV" ] ; then
+	echo "DUMPDEV not defined in $CONFIG_FILE!" >&2
+	exit 1
+fi
+
+# make sure $DUMPDEV exists
+if [ ! -e "$DUMPDEV" ] ; then
+	# make sure /etc/fstab exists (unrealistic check)
+	if [ ! -e /etc/fstab ] ; then
+		echo "/etc/fstab does not exist!" >&2
+		exit 1
+	fi
+
+	# get the primary swap partition out of /etc/fstab
+	primary_dumpdev=`cat /etc/fstab | grep -v '^#' | \
+		awk '{ if ($2 == "swap") { print $1 } }' | \
+		head -n 1`
+
+	if [ "$primary_dumpdev" ] && [ -b "$primary_dumpdev" ] ; then
+		# make the link from /dev/{whatever} to /dev/vmdump
+
+		if [ $((DUMP_FLAGS & $DUMP_FLAGS_NETDUMP)) == 0 ]; then
+			ln -s $primary_dumpdev $DUMPDEV
+		fi
+	fi
+fi
+
+# make sure we remove older char dump devices
+if [ -c $DUMPSYSDEVICE ] ; then
+	/bin/rm -f $DUMPSYSDEVICE
+fi
+
+# make sure system dump device exists -- otherwise, make it
+if [ ! -e $DUMPSYSDEVICE ] ; then
+	if [ ! -x '/bin/cut' ] ; then
+		VERSION=`/bin/uname -r | awk -F. '{ print $1"."$2}'`
+	else
+		VERSION=`/bin/uname -r | /bin/cut -b 1-3`
+	fi
+	if [ $VERSION = "2.4" ]; then
+		mknod $DUMPSYSDEVICE c 227 0
+	else
+		mknod $DUMPSYSDEVICE c 10 230 
+	fi
+	chmod 644 $DUMPSYSDEVICE
+fi
+
+# make sure dump variables exist
+if [ ! "$DUMPDIR" ] ; then
+	echo "DUMPDIR not defined in $CONFIG_FILE!" >&2
+	exit 1
+fi
+
+# make sure $DUMPDIR exists
+if [ ! -d "$DUMPDIR" ] ; then
+	mkdir -p $DUMPDIR
+	if [ $? -ne 0 ] ; then
+		echo "Error: unable to create directory $DUMPDIR!" >&2
+	exit 1
+	fi
+fi
+
+# parse each argument.
+if [ "$1" = "config" ] ; then
+	config_lkcd
+elif [ "$1" = "save" ] ; then
+	save_lkcd
+elif [ "$1" = "query" ] ; then
+	query_lkcd
+elif [ "$1" = "dump" ] ; then
+	dump_lkcd
+else
+	usage
+fi
+
+# leave (with success)
+exit 0

@@ -1,0 +1,41 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## reportTCPstats.psp
+## This is the template for the TCP Statistics report page.
+##
+## STATUS: under construction
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, iph:iph, FormUtils, Nodes, OSUtils, commands, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'percentUsed': FormUtils.NodeEntry(
+            path='/rbt/netstats',
+            type='string')
+    }
+    return entries
+</psp:method>
+
+<%
+
+mgmt = self.session().value('mgmt')
+tcpdata = Nodes.present(mgmt, "/rbt/netstats/state/tcp", "No TCP statistics available");
+
+%>
+
+<% self.beginPagelet() %>
+
+<div class="indent">
+  <p class="rawText"><%= tcpdata %></p>
+</div>
+
+<% self.endPagelet() %>
+

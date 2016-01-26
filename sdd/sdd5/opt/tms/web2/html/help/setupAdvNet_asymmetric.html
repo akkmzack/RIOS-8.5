@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Asymmetric Routing Features</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#279300">Chapter 6	Configuring Network Integration Features</a> : Configuring Asymmetric Routing Features</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="279300">Configuring Asymmetric Routing Features</a></div>
+      <div class="Body"><a name="279302">You enable asymmetric route detection in the Configure &gt; Networking &gt; Asymmetric Routing page. </a></div>
+      <div class="Body"><a name="279303">Asymmetric route detection automatically detects and reports asymmetric routing conditions and caches </a>this information to avoid losing connectivity between a client and a server. </div>
+      <div class="Body"><a name="279304">Asymmetric routing is when a packet takes one path to the destination and takes another path when </a>returning to the source. Asymmetric routing is common within most networks; the larger the network, the more likely there is asymmetric routing in the network. </div>
+      <div class="Body"><a name="731653">The asymmetric routing feature in RiOS v8.5 is compatible with IPv6.</a></div>
+      <div class="Body"><a name="279307">Asymmetric routing is undesirable for many network devices including, firewalls, VPNs, and Steelhead </a>appliances. These devices all rely on seeing every packet to function properly. When Steelhead appliances are deployed in a network, all TCP traffic must flow through the same Steelhead appliances in the forward and reverse directions. If traffic flows through a Steelhead appliance in one direction and not the other, then TCP clients are unable to make connections to TCP servers. When deploying Steelhead appliances into redundant networks, there is a possibility of traffic taking different forward and return paths so that traffic in one direction goes through Steelhead appliances but traffic in the reverse direction does not.</div>
+      <div class="Body"><a name="279327">Asymmetric automatic detection enables Steelhead appliances to detect the presence of asymmetry within </a>the network. Asymmetry is detected by the client-side Steelhead appliances. Once detected, the Steelhead appliance passes through asymmetric traffic unoptimized allowing the TCP connections to continue to work. The first TCP connection for a pair of addresses might be dropped because during the detection process the Steelhead appliances have no way of knowing that the connection is asymmetric. </div>
+      <div class="Body"><a name="279337">If asymmetric routing is detected, an entry is placed in the asymmetric routing table and any subsequent </a>connections from that IP-address pair is passed through unoptimized. Further connections between these hosts are not optimized until that particular asymmetric routing cache entry times out. </div>
+      <div class="Body"><a name="279338">The Configure &gt; Networking &gt; Asymmetric Routing page displays the asymmetric routing table. This table </a>describes the different types of asymmetry.</div>
+      <table class="RegularTable" style="text-align: left; width: 468.31248000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 91.9368pt">
+            <div class="CellHeading"><a name="279341">Type</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 180.6876pt">
+            <div class="CellHeading"><a name="279343">Description</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 195.68808pt">
+            <div class="CellHeading"><a name="279345">Asymmetric Routing Table and Log Entries</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279347">Complete </a>Asymmetry</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279352">Packets traverse both Steelhead appliances </a>going from the client to the server but bypass both Steelhead appliances on the return path.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <li class="CellBullet"><a name="279357">Asymmetric Routing Table: bad RST</a></li>
+            <li class="CellBullet"><a name="279358">Log: Sep 5 11:16:38 gen-sh102 kernel: </a>[intercept.WARN] asymmetric routing between 10.11.111.19 and 10.11.25.23 detected (bad RST)</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279360">Server-Side </a>Asymmetry</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279365">Packets traverse both Steelhead appliances </a>going from the client to the server but bypass the server-side Steelhead appliance on the return path.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <li class="CellBullet"><a name="279370">Asymmetric Routing Table: bad SYN/ACK</a></li>
+            <li class="CellBullet"><a name="279371">Log: Sep 7 16:17:25 gen-sh102 kernel: </a>[intercept.WARN] asymmetric routing between 10.11.25.23:5001 and 10.11.111.19:33261 detected (bad SYN/ACK)</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279373">Client-Side </a>Asymmetry</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279378">Packets traverse both Steelhead appliances </a>going from the client to the server but bypass the client-side Steelhead appliance on the return path.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <li class="CellBullet"><a name="279383">Asymmetric Routing Table: no SYN/ACK</a></li>
+            <li class="CellBullet"><a name="279384">Log: Sep 7 16:41:45 gen-sh102 kernel: </a>[intercept.WARN] asymmetric routing between 10.11.111.19:33262 and 10.11.25.23:5001 detected (no SYN/ACK)</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279386">multiSYN </a>Retransmit</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="279388">The types of multiSYN retransmits are:</a></div>
+            <li class="CellBullet"><a name="279389">Probe-filtered occurs when the client-</a>side Steelhead appliance sends out multiple SYN+ frames and does not get a response.</li>
+            <li class="CellBullet"><a name="279393">SYN-remit occurs when the client-side </a>Steelhead appliance receives multiple SYN retransmits from a client and does not see a SYN/ACK packet from the destination server.</li>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <li class="CellBullet"><a name="279398">Asymmetric Routing Table: probe-</a>filtered(not-AR)</li>
+            <li class="CellBullet"><a name="279399">Log: Sep 13 20:59:16 gen-sh102 kernel: </a>[intercept.WARN] it appears as though probes from 10.11.111.19 to 10.11.25.23 are being filtered. Passing through connections between these two hosts.</li>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="279401">Detecting and caching asymmetric routes does not optimize these packets. If you want to optimize </a>asymmetric routed packets you must make sure that packets going to the WAN always go through a Steelhead appliance either by using a multiport Steelhead appliance, connection forwarding, or using external ways to redirect packets, such as WCCP or PBR. </div>
+      <div class="Body"><a name="279413">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_forwarding.html#279521', '');" title="Configuring Connection Forwarding Features">Configuring Connection Forwarding Features</a></span> or the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading2"><a name="279416">Troubleshooting Asymmetric Routes</a></div>
+      <div class="Body"><a name="279417">You can use these tools to detect and analyze asymmetric routes:</a></div>
+      <li class="Bullet"><span class="Bold"><a name="279421">TCP Dump</a></span> - Run a TCP dump diagnostic report on the client-side Steelhead appliance to verify the packet sequence that is causing the asymmetric route detection. You can take traces on the LAN and WAN ports of the Steelhead appliance and, based on the packet maps, look for the packet sequence that is expected for the type of warning message that was in the log. </li>
+      <div class="Indent1"><a name="279426">As an example, to obtain information about all packets on the WAN interface sourced from or destined </a>to 10.0.0.1, and with a source and destination TCP port of 80:<span class="Bold" style="font-weight: normal"> </span></div>
+      <div class="Indent1"><a name="279427">1. Choose Reports &gt; Diagnostics &gt; TCP Dumps to display the TCP Dumps page.</a></div>
+      <div class="Indent1"><a name="279428">2. Click </a><span style="font-weight: bold">Add a New TCP Dump</span>.</div>
+      <div class="Indent1"><a name="279429">3. Select the WAN interface.</a></div>
+      <div class="Indent1"><a name="279430">4. Specify 10.0.0.1 as the source and destination address.</a></div>
+      <div class="Indent1"><a name="279431">5. Specify TCP port 80 as the source and destination port.</a></div>
+      <div class="Indent1"><a name="279432">6. Select the Schedule Dump check box and specify the date and time to initiate the dump.</a></div>
+      <div class="Indent1"><a name="279433">7. Specify any other options such as the capture filename or duration.</a></div>
+      <div class="Indent1"><a name="279434">8. Click </a><span style="font-weight: bold">Add</span>.</div>
+      <div class="Body"><a name="279438">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'diagnosticTcpdumps.html#300840', '');" title="Capturing and Uploading TCP Dumps">Capturing and Uploading TCP Dumps</a></span>.</div>
+      <li class="Bullet"><span class="Bold"><a name="279439">Trace Route - </a></span>From the CLI, run the <span style="font-weight: bold">traceroute</span> tool to discover what path a packet is taking from the client to the server and from the server to the client. You access the client and run the <span class="Bold">traceroute</span> command with the IP address of the server, then run the <span class="Bold">traceroute</span> command from the server with the IP address of the client: for example, for a Cisco router:</li>
+      <div class="CodeIndent1"><a name="279440">#Client&#8217;s Address: 10.1.0.2 </a></div>
+      <div class="CodeIndent1"><a name="279441">#Server&#8217;s Address: 10.0.0.4 </a></div>
+      <div class="CodeIndent1"><a name="279442">client# traceroute 10.0.0.4 Type escape sequence to abort. </a></div>
+      <div class="CodeIndent1"><a name="279443">Tracing the route to 10.0.0.4 </a></div>
+      <div class="CodeIndent1"><a name="279444">1 10.1.0.1 4 msec 0 msec 4 msec </a></div>
+      <div class="CodeIndent1"><a name="279445">2 10.0.0.2 4 msec 4 msec 0 msec </a></div>
+      <div class="CodeIndent1"><a name="279446">3 10.0.0.3 4 msec 4 msec 0 msec </a></div>
+      <div class="CodeIndent1"><a name="279447">4 10.0.0.4 4 msec 4 msec 0 msec </a></div>
+      <div class="CodeIndent1"><a name="279448">server# traceroute 10.1.0.2 Type escape sequence to abort. </a></div>
+      <div class="CodeIndent1"><a name="279449">Tracing the route to 10.1.0.2</a></div>
+      <div class="CodeIndent1"><a name="279450">1 10.0.0.6 4 msec 0 msec 4 msec </a></div>
+      <div class="CodeIndent1"><a name="279451">2 10.0.0.5 4 msec 4 msec 0 msec </a></div>
+      <div class="CodeIndent1"><a name="279452">3 10.1.0.1 4 msec 4 msec 0 msec </a></div>
+      <div class="CodeIndent1"><a name="279453">4 10.1.0.2 4 msec 4 msec 0 msec</a></div>
+      <div class="Body"><a name="279460">For details, see the </a><span class="book_title">Riverbed Command-Line Interface Reference Manual</span> or the <span class="book_title">Steelhead Appliance Deployment </span><span class="book_title">Guide</span>.</div>
+      <div class="HeadingProcedure"><a name="279461">To automatically detect asymmetric routing</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="279462">C</a><span style="font-size: 9.0pt">hoose</span> Configure &gt; Networking &gt; Asymmetric Routing to display the Asymmetric Routing page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="279467">Under Asymmetric Routing Settings, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="836787">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="836789">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836792">Enable Asymmetric Routing </a>Detection</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836794">Detects asymmetric routes in your network.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836796">Enable Asymmetric Routing </a>Pass-Through</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836798">Enables pass-through traffic if asymmetric routing is detected.</a></div>
+            <div class="CellBody"><a name="836799">If asymmetric routing is detected, the pair of IP addresses, defined by the client </a>and server addresses of this connection, is cached on the Steelhead appliance. Further connections between these hosts are passed through unoptimized until that particular asymmetric routing cache entry times out.</div>
+            <div class="CellBody"><a name="836803">Detecting and caching asymmetric routes does not optimize these packets. If </a>you want to optimize asymmetric routed packets you must make sure that the packets going to the WAN always go through a Steelhead appliance either by using a multiport Steelhead appliance, connection forwarding, or using external ways to redirect packets, such as WCCP or PBR. </div>
+            <div class="CellBody"><a name="836813">For details, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836815">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="836817">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="279505">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="279506">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_forwarding.html#279521', '');" title="Configuring Connection Forwarding Features" name="279510">Configuring Connection Forwarding Features</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'diagnosticSysdumps.html#300805', '');" title="Generating System Dumps" name="279514">Generating System Dumps</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'diagnosticSnapshots.html#300825', '');" title="Viewing Process Dumps" name="279518">Viewing Process Dumps</a></span></li>
+      <div class="Pbreak_H1"><a name="415821">&nbsp;</a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

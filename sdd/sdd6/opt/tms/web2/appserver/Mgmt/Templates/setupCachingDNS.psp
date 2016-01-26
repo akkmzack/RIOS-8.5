@@ -1,0 +1,313 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupCachingDNS.psp
+##
+## Caching DNS Settings
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportDNSHits', 'reportDNSUtil') %>
+
+<psp:method name="nodeEntries">
+    return {
+        'cachingEnabled': FormUtils.NodeEntry(
+            path='/rbt/dns/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Caching DNS'),
+        'cacheSize': FormUtils.NodeEntry(
+            path='/rbt/dns/config/cache_size',
+            type='uint64',
+            validate=('intInRange', '[524288, 2097152]'),
+            widgetClass='medium',
+            label='DNS Cache Size (bytes)'),
+        'cacheForwarded': FormUtils.NodeEntry(
+            path='/rbt/dns/config/cache_forwarded',
+            type='bool',
+            widget='checkbox',
+            labelClass='label-fixed',
+            label='Caching of Forwarded Responses',
+            units='Enable'),
+        'maxCacheTime': FormUtils.NodeEntry(
+            path='/rbt/dns/config/max_cache_ttl',
+            type='uint32',
+            validate=('intInRange', '[2, 2592000]'),
+            widgetClass='medium',
+            label='Maximum Cache Time (seconds)'),
+        'minCacheTime': FormUtils.NodeEntry(
+            path='/rbt/dns/config/min_cache_ttl',
+            type='uint32',
+            widgetClass='medium',
+            label='Minimum Cache Time (seconds)'),
+        'nMaxCacheTime': FormUtils.NodeEntry(
+            path='/rbt/dns/config/max_ncache_ttl',
+            type='uint32',
+            validate=('intInRange', '[2, 2592000]'),
+            widgetClass='medium',
+            label='Neg DNS Maximum Cache Time (seconds)'),
+        'nMinCacheTime': FormUtils.NodeEntry(
+            path='/rbt/dns/config/min_ncache_ttl',
+            type='uint32',
+            widgetClass='medium',
+            label='Neg DNS Minimum Cache Time (seconds)'),
+        'cacheFreeze': FormUtils.NodeEntry(
+            path='/rbt/dns/config/cache_freeze',
+            type='bool',
+            widget='checkbox',
+            label='Freeze Cache',
+            units='Freeze'),
+        'frozenMin': FormUtils.NodeEntry(
+            path='/rbt/dns/config/frozen_min_ttl',
+            type='uint32',
+            validate=('intInRange', '[0, 604800]'),
+            widgetClass='medium',
+            label='Minimum TTL of a Frozen Entry (seconds)'),
+        'avoidUnresponsive': FormUtils.NodeEntry(
+            path='/rbt/dns/config/forwarder_failure_detection',
+            type='bool',
+            widget='checkbox',
+            labelClass='label-fixed',
+            label='For Unresponsive Name Servers',
+            units='Avoid'),
+        'failureTime': FormUtils.NodeEntry(
+            path='/rbt/dns/config/forwarder_failure_time',
+            type='uint32',
+            widgetClass='medium',
+            label='Forwarder Down After (seconds)'),
+        'failureRequests': FormUtils.NodeEntry(
+            path='/rbt/dns/config/forwarder_failure_count',
+            type='uint32',
+            widgetClass='medium',
+            label='Forwarder Down After (requests)'),
+        'retryAfter': FormUtils.NodeEntry(
+            path='/rbt/dns/config/forwarder_time_stay_down',
+            type='uint32',
+            widgetClass='medium',
+            label='Retry Forwarder After (seconds)'),
+        'fallback': FormUtils.NodeEntry(
+            path='/rbt/dns/config/root_fallback',
+            type='bool',
+            widget='checkbox',
+            label='Fallback to Root Name Servers',
+            units='Fallback'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'respondPrimary': FormUtils.NodeEntry(
+            name='primaryInterface',
+            widget='checkboxLeft',
+            label='Primary Interface Responding to DNS Requests'),
+        'respondAux': FormUtils.NodeEntry(
+            name='auxInterface',
+            widget='checkboxLeft',
+            label='Aux Interface Responding to DNS Requests'),
+        'addNameserver_addr': FormUtils.NodeEntry(
+            name='addNameserver_addr',
+            type='ipv4addr',
+            label='Name Server IP Address'),
+        'addNameserver_insertAt': FormUtils.NodeEntry(
+            name='addNameserver_insertAt',
+            widget='select',
+            label='Position'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+if Nodes.present(mgmt, pathPrefix + '/rbt/dns/config/interfaces/primary'): {
+    dialogEntries['respondPrimary'].value = 'true'
+} else: {
+    dialogEntries['respondPrimary'].value = 'false'
+}
+if Nodes.present(mgmt, pathPrefix + '/rbt/dns/config/interfaces/aux'): {
+    dialogEntries['respondAux'].value = 'true'
+} else: {
+    dialogEntries['respondAux'].value = 'false'
+}
+
+
+
+inserts = Nodes.getMgmtLocalChildrenNames(mgmt,
+                                          pathPrefix + '/rbt/dns/config/forwarders')
+if inserts: {
+    inserts.sort(FormUtils.compareStringInts)
+    inserts += str(int(inserts[-1]) + 1)
+}
+else: {
+    inserts = ['1']
+}
+dialogEntries['addNameserver_insertAt'].selectOptions = inserts
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      id="cachingDnsForm_enable"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>General Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['cachingEnabled'].html(self) %>
+      <div class="indent">
+        <%= nodeEntries['cacheSize'].html(self, format='block') %>
+      </div>
+      <%= dialogEntries['respondPrimary'].html(self) %>
+      <%= dialogEntries['respondAux'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="cachingDnsSettings" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form method="post"
+      id="cachingDnsForm_nameservers"
+      action="<%= self.thisPageletRequest() %>">
+<%
+nameserverTable = ajaxentrytable.AjaxEntryTable('nameserver',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=cachingDnsNameservers'),
+    titleText='DNS Forwarding Name Servers',
+    headerSpec=('', 'Name Server IP Address', 'Enabled/Disabled'),
+    rowSpec= """
+[AjaxEntryTable.tdReorderCheckbox('line', 'selected_', 'moveto_'),
+ AjaxEntryTable.tdAttr('addr'),
+ AjaxEntryTable.tdActiveSelect('enabled', '_controlnameserver_', 'line', [['enabled', 'Enabled'], ['disabled', 'Disabled']], 'sendNameserverControl(this)')]
+""",
+    emptyMessage='No current DNS forwarding name servers.',
+    removeName='removeLines',
+    removeButtonText='Remove Selected Servers',
+    moveName='moveLines',
+    moveButtonText='Move Selected Servers...',
+    moveButtonCancelText='Cancel Move',
+    postProcessing="AjaxEntryTable.postReorderCheckbox('line', 'moveto_')",
+    addButtonText='Add a New DNS Name Server',
+    addButtonName='addNameserver')
+
+    nameserverTable.addDivContent = '''
+<div class="midLevel">
+  <!-- MSIE Bug: Forms with only one text input don't send the submit field with the return key! -->
+  <input type="text" style="display: none;" disabled="disabled" size="1" />
+  <table>
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['addNameserver_addr'].html(self),
+       dialogEntries['addNameserver_insertAt'].html(self))
+%>
+
+  <%= nameserverTable.html(self, 'topLevel') %>
+
+  <div>
+    <input type="hidden" name="_action_" value="cachingDnsServers" />
+  </div>
+</form>
+
+<form method="post"
+      id="cachingDnsForm_advanced"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Advanced Cache</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['cacheForwarded'].html(self) %>
+        <%= nodeEntries['maxCacheTime'].html(self) %>
+        <%= nodeEntries['minCacheTime'].html(self) %>
+        <%= nodeEntries['nMaxCacheTime'].html(self) %>
+        <%= nodeEntries['nMinCacheTime'].html(self) %>
+        <%= nodeEntries['cacheFreeze'].html(self) %>
+        <%= nodeEntries['frozenMin'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Advanced Name Servers</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['avoidUnresponsive'].html(self) %>
+        <%= nodeEntries['failureTime'].html(self) %>
+        <%= nodeEntries['failureRequests'].html(self) %>
+        <%= nodeEntries['retryAfter'].html(self) %>
+        <%= nodeEntries['fallback'].html(self) %>
+      </table>
+    </div>
+    <input type="hidden" name="_action_" value="cachingDnsAdvanced" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+dnsEnabled = Nodes.present(mgmt, '/rbt/dns/config/enable') == 'true'
+if not policyType: { # Display the "Clear Cache" button for SH, but not CMC.
+%>
+
+<form method="post"
+      id="cachingDnsForm_actions"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Cache Actions</legend>
+
+<%
+    if dnsEnabled: {
+%>
+
+    <div class="submitButtons">
+      <%= FormUtils.formSubmitButtons( self, {'name':'clearCache',
+                                        'value':'Clear Cache',
+                                        'onclick':'buttonSubmit(this)',
+                                        'validate':False} )%>
+      <input type="hidden" name="_action_" value="cachingDnsCache" />
+    </div>
+
+<%
+    }
+    else: {
+        # Disable "Clear Cache" button when DNS is not enabled.
+        # (We just need a fake disabled button that doesn't do anything.)
+%>
+
+    <div class="dimmed">
+      <p>(Not available when Caching DNS is disabled.)</p>
+      <%= FormUtils.formSubmitButtons( self, {'name':'clearCache',
+                                           'value':'Clear Cache',
+                                           'validate':False,
+                                           'disabled':'disabled'} )%>
+    </div>
+
+<%  } %>
+
+  </fieldset>
+</form>
+
+<%
+} %>
+
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+function sendNameserverControl(element) {
+    if ('_' == element.name.charAt(0)) {
+        element.name = element.name.substr(1);
+    }
+    element.form.submit();
+}
+
+// -->
+</script>
+
+

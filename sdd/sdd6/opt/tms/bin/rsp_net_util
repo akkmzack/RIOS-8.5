@@ -1,0 +1,160 @@
+#!/bin/bash
+#
+# Perform various rspnet related functions
+
+IPTABLES=/sbin/iptables
+LSMOD=/sbin/lsmod
+MODPROBE=/sbin/modprobe
+INSMOD=/sbin/insmod
+RMMOD=/sbin/rmmod
+LOGGER=/usr/bin/logger
+
+RBTKMODS=/opt/rbt/lib/modules
+
+usage()
+{
+    log_error "Invalid params passed to $0"
+    exit 1
+}
+
+log_error()
+{
+    echo $1
+    $LOGGER -p user.err "RSPNET utils" $1
+}
+
+log_warning()
+{
+    echo $1
+    $LOGGER -p user.warn "RSPNET utils" $1
+}
+
+log_info()
+{
+    echo $1
+    $LOGGER -p user.info "RSPNET utils" $1
+}
+
+#
+# Attempts to delete the given table.  Returns an exit status of zero iff the
+# operation succeeds.  Note that this returns a non-zero status if the table
+# does not exist.
+#
+
+function delete_table {
+    $IPTABLES -F -t $1
+    $IPTABLES -Z -t $1
+    $IPTABLES -X -t $1
+}
+
+#
+# Attempts to remove the given IP table and unload the associated module.
+# Returns zero iff this is successful, or if the module does not exist.
+#
+
+function unload_table {
+
+    $LSMOD | grep "^iptable_$1" > /dev/null 2>&1
+
+    if [ $? -ne 0 ]; then
+        return 0
+    fi
+
+    delete_table $1
+    $MODPROBE -r "iptable_$1"
+}
+
+#
+# Attempts to unload all RSP-related tables/modules.  Returns zero if this
+# is successful.
+#
+
+function unload_rsp {
+
+    #
+    # Attempt to unload tables "rbtfwd", "rbtnfmod", and "rbtnat".  Note
+    # that any associated modules might be in use by other features, so we
+    # ignore failures.
+    #
+
+    delete_table "rbtnat"
+    delete_table "rbtfwd"
+
+    $LSMOD | grep '^rbtnfmod' > /dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+
+        $RMMOD rbtnfmod
+
+        if [ $? -ne 0 ]; then
+            log_warning "Failed to unload rbtnfmod module"
+        fi
+
+    fi
+
+    return 0
+}
+
+function load_rsp {
+    # handle consecutive loads
+
+    $LSMOD | grep '^rbtnfmod' > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        return 0
+    fi
+
+    $INSMOD $RBTKMODS/rbtnfmod.ko
+    if [ $? -ne 0 ]; then
+        log_error "cannot load rbtnfmod"
+        return 1
+    fi
+}
+
+case "$1" in
+
+        rsp_system_mode)
+            log_info "Enabling RSP system mode"
+            load_rsp
+            if [ $? -ne 0 ]; then
+                log_error "Unable to set RSP system mode"
+                exit 1
+            fi
+        ;;
+
+        no_rsp_system_mode)
+            log_info "Disabling RSP system mode"
+            unload_rsp
+            if [ $? -ne 0 ]; then
+                log_error "Unable to unset RSP system mode"
+                exit 1
+            fi
+        ;;
+
+        rsp_stop)
+            log_info "Unloading RSP functionality"
+            unload_rsp
+            if [ $? -ne 0 ]; then
+                log_error "Unable to set RSP system mode"
+            fi
+            unload_table "filter"
+            if [ $? -ne 0 ]; then
+                log_error "Unable to unload filter table"
+            fi
+            unload_table "mangle"
+            if [ $? -ne 0 ]; then
+                log_error "Unable to unload mangle table"
+            fi
+            $MODPROBE -r ipt_LOG ip_tables
+            if [ $? -ne 0 ]; then
+                log_error "Unable to rmmod ip_tables"
+            fi
+        ;;
+
+        *)
+            usage
+            exit 1
+	;;
+
+esac
+
+exit 0

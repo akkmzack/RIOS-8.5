@@ -1,0 +1,31 @@
+<%
+## (C) Copyright 2002-2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Jeremy Hou
+##
+## evaHAHeader.psp
+## This provides per page HA/Failover role indicators
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="PagePresentation:Pagelet, eva" %>
+<%@page extends="Pagelet" %>
+
+<%
+mgmt = self.session().value('mgmt')
+edgeHAStatus = eva.edgeHAStatus(mgmt)
+if (edgeHAStatus['peerAddress'] == ''): {
+    # edge HA not in effect
+    return
+}
+%>
+<div id="evaHARoleDiv">
+  Granite Edge Failover Role: <span id="evaHARole"><%= edgeHAStatus['role'] %></span><br />
+  <% if edgeHAStatus['role'] == 'Standby': { %>
+  <span class="hint">Only the Blockstore bytes written and bytes committed will be recorded on a Standby Edge)</span><br />
+  <% } %>
+  <span id="evaHARoleLink">
+    (See the <a id="failoverLink" href="/mgmt/gui?p=setupBranchStorage">
+    Granite Storage Page</a> for details.)
+  </span>
+</div>

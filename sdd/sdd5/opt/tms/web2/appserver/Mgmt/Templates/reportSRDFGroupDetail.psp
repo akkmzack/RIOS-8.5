@@ -1,0 +1,175 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+##
+## reportSRDFGroupDetail.psp
+## This is the template for the SRDF Group Detail report page.
+## Refactored to use common reports code.
+##
+%>
+
+<% # Note: This .psp template extends SRDFOverviewPagelet just like reportSRDFOverview.psp does.
+   # This is because this report uses the same statsd data that the overview template uses. %>
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, Nodes, RVBDUtils, ProductReportContext:SRDFReportPagelet" %>
+<%@page extends="SRDFReportPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+mgmt = self.session().value('mgmt')
+symmId = req.fields().get('symmId')
+rdfGroup = req.fields().get('rdfGroup')
+selApp = self.session().value('appliance', '')
+rdfApp = (selApp) and (selApp.split('_')[1]) or ('')
+
+# Make sure an RDF Server and RDF Group is selected
+if not symmId or not rdfGroup: {
+    self.response().sendRedirect('/mgmt/gui?p=reportSRDFOverview')
+}
+
+# Handle CMC
+rdfAppPrettyName = ''
+if RVBDUtils.isCMC(): {
+    import cmc
+
+    # Make sure an Appliance is selected when page is running on a CMC
+    if not rdfApp: {
+        self.response().sendRedirect('/mgmt/gui?p=reportSRDFOverview')
+    }
+
+    # Get Pretty name of Selected Appliance
+    rdfAppPrettyName = cmc.appPrettyName(mgmt, sn=rdfApp)
+}
+
+reportOpts = {
+    'controlFormId': 'srdfGroupDetailForm',
+    'srdfReportType' : 'srdfGroupDetail',
+    'reportSpecs': {
+        'srdfgroupthroughput': {
+            'tableName': 'srdfGroupDetailThroughputTable',
+            'gfxId': 'srdfGroupDetailThroughput',
+            'gfxDisplayId': 'srdfGroupDetailThroughputGraphImg',
+            'order': 1
+        },
+        'srdfgroupdatareduct': {
+            'tableName': 'srdfGroupDetailDataReductionTable',
+            'gfxId': 'srdfGroupDetailDataReduction',
+            'gfxDisplayId': 'srdfGroupDetailDataReductionGraphImg',
+            'order': 2
+        },
+    },
+}
+
+srdfGroupDetailThroughputTable = ajaxentrytable.AjaxEntryTable('srdfGroupDetailThroughput',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about RDF Group Throughput.')
+
+srdfGroupDetailDataReductionTable = ajaxentrytable.AjaxEntryTable('srdfGroupDetailDataReduction',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Data Reduction.')
+
+# Setup Report
+# Note: Not calling setupReport() because beginPagelet() need to be specialized
+self.prepare(reportOpts)
+dialogEntries = self.dialogEntries(reportOpts)
+self.finalize(dialogEntries, reportOpts)
+
+# If RDF Server is not valid
+invalidMsgText = ''
+if (not reportOpts['rdf_server']): {
+    # Setup invalid page message
+    invalidMsgText = 'No Symmetrix exists with name %s' % symmId
+    if rdfAppPrettyName: {
+        invalidMsgText = '%s for %s' % (invalidMsgText, rdfAppPrettyName)
+    }
+}
+# If RDF Group is not valid
+elif (not reportOpts['rdf_group']): {
+    # Setup invalid page message
+    invalidMsgText = 'No RDF Group exists with name %s on %s' % (rdfGroup, symmId)
+    if rdfAppPrettyName: {
+        invalidMsgText = '%s for %s' % (invalidMsgText, rdfAppPrettyName)
+    }
+}
+
+if invalidMsgText: {
+    # Setup Invalid SRDF Group Detail Page
+    self.beginPagelet(None, noReportHTML=True)
+%>
+<div><%= FormUtils.escapeForJsString(invalidMsgText) %>.</div>
+<%
+    self.endPagelet()
+    return
+} else: {
+    # Setup SRDF Group Detail Page
+    self.beginPagelet(reportOpts)
+    dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+}
+%>
+
+<div><strong><span id="srdfGroupDetailTitle"></span></strong></div>
+
+<div id="srdfGroupDetailGraphDiv" class="graphDiv">
+  <img id="srdfGroupDetailThroughputGraphImg" class="graphImg"
+    alt="Throughput Graph" />
+</div>
+
+<%= srdfGroupDetailThroughputTable.html(self, cssClass="midLevel") %>
+
+<div id="srdfGroupDetailDataReductionGraphDiv" class="graphDiv">
+  <img id="srdfGroupDetailDataReductionGraphImg" class="graphImg"
+    alt="Data Reduction Graph" />
+</div>
+
+<%= srdfGroupDetailDataReductionTable.html(self, cssClass="midLevel") %>
+
+<form id="srdfGroupDetailForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+  <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+
+<%
+# Set the title, since this page does not show up in the navigation window and automatically gets a title.
+titleText = 'RDF Group %s on Symmetrix %s' % (rdfGroup, symmId)
+if RVBDUtils.isCMC() and rdfAppPrettyName: {
+    titleText = "%s for %s" % (titleText, rdfAppPrettyName)
+}
+self.addOnload('setElementText("srdfGroupDetailTitle", "%s");' % FormUtils.escapeForJsString(titleText))
+%>
+
+<% self.endPagelet() %>
+

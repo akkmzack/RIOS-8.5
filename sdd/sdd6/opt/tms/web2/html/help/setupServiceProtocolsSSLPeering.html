@@ -1,0 +1,996 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Secure Peers</title>
+    <link rel="StyleSheet" href="css/ssl.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="ssl.09.01.html#237300">Chapter 7	Configuring SSL and a Secure Inner Channel</a> : Configuring Secure Peers </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="237300">Configuring Secure Peers </a></div>
+      <div class="Body"><a name="222159">You configure secure peers in the Configure &gt; Optimization &gt; Secure Peering (SSL) page. In RiOS v6.0 and </a>later, secure, encrypted peering extends beyond traditional SSL traffic encryption. In addition to SSL-based traffic like HTTPS that always needs a secure connection between the client-side and the server-side Steelhead appliance, you can also secure other types of traffic such as:</div>
+      <li class="Bullet"><a name="222164">MAPI-encrypted, SMB1, and SMB2-signed traffic.</a></li>
+      <li class="Bullet"><a name="262423">Citrix traffic (RiOS v7.0 and later).</a></li>
+      <li class="Bullet"><a name="222166">all other traffic that inherently does not require a secure connection.</a></li>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="222169">To encrypt and optimize the connection for </a><span style="font-style: italic">non-SSL</span> traffic, both the client-side and server-side Steelhead appliances must be running RiOS v6.0 or later. To encrypt and optimize Citrix traffic, both the client-side and server-side Steelhead appliances must be running RiOS v7.0 or later. You must configure secure peering on both the client-side and the server-side Steelhead appliances and the settings must match on both sides. RiOS v4.0 and later encrypts and optimizes SSL traffic.</div>
+      <div class="Heading2"><a name="222181">Secure Inner Channel Overview</a></div>
+      <div class="Body"><a name="222185">Each Steelhead appliance is </a>manufactured with its own self-signed certificate and private key which uniquely identify that Steelhead. The secure inner channel setup process begins with the peer Steelhead appliances authenticating each other by exchanging certificates and negotiating a separate encryption key for each intercepted connection. Next, the Steelhead appliances create corresponding inner connections for all outer connections between the client and the client-side Steelhead appliance and between the server and the server-side Steelhead appliance. </div>
+      <div class="Body"><a name="222204">Peers are detected the first time a client-side Steelhead appliance attempts to connect to the server. The </a>optimization service bypasses this initial connection and does not perform data reduction, but rather uses it to detect peers and populate the peer entry tables. On both Steelhead appliances, an entry appears in a peering list with the certificate of the other peer and identifying information such as IP address and hostname. You can then accept or decline the trust relationship with each Steelhead appliance requesting a secure inner channel. </div>
+      <div class="Body"><a name="222211">After the appliances trust each other, they send encrypted data between themselves over secure inner </a>connections matching the outer connections of the selected traffic types. The trust relationship between the Steelheads is bidirectional; the client-side Steelhead appliance trusts the server-side Steelhead appliance, and vice versa. </div>
+      <div class="Body"><a name="222221">Riverbed recommends using the secure inner channel in place of IPSec encryption to secure traffic.</a></div>
+      <div class="Heading2"><a name="222222">Enabling Secure Peers</a></div>
+      <div class="Body"><a name="222226">This section describes how to secure traffic between client-side and server-side Steelhead appliances.</a></div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="222230">You rarely need to replace a self-signed certificate on a Steelhead; however, if you do, add the CA&#8217;s certificate to </a>the peering trust section so each Steelhead can verify the peer certificate for its peers. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSSLPeering.html#268413', '');" title="Configuring Secure Peers">Configuring Peer Trust</a></span>. </div>
+      <div class="HeadingProcedure"><a name="222237">To enable secure peering</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="264044">If you are securing SMB-signed traffic, encrypted MAPI traffic, or Citrix traffic, enable one of the </a>following on both the server-side and client-side Steelhead appliances: </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <li class="BulletSubBullet2"><a name="264048">Choose Configure &gt; Optimization &gt; CIFS and select Enable SMB Signing.</a></li>
+      <div class="Indent1"><a name="222240">&#8212;or&#8212;</a></div>
+      <li class="BulletSubBullet2"><a name="222241">Choose Configure &gt; Optimization &gt; MAPI and select Enable Encrypted Optimization.</a></li>
+      <div class="Indent1"><a name="263805">&#8212;or&#8212;</a></div>
+      <li class="BulletSubBullet2"><a name="263817">Choose Configure &gt; Optimization &gt; Citrix and select Enable SecureICA Encryption. Both Steelhead </a>appliances must be running RiOS v7.0 or later.</li>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="277765">Riverbed recommends using NTP time synchronization or manually synchronizing the clocks on both </a>the server-side and client-side Steelhead appliances. It is critical that the peer Steelhead appliance time is the same for the trust relationship to work. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222242">On both the server-side and client-side Steelhead appliances, choose Configure &gt; Optimization &gt; Secure </a>Peering (SSL) to display the Secure Peering (SSL) page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222247">Under SSL Secure Peering Settings, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301055">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301057">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301059">Traffic Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301061">Select one of the following traffic types from the drop-down list:</a></div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="301065">SSL Only</a></span> - The peer client-side Steelhead appliance and the server-side Steelhead appliance authenticate each other and then encrypt and optimize all SSL traffic; for example, HTTPS traffic on port 443. This is the default setting.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="301072">SSL and Secure Protocols</a></span> - The peer client-side Steelhead appliance and the server-side Steelhead appliance authenticate each other and then encrypt and optimize all traffic traveling over the following secure protocols: Citrix, SSL, SMB-signed, and encrypted MAPI. </li>
+            <div class="CellIndent1"><a name="301076">SMB-signing, MAPI encryption, or Secure ICA encryption must be enabled on </a>both the client-side and server-side Steelhead appliances when securing SMB-signed traffic, encrypted MAPI traffic, or encrypted Citrix ICA traffic (RiOS v7.0). </div>
+            <div class="CellIndent1"><a name="301083">Enabling this option requires an optimization service restart.</a></div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="301089">All</a></span> - The peer client-side Steelhead appliance and the server-side Steelhead appliance authenticate each other and then encrypt and optimize all traffic. Only the optimized traffic is secure; pass-through traffic is not. Enabling this option requires an optimization service restart.</li>
+            <div class="CellIndent1"><a name="301091">Selecting All can cause up to a 10% performance decline in higher-capacity </a>Steelhead appliances. Take this performance metric into account when sizing a complete secure Steelhead appliance peering environment.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301099">Fallback to No Encryption</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301104">Specifies that the Steelhead appliance optimizes but does not encrypt the </a>connection when it is unable to negotiate a secure, encrypted inner channel connection with the peer. This is the default setting. Enabling this option requires an optimization service restart.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="301108">Riverbed strongly recommends enabling this setting on both the </a>client-side and the server-side Steelhead appliances, especially in mixed deployments where one Steelhead appliance is running RiOS v6.0 or later and the other Steelhead is running an earlier RiOS version.</div>
+            <div class="CellBody"><a name="301124">This option applies only to non-SSL traffic and is unavailable when you select </a>SSL Only as the traffic type.</div>
+            <div class="CellBody"><a name="301125">Clear the check box to pass through connections that do not have a secure </a>encrypted inner channel connection with the peer. Use caution when disabling this setting, as doing so specifies that you strictly do not want traffic optimized between non-secure Steelheads. Consequently, when this setting is disabled connections might be dropped: for example, consider a configuration with a client-side Steelhead running RiOS v5.5.x or earlier and a server-side Steelhead running RiOS v6.0. When this setting is disabled on the server-side Steelhead and All is selected as the traffic type, it will not optimize the connection when a secure channel is unavailable, and might drop it.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222320">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222321">Click </a><span class="Bold">Save</span> to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="267575">If you have changed an encryption setting, you need to restart the Steelhead service. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAppliance_service.html#281155', '');" title="Starting and Stopping the Optimization Service">Starting and Stopping the Optimization Service</a></span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="267582">The Steelhead appliance supports RSA private keys for peers and SSL servers.</a></div>
+      <div class="Heading2"><a name="268413">Configuring Peer Trust</a></div>
+      <div class="Body"><a name="222338">The first time a client-side Steelhead appliance attempts to connect to the server, the optimization service </a>detects peers and populates the peer entry tables. On both Steelhead appliances, an entry appears in a peering list with the information and certificate of the other peer. A peer list provides you with the option of accepting or declining the trust relationship with each Steelhead appliance requesting a secure inner channel. The self-signed peer lists are designated by the following color categories:</div>
+      <li class="Bullet"><span class="Bold"><a name="222349">White</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Lists all trusted Steelhead appliances. When you select Trust for a peer in a black or gray list, the public key of the Steelhead appliance peer is copied into the white list of the local Steelhead appliance trusted host. The list includes the peer expiration date, IP address, and hostname.</li>
+      <li class="Bullet"><span class="Bold"><a name="222361">Black</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Lists all untrusted Steelhead appliances. When you select Do Not Trust for a peer in a white or gray list, the public key of the Steelhead appliance peer is copied into the black list of the local Steelhead appliance untrusted host. The list includes the peer expiration date, IP address, and hostname.</li>
+      <li class="Bullet"><span class="Bold"><a name="222373">Gray</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Lists all Steelhead appliances of unknown status. This list serves as a temporary holding place for all discovered peer Steelhead appliances that are attempting to establish a secure inner channel. The list includes the peer expiration date, IP address, and hostname. You can select one of the following actions to change the status of the peer and move it to the white or black lists: Trust, Do Not Trust, or Remove. </li>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="222377">When a self-signed peer has already been added to a peering trust list manually, the SSL server recognizes it upon </a>the first connection from that peer and automatically places it in the white list (without action by the administrator). The certificate that was previously copied and pasted (or imported) into the trusted list is not removed.</div>
+      <div class="Body"><a name="222378">The Configure &gt; Optimization &gt; Secure Peering (SSL) page also provides you with the following options </a>for configuring peer certificates and Mobile Controller trust:</div>
+      <li class="Bullet"><span class="Bold"><a name="222382">Peering Trust</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Add and view the following types of entities: </li>
+      <li class="BulletSubDash"><a name="222383">Certificates of trusted peers.</a></li>
+      <li class="BulletSubDash"><a name="222384">Certificates of trusted Certificate Authorities (CAs) that may sign certificates for peers.</a></li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="248652">SCEP Peering Trust</a></span> - Add and view trusted SCEP entities.</li>
+      <li class="Bullet"><span class="Bold"><a name="222389">Mobile Trust</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Add and view trusted Steelhead Mobile Controller entities that may sign certificates for Steelhead Mobile Clients.</li>
+      <div class="HeadingProcedure"><a name="222391">To configure SSL peers</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="222393">Choose Configure &gt; Optimization &gt; Secure Peering (SSL) to display the Secure Peering (SSL) page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="222401">The Steelhead identity certificate details appear, as described in the following table.</a></div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="222405">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="222407">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top" rowspan="7">
+            <div class="CellBody"><a name="222409">Issued To/Issued By</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222411">Common Name</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the common name of the certificate authority.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222415">Organization</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the organization name (for example, the company).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222419">Organization Unit</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the organization unit name (for example, section or department).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222423">Locality</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the city.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222427">State</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the state.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222431">Country</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the country.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222435">Serial Number</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the serial number (Issued To, only).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top" rowspan="2">
+            <div class="CellBody"><a name="222437">Validity</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222439">Issued On</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the date the certificate was issued.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222443">Expires On</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the date the certificate expires. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="222445">Fingerprint</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="222447">Specifies the SSL fingerprint. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top" rowspan="2">
+            <div class="CellBody"><a name="222449">Key</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222451">Type</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the key type.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="222455">Size</a></span><span class="Bold" style="font-weight: normal"> - </span>Specifies the size in bytes.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222457">To replace an existing certificate, Under Certificate, click </a><span class="Bold">Replace</span> and complete the configuration as described in the following table. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301151">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301153">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top" rowspan="5">
+            <div class="CellBody"><a name="301155">Import Existing Private Key and </a>CA-Signed Public Certificate (One File in PEM or PKCS12 formats) </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301157">Click this option if the existing private key and CA-signed certificate are located </a>in one file. The page displays a Private Key and CA-Signed Public Certificate control for browsing to the key and certificate files or a text box for copying and pasting the key and certificate.</div>
+            <div class="CellBody"><span class="Bold"><a name="301158">Note</a></span>: The private key is required. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301162">Local File</a></span><span class="Bold" style="font-weight: normal"> - </span>Browse to the local file.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301166">Text</a></span><span class="Bold" style="font-weight: normal"> - </span>Paste the text content of the file into the text box.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301170">Decryption Password</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the decryption password, if necessary.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301174">Set</a></span><span class="Bold" style="font-weight: normal"> - </span>Sets the peer.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301176">Import Existing Private Key and </a>CA-Signed Public Certificate (Two Files in PEM or DER formats)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301178">Select this option if the existing private key and CA-signed certificate are located </a>in two files. The page displays a Private Key and CA-Signed Public Certificate control for browsing to the key and certificate, or a text box for copying and pasting the key and certificate.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="301179">Importing the private key is optional.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top" rowspan="10">
+            <div class="CellBody"><a name="301181">Generate New Private Key and </a>Self-Signed Public Certificate</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301183">Select to generate a new private key and self-signed public certificate.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301187">Cipher Bits</a></span><span class="Bold" style="font-weight: normal"> - </span>Select the key length from the drop-down list. The default value is <span class="Bold" style="font-weight: normal">1024</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301191">Common Name (required)</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the hostname of the peer.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301195">Organization Name</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the organization name (for example, the company).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301199">Organization Unit Name</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the organization unit name (for example, the section or department).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301203">Locality</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the city.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301207">State (no abbreviations)</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the state.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301211">Country (2-letter code)</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the country (2-letter code only).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301215">Email Address</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify the email address of the contact person.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold"><a name="301219">Validity Period (Days)</a></span><span class="Bold" style="font-weight: normal"> - </span>Specify how many days the certificate is valid. The default value is <span class="Bold" style="font-weight: normal">730</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222533">To export an existing certificate, under Certificate, click </a><span class="Bold">Export </span>and complete the configuration as described in the following table. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301226">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301228">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301230">Password/Password Confirm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301232">Specify and confirm the encrypted password if you are including the private key </a>(required if including key). The password must be at least 4 characters long.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301234">Include Private Key</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301236">Includes the private key in the export. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301238">Export</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301243">Exports the Steelhead appliance peering certificate and key.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222559">To generate a CSR, under Certificate, click </a><span class="Bold">Generate CSR </span>and complete the configuration as described in the following table. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301250">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301252">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301254">Common Name (required)</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301256">Specify the common name (hostname) of the peer.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301258">Organization Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301260">Specify the organization name (for example, the company).</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301262">Organization Unit Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301264">Specify the organization unit name (for example, the section or department).</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301266">Locality</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301268">Specify the city.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301270">State </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301272">Specify the state. Do not abbreviate.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301274">Country (2-letter code)</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301276">Specify the country (2-letter code only).</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301278">Email Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301280">Specify the email address of the contact person.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301282">Generate CSR</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301284">Generates the Certificate Signing Request.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="242796">To use SCEP to manage the certificate, under Certificate, click </a><span class="Bold">SCEP Management </span>and complete the configuration as described in the following table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="300504">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="300506">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300508">URL</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300510">Specify the URL of the SCEP responder. Use the format</a></div>
+            <div class="CellBody"><a name="300511">http://host[:port]/path[/to/service]</a></div>
+            <div class="CellBody"><a name="300512">Example:</a></div>
+            <div class="Code"><a name="300513">http:examplehost:1212/pathtoservice </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300515">Maximum Number of Polls</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300520">Specify the maximum number of polls before the Steelhead appliance cancels the </a>enrollment. The peering certificate is not modified. The default value is <span class="Bold" style="font-weight: normal">5</span>.</div>
+            <div class="CellBody"><a name="300523">A poll is a request to the server for an enrolled certificate by the Steelhead </a>appliance. The Steelhead appliance polls only if the server responds with pending. If the server responds with fa<span class="Bold">il</span> then the Steelhead appliance does not poll.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300532">Poll Period</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300534">Specify the poll frequency in minutes. The default value is 5. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300536">Challenge Passphrase</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300538">Specify the challenge password phrase.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300540">Enable Auto Enrollment</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300542">Enables automatic re-enrollment of a certificate to be signed by a CA using SCEP.</a></div>
+            <li class="CellBullet"><span class="Bold"><a name="300543">Expiration Threshold</a></span> - Specify the amount of time (in days) to schedule re-enrollment before the certificate expires. The range is 1 to 60 days. The default value is 30 days.</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300545">Update SCEP Settings</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300547">Updates the SCEP settings. </a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="248796">To add or remove a Trusted entity, under Peering Trust, complete the configuration as described in the </a>following table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="300579">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="300581">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300583">Add a New Trusted Entity</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300585">Displays the controls for adding trusted entities.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300588">Trust Existing CA</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300590">Select an existing CA from the drop-down list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300592">Trust New Certificate</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300597">Adds a new CA or peer certificate. The Steelhead appliance supports RSA and </a>DSA for peering trust entities.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300599">Optional Local Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300601">Optionally, specify a local name for the entity (for example, the fully qualified </a>domain name).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300603">Local File</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300605">Browse to the local file.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300607">Cert Text</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300609">Paste the content of the certificate text file into the text box.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300611">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300613">Adds the trusted entity (or peer) to the trusted peers list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300615">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300617">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="248845">To add or remove a SCEP Trusted entity, under SCEP Peering Trust, complete the configuration as </a>described in the following table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="300554">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="300556">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300558">Add a New SCEP Entity</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300560">Displays the controls for adding a trusted SCEP entity.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300562">Peering Trust</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300564">Select a peering trust from the drop-down list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300566">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300568">Adds the trusted entity (or peer) to the trusted peers list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300570">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="300572">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="248872">To add or remove a Steelhead Mobile Controller trusted entity, under Mobile Trust, complete the </a>configuration as described in the following table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301291">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301293">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301295">Add a New Mobile Entity</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301300">Displays the controls for adding a trusted Steelhead Mobile Controller entity.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301302">Optional Local Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301304">Optionally, specify a local name for the entity (for example, the fully qualified </a>domain name).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301306">Local File</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301308">Browse to the local file.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301310">Cert Text</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301312">Paste the content of the certificate text file into the text box.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301314">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301316">Adds the trusted entity (or peer) to the trusted peers list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301318">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301320">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">9.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222690">To change the trust status of a self-signed peer and move it to another list, or to remove a peer from a </a>list, click the down arrow in the <span class="Bold">Actions</span> drop-down list and complete the configuration as described in the following table. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="222691">The white, gray, and black peering lists sort the peers by IP address.</a></div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="222696">Before moving a peer from the gray list to the trusted peers white list, it is critical to verify that the certificate </a>fingerprint does indeed belong to a peer Steelhead appliance, particularly to avoid the potential risk of a man-in-the-middle attack.</div>
+      <table class="RegularTable" style="text-align: left; width: 469.2096pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 139.968pt">
+            <div class="CellHeading"><a name="301327">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.2416pt">
+            <div class="CellHeading"><a name="301329">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301331">Trust</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301338">Changes the peer Steelhead appliance to a trusted entity. The Steelhead </a>appliance automatically finds all Steelhead appliances in your deployment and lists them in the <span class="Bold" style="font-weight: normal">gray list</span>. When a self-signed peer becomes a trusted entity it moves to the <span class="Bold" style="font-weight: normal">white list</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301344">Do Not Trust</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301346">Changes the self-signed peer from a trusted entity to an untrusted entity. The </a>Steelhead appliance automatically finds all Steelhead appliances in your deployment and lists them by IP address in the <span class="Bold" style="font-weight: normal">gray list</span>. When a self-signed peer becomes an untrusted entity it moves to the <span class="Bold" style="font-weight: normal">black list</span>. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301354">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="301356">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="222737">When the same certificate appears in both the trusted entity and a self-signed peer list, deleting the certificate </a>from one list automatically deletes it from the other.</div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">10.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222738">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">11.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222739">Click </a><span class="Bold">Save</span> to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">12.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="222745">Restart the Steelhead service. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAppliance_service.html#281155', '');" title="Starting and Stopping the Optimization Service">Starting and Stopping the Optimization Service</a></span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="222747">Verifying the Secure Inner Channel Connections</a></div>
+      <div class="Body"><a name="222748">This section describes what happens when a secure inner channel cannot be established for traffic between </a>Steelhead appliances running v6.0 or later and how to verify whether connections are using a secure inner channel.</div>
+      <div class="Body"><a name="222749">When the Steelhead appliances are configured to use secure inner channels for </a><span style="font-weight: bold">S</span>SL traffic only or All optimized traffic:</div>
+      <li class="Bullet"><a name="222750">The first connection that runs into a failure is passed through without optimization. This connection </a>appears as established in the Current Connections report, but it is flagged with a protocol error.</li>
+      <li class="Bullet"><a name="222751">For up to five minutes all follow-on or subsequent connections are passed through. These follow-on </a>connections appear as pass-through in the Current Connections report. You can click the magnifying glass for details on the pass-through reason.</li>
+      <div class="Body"><a name="222756">When the Steelhead appliances are configured to use secure inner channels for SSL and Secure Protocols:</a></div>
+      <li class="Bullet"><a name="222757">The first secure protocol connection (either encrypted MAPI, SMB Signed, or Citrix) that runs into a </a>failure is passed through without optimization if Fallback to No Encryption is disabled. See <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSSLPeering.html#222222', '');" title="Configuring Secure Peers">Enabling Secure Peers</a></span>. </li>
+      <li class="Bullet"><a name="224221">The first SSL connection that runs into a failure is passed through without optimization. This </a>connection appears as established in the Current Connections report, but it is flagged with a protocol error.</li>
+      <li class="Bullet"><a name="222758">For up to five minutes all follow-on or subsequent connections are passed-through. </a></li>
+      <div class="Body"><a name="222759">To verify that the secure inner channel is encrypting and optimizing traffic, choose Reports &gt; Networking </a>&gt; Current Connections. Look for the <span style="font-weight: bold">Lock</span> icon and three yellow arrows, which indicate the connection is encrypted and optimized. If the <span style="font-weight: bold">Lock</span> icon is not visible, or is dimmed, click the magnifying glass to view a failure reason that explains why the Steelhead appliance is not encrypting the connection. If there is a red protocol error, click the magnifying glass to view the reason for the error. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportConnections.html#296976', '');" title="Viewing Current Connections">Viewing Current Connections</a></span> and <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'ssl.09.02.html#221551', '');" title="Configuring SSL Server Certificates and Certificate Authorities">Verifying SSL and Secure Inner Channel Optimization</a></span>.</div>
+      <div class="Heading4"><a name="222769">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceInpathRules.html#322503', '');" title="Configuring In-Path Rules" name="222773">Configuring In-Path Rules</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_peering.html#249892', '');" title="Enabling Peering and Configuring Peering Rules" name="222777">Enabling Peering and Configuring Peering Rules</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'optimization.05.11.html#330324', '');" title="Configuring CIFS Optimization" name="222781">Configuring CIFS Optimization</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization" name="222785">Configuring MAPI Optimization</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupVault.html#282498', '');" title="Unlocking the Secure Vault" name="222789">Unlocking the Secure Vault</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportSSLStatistics.html#367145', '');" title="Viewing SSL Reports" name="222793">Viewing SSL Reports</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'diagnosticSysdumps.html#300805', '');" title="Viewing the System Dumps List" name="222797">Viewing the System Dumps List</a></span></li>
+      <div class="Pbreak_H1"><a name="266479">&nbsp;</a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

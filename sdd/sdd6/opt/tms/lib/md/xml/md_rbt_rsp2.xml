@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_rsp2                                                -->
+<!--   Module Root: /rbt/rsp2                                               -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_rsp2.c           -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/rsp2/config/myconfig</name>                          -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_rsp2">
+    <config>
+        <name>/rbt/rsp2/config/incoming_ha_enable</name>
+        <description>Are incoming RSP HA transfers enabled?</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/pfs/exclusive_override</name>
+        <description>Should RSP and PFS be enabled simultaneously</description>
+        <value type="bool">false</value>
+        </config>
+    <config>
+        <name>/rbt/rsp2/config/disk_lock/enable</name>
+        <description>Is the RSP disk lock check enabled?</description>
+        <value type="bool">true</value>
+    </config>
+    <state-wildcard>
+        <name>/rbt/rsp2/state/slot/*/vm/disk/*/controller/valid/*</name>
+        <description>Valid controllers for the specified disk</description>
+        <value type="uint32"/>
+        <get-func>mrr2_get_valid_disk_controllers_devices</get-func>
+        <iterate-func>mrr2_iterate_valid_disk_controllers_devices</iterate-func>
+    </state-wildcard>
+    <state-wildcard>
+        <name>/rbt/rsp2/state/slot/*/vm/disk/*/device/valid/*</name>
+        <description>Valid device for the specified disk</description>
+        <value type="uint32"/>
+        <get-func>mrr2_get_valid_disk_controllers_devices</get-func>
+        <iterate-func>mrr2_iterate_valid_disk_controllers_devices</iterate-func>
+    </state-wildcard>
+    <state-wildcard>
+        <name>/rbt/rsp2/state/slot/*/vm/attached_disk/*</name>
+        <description>Virtual disks that are attached to a vm</description>
+        <value type="string"/>
+        <get-func>mrr2_get_slot_attached_detached_disk</get-func>
+        <get-func-arg>attached_check</get-func-arg>
+        <iterate-func>mrr2_iterate_attached_detached_slot_disks</iterate-func>
+        <iterate-func-arg>attached_check</iterate-func-arg>
+    </state-wildcard>
+    <state-wildcard>
+        <name>/rbt/rsp2/state/slot/*/vm/detached_disk/*</name>
+        <description>Virtual disks that are unattached to a vm</description>
+        <value type="string"/>
+        <get-func>mrr2_get_slot_attached_detached_disk</get-func>
+        <get-func-arg>detached_check</get-func-arg>
+        <iterate-func>mrr2_iterate_attached_detached_slot_disks</iterate-func>
+        <iterate-func-arg>detached_check</iterate-func-arg>
+    </state-wildcard>
+    <state>
+        <name>/rbt/rsp2/state/backup/*/size_on_disk</name>
+        <description>Size on disk a backup file takes</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_backup</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/backup/*/slot_name</name>
+        <description>Name of slot associated with backup</description>
+        <value type="string"/>
+        <get-func>mrr2_get_backup</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/backup/*/creation_ts</name>
+        <description>Time at which backup was created</description>
+        <value type="uint32"/>
+        <get-func>mrr2_get_backup</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/alarm/error_status</name>
+        <description>General alarm used for RSP issues</description>
+        <value type="bool"/>
+        <get-func>mrr2_get_alarm_error_status</get-func>
+        <get-func-arg>status</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/alarm/error_description</name>
+        <description>Description for the general alarm used for RSP issues</description>
+        <value type="string"/>
+        <get-func>mrr2_get_alarm_error_status</get-func>
+        <get-func-arg>description</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/clone_restore_pending</name>
+        <description>Is a clone restore action pending on the RSP slot?</description>
+        <value type="bool">false</value>
+        <get-func>mrr2_get_slot</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_pings_sent</name>
+        <description>Number of watchdog pings sent</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_pings_received</name>
+        <description>Number of watchdog pings received</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_valid_heartbeats_received</name>
+        <description>Number of valid watchdog heartbeats received</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_invalid_heartbeats_received</name>
+        <description>Number of invalid watchdog heartbeats received</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_ping_timeouts</name>
+        <description>Number of watchdog pings timed out</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_heartbeat_timeouts</name>
+        <description>Number of watchdog heartbeats timed out</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/slot/*/watchdog_total_timeouts</name>
+        <description>Number of total watchdog timeouts</description>
+        <value type="uint64"/>
+        <get-func>mrr2_get_watchdog</get-func>
+    </state>
+
+    <config>
+        <name>/rbt/rsp2/config/slot/next_stats_id</name>
+        <description>Next unallocated RSP stats ID</description>
+        <value type="uint32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config-wildcard>
+        <name> /rbt/rsp2/config/vni/opt/stats_id/*</name>
+        <description>VNI ID</description>
+        <value type="uint32"/>
+        <db-policy>statedb</db-policy>
+    </config-wildcard>
+    <config>
+        <name> /rbt/rsp2/config/vni/opt/stats_id/*/name </name>
+        <description>VNI name</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config-wildcard>
+        <name>/rbt/rsp2/config/slot/stats_id/*</name>
+        <description>Slot ID</description>
+        <value type="uint32"/>
+        <db-policy>statedb</db-policy>
+    </config-wildcard>
+    <config>
+        <name>/rbt/rsp2/config/slot/stats_id/*/name</name>
+        <description>Slot name</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config-wildcard>
+        <name>/rbt/rsp2/config/slot/name/*</name>
+        <description>Status of last outgoing and incoming HA syncs</description>
+        <value type="string"/>
+        <db-policy>statedb</db-policy>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/uninstall_time_sec</name>
+        <description>Stats uninstall time</description>
+        <value type="uint32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/stats_id</name>
+        <description>Slot stats ID</description>
+        <value type="uint32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_incoming_last_sync_status</name>
+        <description>Status of last incoming HA sync</description>
+        <value type="uint32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_incoming_last_sync_status_string</name>
+        <description>String status of last incoming HA sync</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_incoming_last_sync_time</name>
+        <description>Time of last incoming HA sync</description>
+        <value type="datetime_sec">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_incoming_last_sync_host</name>
+        <description>Host where last incoming HA sync was triggered from</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_incoming_last_sync_duration</name>
+        <description>Duration of last incoming sync in seconds</description>
+        <!-- value is -1 if transfer is in progress, >= zero otherwise -->
+        <value type="int32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_outgoing_last_sync_status</name>
+        <description>Status of last outgoing HA sync</description>
+        <value type="uint32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_outgoing_last_sync_status_string</name>
+        <description>String status of last outgoing HA sync</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_outgoing_last_sync_time</name>
+        <description>Time of last outgoing HA sync</description>
+        <value type="datetime_sec">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_outgoing_last_sync_host</name>
+        <description>Host to where last HA sync was triggered to</description>
+        <value type="string"></value>
+        <db-policy>statedb</db-policy>
+    </config>
+    <config>
+        <name>/rbt/rsp2/config/slot/name/*/ha_outgoing_last_sync_duration</name>
+        <description>Duration of last outgoing sync in seconds</description>
+        <!-- value is -1 if transfer is in progress, >= zero otherwise -->
+        <value type="int32">0</value>
+        <db-policy>statedb</db-policy>
+    </config>
+
+    <action>
+        <name>/rbt/rsp2/action/slot/vm/remove_resume_state</name>
+        <description>Remove the resume state from the slot</description>
+        <action-func>mrr2_action_slot_vm_remove_resume_state</action-func>
+        <parameter type="string">slot_name</parameter>
+    </action>
+    <state>
+        <name>/rbt/rsp2/state/disk_layout_switch_ready</name>
+        <description>Will RSP allow a disk layout switch currently</description>
+        <value type="bool"/>
+        <get-func>mrr2_get_disk_layout_switch_ready</get-func>
+    </state>
+    <state>
+        <name>/rbt/rsp2/state/disk_layout_switch_ready_reasons</name>
+        <description>Why won't RSP allow a disk layout switch</description>
+        <value type="string"/>
+        <get-func>mrr2_get_disk_layout_switch_ready</get-func>
+    </state>
+ 
+</node-list>

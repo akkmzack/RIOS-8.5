@@ -1,0 +1,66 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## setupBranchStorage.psp
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, ajaxentrytable, RVBDUtils, OSUtils, Logging, cgi, eva, GfxUtils, reportsHC, time, json" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupDiskManagement',) %>
+
+<psp:method name="pageletNodes">
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    if eva.isCMC and policyType:
+        return [
+            pathPrefix + '/rbt/eva/ext/dc/config/hostname',
+            pathPrefix + '/rbt/eva/ext/dc/config/self_identifier',
+            pathPrefix + '/rbt/eva/ext/dc/config/port',
+            pathPrefix + '/rbt/eva/ext/dc/config/local_interface'
+        ]
+    else:
+        # EVA or Steelhead EX
+        return [ '/rbt/eva/ext/*' ]
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+isPolicyPage = bool(policyType)
+
+edgeLaunched, edgeLaunchMsg, edgeRefresh = (False, None, False)
+if not eva.isCMC: {
+    # Only for EVA or Steelhead EX
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+}
+
+# get a dictionary of the config items needed for this templates and the
+# templates it includes below.
+configDict = eva.graniteConfig(mgmt, fields, isPolicyPage)
+%>
+
+<% self.beginPagelet() %>
+
+<% if not eva.isCMC and not edgeLaunched: {
+    self.writeln('<p>%s</p>' % edgeLaunchMsg)
+    if edgeRefresh: {
+        self.addPageletJavascript('RBT.VE.refreshLater();')
+    }
+    self.endPagelet()
+    return
+} %>
+
+<% if isPolicyPage or configDict['dva'] == '': {
+        # Display settings for setting up a connection to DVA or Active EVA %>
+<%@include file="includes/setupGraniteConnection.psp" %>
+<% } else: {
+        # Display branch storage (DVA) details if granite core configured %>
+<%@include file="includes/setupGraniteSummary.psp" %>
+<% } %>
+<% self.endPagelet() %>

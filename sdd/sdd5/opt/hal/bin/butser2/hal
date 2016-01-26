@@ -1,0 +1,2541 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: Butser II 
+#
+# Models: all
+#
+# Types:
+#
+#    BOOL   : string: "false" | "true"
+#    LIST   : list of strings separated by a newline (LF-ASCI10) character
+#    STRING : string
+#    TABLE  : some table format described in the description
+#    UINT32 : unsigned 32-bit integer
+#
+# Functions:
+#
+#    VOID init_hardware_phase0(VOID)
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase1(VOID)
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#       Returns the number of raid arrays or 0 for none.
+#
+#    TABLE get_raid_status(UINT32)
+#       Returns a table showing the status of each drive in the array.
+#       The format is:
+#
+#       <drive-id> <drive-status>
+#       <drive-id> <drive-status>
+#       ...
+#       <drive-id> <drive-status>
+#
+#       The drive status should be one of "online", "rebuild", "failed",
+#       or "missing".
+#
+#    VOID show_raid_diagram(VOID)
+#       Display an ASCII representation of the RAID bay diagram
+#       with current status.
+#
+#    UINT32 get_temperature(VOID)
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    STRING get_power_supply_status(VOID)
+#       Returns status of redundant power supplies.
+#
+#    STRING get_shelf_power_supply_status(VOID)
+#       Returns status of redundant power supplies for each shelf.
+#
+#    BOOL uses_hardware_wdt(VOID)
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    TABLE get_ecc_ram_status(VOID)
+#       Returns a table of ecc ram errors.  The format is:
+#       CE <current correctable error count> <optional csv seperated dimm list>
+#       UE <current unrecoverable error count> <optional csv seperated dimm list>
+#
+#    STRING get_ecc_ram_alarm (VOID)
+#       Returns "degraded" if an unrecoverable error has occurred.
+#       Returns "critical" if correctable errors have occurred.
+#       Returns "normal" otherwise.
+#       Once any error occurs it will persist until power
+#       reboot.
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    TABLE get_fan_status
+#       Returns a table of fan status with the following format
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       ...
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       fan-id is a value in 0.. NUM_FANS (where NUM_FANS is dependant on the
+#           mainboard)
+#       fan RPM is read from /sys file system sensor values
+#       fan MIN is read from /sys file system sensor minimum value (initialized by the driver)
+#       fan Status is computed by comparing fan RPM to fan MIN. If a fan is expected
+#           and no output is found, error is displayed.
+#
+#    TABLE get_shelf_fan_status(void)
+#       Returns fan status for _all_ shelves excluding the base unit
+#       Returns a table of shelf fan status with the following format
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       ...
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       fan-id is a value in 0.. NUM_FANS (where NUM_FANS is dependant on the
+#           mainboard)
+#       fan RPM is read from /sys file system sensor values
+#       fan MIN is read from /sys file system sensor minimum value (initialized by the driver)
+#       fan Status is computed by comparing fan RPM to fan MIN. If a fan is expected
+#           and no output is found, error is displayed.
+#
+#    UINT32 shelf_present(VOID)
+#       Returns 0 for no shelf connected, 1 for any number of shelves connected.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+#         "true" if a boot flash disk is supported
+#        "false" if a boot flash disk is not supported
+#        "error" if an error occurred determining flash support.
+#
+#    VOID get_running_arch
+#       Returns the current architecture of the running OS "i386" or "x86_64"
+#       an exit code of 1 is returned with the string "error" if an error
+#       occurs.
+#
+#    BOOL supports_txhang_noflap
+#       Little routine to indicate whether there is an e1000 driver loaded that
+#       suppports txhang_noflap.
+#
+#    VOID get_bios_ver
+#       Little routine to find out the BIOS version
+#
+#    VOID get_ipmi_ver
+#       Little routine to find out the IPMI version and FW version
+#
+#    VOID get_controller_ver
+#       Little routine to find out the FW version of the RAID controller
+#
+#    BOOL get_disk_power_status
+#       prints the power status of all expected drives based on the model number
+#       returns 0 on success, 1 on failure
+#
+#    BOOL supports_bmc_watchdog_pretimeout
+#       Little routine to indicate whether the motherboard supports BMC
+#       watchdog pre-timeout or not.
+#
+#    BOOL supports_rfut
+#       Little routine to indicate whether the motherboard supports 
+#       rfut (riverbed firmware upgrading tool) or not.
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+# Todo:
+# - Check that every function is used; if not get rid of it
+# - Are true and false return values capitalized or not?
+
+if [ -z "$HAL" ]
+then
+   HAL=/opt/hal/bin
+fi
+
+OLDHAL=${HAL}
+
+# include hal_common before any other definitions or function declarations so it 
+#   can be overloaded
+
+. ${HAL}/hal_common.sh
+
+# include the xyratex product ID file
+. /etc/xyratex_productid.sh
+
+# Restore HAL after hal_common steps on it
+HAL=${OLDHAL}
+
+#. ${HAL}/upgrade_common.sh
+
+# Restore HAL after upgrade_common steps on it
+HAL=${OLDHAL}
+
+HWTOOL_PY="${HAL}/hwtool.py"
+ETHTOOL="/usr/sbin/ethtool"
+#HW_CTL_PY="${HAL}/hw_ctl.py"
+#LED_CTL="${HAL}/led_ctl.sh"
+#IPMITOOL="/sbin/ipmitool"
+IPMITOOL="/usr/bin/ipmitool_xyr"
+GREP="/bin/grep"
+AWK="/usr/bin/awk"
+TR="/usr/bin/tr"
+SED="/bin/sed"
+CAT="/bin/cat"
+CUT="/bin/cut"
+WC="/usr/bin/wc"
+LSIRAIDD="/opt/tms/bin/lsiraidd"
+MEGACLI="/sbin/megacli"
+CONFIGFILEDIR="/var/etc/opt/tms/output"
+GEMCLI_BUTSER2=${HAL}/gemcli.py
+GEMUTILS=${HAL}/gem_utils.py
+SG_MAP="/usr/bin/sg_map"
+SG_INQ="/usr/bin/sg_inq"
+HAL_PY="/opt/hal/bin/hal.py"
+MDDBREQ="/opt/tms/bin/mddbreq"
+MFDB="/config/mfg/mfdb"
+
+GEM_LOG_FILE="/var/log/gem.log"
+
+BUTSER2_MOBO="425-00220-01"
+EXPECTED_DRIVES_730=$(eval echo {0..7})
+EXPECTED_DRIVES_2030=$(eval echo {0..11})
+EXPECTED_DRIVES_3030=$(eval echo {0..11})
+
+# The directory directly above must already exist
+HWRAID_STATUS_DIR=/bootmgr/hwraid
+HWRAID_CLEAN_SHUTDOWN_FNAME=${HWRAID_STATUS_DIR}/cleanshutdown
+HWRAID_ALARM_FNAME=${HWRAID_STATUS_DIR}/hwraid_alarm
+HWRAID_CHECK_INTEGRITY_LOG_FNAME=${HWRAID_STATUS_DIR}/hwraid_check_integrity.txt
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#------------------------------------------------------------------------------
+# Save state of hwraid virtual disks
+hwraid_state_save ()
+{
+    ${GEMCLI_BUTSER2} hwraid_state_save
+    return 0
+}
+
+#------------------------------------------------------------------------------
+hwraid_state_show ()
+{
+    ${GEMCLI_BUTSER2} hwraid_state_show
+    return 0
+}
+
+#------------------------------------------------------------------------------
+hwraid_check_integrity ()
+{
+    ${GEMCLI_BUTSER2} hwraid_check_integrity
+    return 0
+}
+
+###############################################################################
+# get_motherboard
+#    temporary hack until we are integrated into the system
+#    when hwtool_py returns the correct value, this can be removed
+###############################################################################
+get_motherboard()
+{
+    if [ -f ${CACHED_MOBO} ]; then
+        MOBO=`${CAT} ${CACHED_MOBO}`
+        if [ "x${MOBO}" != "x" ]; then
+            echo ${MOBO}
+            return
+        fi
+    fi
+
+    MOBO=`${HWTOOL_PY} -q motherboard`
+    if [ $? != 0 ]; then
+        ${HAL_LOG_WARN} "Hwtool unable to determine motherboard part number"
+        exit 1
+    fi
+
+    # if we don't have a set up /var filesystem, we might not be able to create 
+    # this directory.  Thats ok. if we can't create it just return the 
+    # motherboard, we'll try again next time.
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE} > /dev/null 2>&1
+    fi
+
+    # only set the cache mobo if we were able to make the cache dir.
+    if [ -d ${HAL_CACHE} ]; then
+        echo ${MOBO} > ${CACHED_MOBO}
+    fi
+
+    echo ${MOBO}
+    return
+}
+
+###############################################################################
+# get_platform
+###############################################################################
+get_platform()
+{
+    RESULT=`${GREP} "^BUILD_PROD_ID=" /etc/build_version.sh | ${SED} -e 's/^BUILD_PROD_ID="//' -e 's/"//'`
+    if [ $? != 0 ]; then
+        echo "Failed to determine platform."
+        exit 1
+    fi
+    echo ${RESULT}
+}
+
+
+###############################################################################
+# get_model
+###############################################################################
+get_model()
+{
+    PLAT=`get_platform`
+    if [ ! -f ${MDDBREQ} ]; then
+        echo "$MDDBREQ does not exist, Can't determine model number"
+    fi
+    
+    model=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/model`
+    if [ "x${model}" = "x" ]; then
+        ${HAL_LOG_WARN} "Failed to determine model number."
+        exit 1
+    fi
+    echo "${model}"
+}
+
+#------------------------------------------------------------------------------
+# do_ecc_modules
+#------------------------------------------------------------------------------
+do_ecc_modules()
+{
+    if [ "x${1}" = "xload" ]; then
+        OP="load"
+        ${OP}_module "edac_core"
+    else
+        OP="unload"
+    fi
+
+    if [ "${OP}" = "unload" ]; then
+        ${OP}_module "edac_core"
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    # Example data
+    # #ipmitool sensor get "Temp CPU 0"
+    # Locating sensor record...
+    # Sensor ID              : Temp CPU 0 (0x5)
+    #  Entity ID             : 3.96
+    #  Sensor Type (Analog)  : Temperature
+    #  Sensor Reading        : 30 (+/- 2) degrees C
+    #  Status                : ok
+    #  Lower Non-Recoverable : -10.000
+    #  Lower Critical        : 5.000
+    #  Lower Non-Critical    : 10.000
+    #  Upper Non-Critical    : 80.000
+    #  Upper Critical        : 98.000
+    #  Upper Non-Recoverable : 125.000
+    #  Positive Hysteresis   : 2.000
+    #  Negative Hysteresis   : 2.000
+    #  Assertions Enabled    : lnc- lcr- lnr- unc+ ucr+ unr+ 
+    #  Deassertions Enabled  : lnc- lcr- lnr- unc+ ucr+ unr+ 
+
+    MODEL=`get_model`
+    TEMPERATURE=`${IPMITOOL} sensor get "Temp CPU 0" 2>&1 | ${GREP} "Sensor Reading" | ${AWK} -F ":" '{print $2}' | ${AWK} '{print $1}'`
+
+    if [ x${TEMPERATURE} =  x ]; then
+        ${HAL_LOG_WARN} "HAL - Bad temperature read."
+        echo "Bad temperature read."
+        return 1
+    else
+        ${HAL_LOG_INFO} "Temperature is [${TEMPERATURE}]"
+        case "x${MODEL}" in
+            "x530"|"x730"|"x2030")
+                echo "${TEMPERATURE}"
+                ;;
+            "x3030")
+                # XXX/munirb:
+                # the Tcase for X5675 is 81.3 degrees C and it runs at 
+                # 35+ degrees C without any activity.
+                # The problem with the temperature alarm is that it isn't very useful, 
+                # a lot of the new gen CPU's are capable of running at 
+                # a lot higher temperatures than 70 degrees C.
+                # The alarm is in mgmt framework and they are unable to provide us
+                # with an option to increase the default threshold per appliance/CPU.
+
+                # What we can do instead out here is manipulate hal to report the temperature by
+                # 15 degrees C so that the alarm isn't triggered and critical emails aren't sent. 
+
+                # The CPU will throttle itself when it thinks the temperature is too high anyways
+                # to protect itself.
+                echo `expr ${TEMPERATURE} - 15`
+                ;;
+
+            *)
+                ${HAL_LOG_WARN} "get_temperature: model number ${MODEL} not found."
+                return 1
+                ;;
+        esac
+
+        return 0
+    fi
+}
+
+###############################################################################
+# get_ipmi_ver
+# 
+# Returns key value pairs indicating the major/minor IPMI fw and
+# sdr versions.
+# also the IPMI version (2.0)
+#
+###############################################################################
+get_ipmi_ver()
+{
+    MOBO=`get_motherboard`
+
+    display=$1    
+    IPMIVER=`${IPMITOOL} mc info | ${GREP} "IPMI Version" | ${AWK} -F ": " '{print $2}'`
+    if [ $? -ne 0 ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the IPMI version"
+        else
+            echo "Could not find out the IPMI version"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "IPMI Firmware Version is [${IPMIVER}]"
+        else            
+            echo "ipmi_ver=${IPMIVER}"
+        fi
+        IPMIFW=`${IPMITOOL} mc info | ${GREP} "Firmware Revision" | ${AWK} -F ": " '{print $2}'`
+        if [ "${IPMIFW}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI Firmware revision is [${IPMIFW}]"
+            else
+                echo "ipmi_fw_min_rev=${IPMIFW}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI firmware revision."
+            else
+                echo "Could not find out the IPMI firmware revision."
+            fi
+        fi
+        IPMI_FW_MAJ=`${IPMITOOL} mc info | ${GREP} "Product ID" | ${AWK} -F ": " '{print $2}' | ${AWK} '{print $1}'`
+        if [ "${IPMI_FW_MAJ}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI Product ID is [${IPMI_FW_MAJ}]"
+            else
+                echo "ipmi_fw_maj_rev=${IPMI_FW_MAJ}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI Product ID."
+            else
+                echo "Could not find out the IPMI Product ID."
+            fi
+        fi
+
+        IPMI_SDR_MAJ=`${IPMITOOL} mc info | ${GREP} "Manufacturer ID" | ${AWK} -F ": " '{print $2}' | ${AWK} '{print $1}'`
+        if [ "${IPMI_SDR_MAJ}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI SDR Major Version is [${IPMI_SDR_MAJ}]"
+            else
+                echo "ipmi_sdr_maj_ver=${IPMI_SDR_MAJ}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI SDR Major Version"
+            else
+                echo "Could not find the IPMI IPMI SDR Major Version."
+            fi
+        fi
+
+        # Separate fields based on ':', then strip out space, then strip out '0x'
+        IPMI_SDR_MIN=`${IPMITOOL} sdr info | ${GREP} "SDR Version" | ${AWK} -F ": " '{print $2}' | ${AWK} '{print $1}' | ${AWK} -F "0x" '{print $1 $2}'`
+        if [ "${IPMI_SDR_MIN}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI SDR Minor Version is [${IPMI_SDR_MIN}]"
+            else
+                echo "ipmi_sdr_min_ver=${IPMI_SDR_MIN}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI SDR Minor Version"
+            else
+                echo "Could not find the IPMI IPMI SDR Minor Version."
+            fi
+        fi
+
+    fi
+
+}
+
+
+#------------------------------------------------------------------------------
+# gem_fill_log
+# 
+# fill gem logs
+#------------------------------------------------------------------------------
+gem_fill_log()
+{
+    echo "==================================================" >> ${GEM_LOG_FILE}
+    echo "Output of gemcli.py ddump:" >> ${GEM_LOG_FILE}
+    ${GEMCLI_BUTSER2} ddump >> ${GEM_LOG_FILE}
+    echo "" >> ${GEM_LOG_FILE}
+    echo "==================================================" >> ${GEM_LOG_FILE}
+    echo "date:" >> ${GEM_LOG_FILE}
+    date >> ${GEM_LOG_FILE}
+    echo "" >> ${GEM_LOG_FILE}
+}
+
+#------------------------------------------------------------------------------
+# get_bios_ver
+#------------------------------------------------------------------------------
+get_bios_ver()
+{
+    display=$1
+
+    BIOSVER=`${IPMITOOL} hpm check 2>1 | ${GREP} BIOS | ${AWK} -F "|" '{print $4}' | ${AWK} '{print $1}'`
+    if [ "${BIOSVER}" != "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "BIOS version is [${BIOSVER}]"
+        else
+            echo "bios_ver=${BIOSVER}"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the BIOS version."
+        else
+            echo "Could not find out the BIOS version."
+        fi
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# supports_hw_upgrades                                                                 
+# 
+# hw_upgrades not supported on Butser2
+#------------------------------------------------------------------------------
+supports_hw_upgrades()                                                                 
+{                                                                                      
+    echo "false"
+}                                                                                      
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#
+# There is no deinit hardware phase0, since this sets up devices
+# necessary for the system to function properly in linux.
+#
+#------------------------------------------------------------------------------
+init_hardware_phase0()
+{
+    local ipmitool_link="`readlink /sbin/ipmitool`"
+    if [ "x${ipmitool_link}" != "x/usr/bin/ipmitool_xyr" ]; then
+        # For the swordfish box we do not want to use the default ipmi binary
+        touch / 2>/dev/null
+        READ_ONLY_ROOT=$?
+
+        [ $READ_ONLY_ROOT -ne 0 ] && mount -o rw,remount /
+        unlink /sbin/ipmitool
+        ln -s /usr/bin/ipmitool_xyr /sbin/ipmitool
+        [ $READ_ONLY_ROOT -ne 0 ] && mount -o ro,remount /
+    fi
+
+    RRDM_SUPPORTED=`${RRDM_TOOL} --supported`
+    if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+        do_start_mgmt_volumes
+        do_start_rios_volumes
+        ${RRDM_TOOL} --mount-filesystems
+    fi
+
+    # Rename "clean shutdown" file; raid recovery should have been run by now
+    # Rename rather than remove so we can see the date and time of last clean shutdown
+    # after the system is fully booted
+    /bin/mv -v -f ${HWRAID_CLEAN_SHUTDOWN_FNAME} ${HWRAID_CLEAN_SHUTDOWN_FNAME}.last
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+# For BUG 34685 we add a redundant copy of the RVBD SB on partition 1.
+#------------------------------------------------------------------------------
+do_check_update_rvbd_super()
+{
+    local DISK_LIST=`${HWTOOL_PY} -q disk=map | ${GREP} disk | ${GREP} online | ${AWK} '{print $2}'`
+    for DISK in ${DISK_LIST}; do
+        if [ "x${DISK}" != "x" ]; then
+            # this will perform any necessary redundancy updates to 
+            # the SB's on the disks
+            #
+            /opt/tms/bin/rvbd_super -rupdate /dev/${DISK}p1
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_NOTICE} "Unable to update SB on ${DISK}p1"
+            fi
+        fi
+    done
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    # Turn on System LED (Blue). Assume OK until we find out otherwise
+    set_system_led_state ok
+
+    check_kernel_options
+
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    # check each disks RVBD SB to see if we need to update it
+    do_check_update_rvbd_super
+
+    # Update hwraid status file
+    hwraid_state_save
+}
+
+
+#------------------------------------------------------------------------------
+# set_nmi_wdt_sysfs_nodes
+#------------------------------------------------------------------------------
+
+set_nmi_wdt_sysfs_nodes()
+{
+    ARG=$1
+    if [ "x${ARG}" = "xenabled" ]; then
+        echo "120" > /sys/module/ipmi_watchdog/parameters/timeout
+        echo "60" > /sys/module/ipmi_watchdog/parameters/pretimeout
+        echo "pre_nmi" > /sys/module/ipmi_watchdog/parameters/preaction
+        echo "preop_die_nmi" > /sys/module/ipmi_watchdog/parameters/preop
+    else
+        echo "60" > /sys/module/ipmi_watchdog/parameters/timeout
+        echo "0" > /sys/module/ipmi_watchdog/parameters/pretimeout
+        echo "pre_none" > /sys/module/ipmi_watchdog/parameters/preaction
+        echo "preop_none" > /sys/module/ipmi_watchdog/parameters/preop
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# change_nmi_wdt_state
+#------------------------------------------------------------------------------
+
+change_nmi_wdt_state()
+{
+    STATE=$1
+    # NMI manipulation is supported only on Sturgeon, GAR and Barramundi
+    if [ "x${STATE}" = "xenabled" ]; then
+        set_nmi_wdt_sysfs_nodes "enabled"
+
+        /bin/rm -f /var/opt/rbt/.nmi_disable
+        # Touch this file for reboots
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "NMI generation via pretimeout turned on, but state not persistent"
+        fi
+        echo "enabled"
+    elif [ "x${STATE}" = "xdisabled" ]; then
+        set_nmi_wdt_sysfs_nodes "disabled"
+
+        # Touch this file for reboots
+        /bin/touch /var/opt/rbt/.nmi_disable
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "NMI generation via pretimeout turned off, but state not persistent"
+        fi
+        echo "disabled"
+    else
+        echo "Unknown state"
+        return 1
+    fi
+
+    return 0
+}
+
+#--------------------------------------------------------------------------
+# Disk Power Count Routines
+#--------------------------------------------------------------------------
+collect_disk_smart_power_stats()
+{
+    echo collect_disk_smart_power_stats
+    echo "DISK_LIST=${DISK_LIST}"
+    local DISK_LIST=$1
+    
+    local FAILURE_LOG=/var/opt/rbt/.unscheduled_reboots
+    local DISK_COUNTER=0
+    local DISK_CYCLED_COUNTER=0
+    
+    local LAST_SMART_LOGS=/var/opt/rbt/last_smart_data
+    local CURRENT_SMART_LOGS=/var/opt/rbt/last_smart_data.tmp
+    if [ "x${DISK_LIST}" = "x" ]; then
+        /usr/bin/logger -p user.NOTICE -t disk "No devices specified to collect_disk_smart_power_stats"
+        return
+    fi
+
+    for disk in ${DISK_LIST}; do
+        echo "looking at disk ${disk}"
+        if [ ! -b /dev/${disk} ]; then
+            continue
+        fi
+
+    # root@sf-xyratex1 lteyssier]# sg_map -i
+    # /dev/sg0  RIVERBED  WW520-ATX         3400
+    # /dev/sg1  /dev/sda  LSI  MR9260-4i  2.13
+    # /dev/sg2  /dev/sdb  LSI  MR9260-4i  2.13
+    # /dev/sg3  /dev/sdc  ATA       ST9160412AS       0002
+    # /dev/sg4  /dev/sdd  ATA       ST9250410AS       0002
+    # [root@sf-xyratex1 lteyssier]# megacli LdPdInfo -aAll | ${GREP} "Device Id:"
+    # Device Id: 9
+    # [root@sf-xyratex1 lteyssier]# smartctl -a -d megaraid,9 /dev/sg2
+
+        # OK for conventional disks, but won't work on MEGARAID disks
+        POWER=`${SMARTCMD} -a /dev/$disk | ${GREP} "Power_Cycle_Count" | ${AWK} '{print $10}'`
+        SERIAL=`${SMARTCMD} -a /dev/$disk | ${GREP} "Serial Number" | ${AWK} 'BEGIN{FS=":"}{print $2}' | grep tr -d [:space:]`
+
+        echo "POWER=_${POWER}_"
+        echo "SERIAL=_${SERIAL}_"
+
+        LAST_POWER=""
+        if [ -f ${LAST_SMART_LOGS} ]; then
+            LAST_POWER=`${CAT} ${LAST_SMART_LOGS} | ${GREP} ${SERIAL} | ${AWK} 'BEGIN{FS=":"}{print $2}'`
+        fi
+
+        if [ "x${LAST_POWER}" = "x" ]; then
+            LAST_POWER="UNKNOWN"
+        fi
+        
+        if [ "${LAST_POWER}" != "UNKNOWN" ]; then
+            DISK_COUNTER=$((DISK_COUNTER+1))
+            if [ ${POWER} -gt ${LAST_POWER} ]; then
+                DISK_CYCLED_COUNTER=$((DISK_CYCLED_COUNTER+1))
+            fi
+        fi
+        
+        
+        MSG="Drive=${disk}, Serial=${SERIAL}, Current Power Cycle Count=${POWER}, Last Power Cycle Count=${LAST_POWER}"
+        /usr/bin/logger -p user.NOTICE -t disk ${MSG}
+        echo "${SERIAL}:${POWER}" >> ${CURRENT_SMART_LOGS}
+    done
+
+    if [ -f ${CURRENT_SMART_LOGS} ]; then
+        mv -f ${CURRENT_SMART_LOGS} ${LAST_SMART_LOGS}
+    fi
+    
+    UNEXPECTED_SHUTDOWN=""       
+    if [ -f /var/opt/tms/.unexpected_shutdown ] || [ -f /var/opt/tms/.detected_unexpected_shutdown ]; then
+        UNEXPECTED_SHUTDOWN="True"
+    fi
+    
+    DISKS_POWER_CYCLED=""
+    if [ ${DISK_COUNTER} -eq ${DISK_CYCLED_COUNTER} ]; then
+        DISKS_POWER_CYCLED="True"
+    fi
+
+    if [ ${DISK_COUNTER} -ne 0 ]; then
+        if [ "x${UNEXPECTED_SHUTDOWN}" = "xTrue" ] && [ "x${DISKS_POWER_CYCLED}" = "x" ]; then
+            /usr/bin/logger -p user.NOTICE -t disk "Reboot Detected: Unscheduled Reboot"
+            echo `date +%s` >> ${FAILURE_LOG}
+        elif [ "x${UNEXPECTED_SHUTDOWN}" = "xTrue" ] && [ "x${DISKS_POWER_CYCLED}" = "xTrue" ]; then       
+            /usr/bin/logger -p user.NOTICE -t disk "Reboot Detected: Power Disruption"
+        elif [ "x${UNEXPECTED_SHUTDOWN}" = "x" ] && [ "x${DISKS_POWER_CYCLED}" = "xTrue" ]; then
+            /usr/bin/logger -p user.NOTICE -t disk "Reboot Detected: Power Off"
+        elif [ "x${UNEXPECTED_SHUTDOWN}" = "x" ] && [ "x${DISKS_POWER_CYCLED}" = "x" ]; then
+            /usr/bin/logger -p user.NOTICE -t disk "Reboot Detected: Reboot"
+        fi
+    fi
+}
+
+#------------------------------------------------------------------------------
+smartctl()
+{
+    echo smartctl
+    local DISK_LIST=`${HWTOOL_PY} -q disk=map | ${GREP} online | ${AWK} '{print $2}'`
+    echo "DISK_LIST=${DISK_LIST}"
+    collect_disk_smart_power_stats "${DISK_LIST}"
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    MOBO=`get_motherboard`
+
+    # load ipmi modules early on to enable IPMI transactions
+    ${MODPROBE} ipmi_msghandler > /dev/null 2>&1
+    ${MODPROBE} ipmi_si kipmid_max_busy_us=200 > /dev/null 2>&1
+    ${MODPROBE} ipmi_watchdog > /dev/null 2>&1
+    
+    # Remove then re-create ipmi device
+    # @@@ ldt I think this is an artifact of problems from previous systems
+    ${MODPROBE} ipmi_devintf > /dev/null 2>&1
+    DEVMAJOR=$(${CAT} /proc/devices | ${GREP} ipmidev | ${SED} 's/ipmidev//')
+    if [ -c /dev/ipmi0 ]; then
+        rm -f /dev/ipmi0
+    fi
+    /bin/mknod /dev/ipmi0 c $DEVMAJOR 0
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "Unable to create ipmi device, ipmi interface will be unavailable."
+    fi
+
+    ## @@@ ldt postpone until I can confirm that / is not ro at this point
+    # Remake module dependencies file
+    #/sbin/depmod -a
+
+    # Record versions in the log
+    get_ipmi_ver 0
+    get_bios_ver 0
+
+    # check to make sure that the BMC is set to power the machine back on
+    # when power is restored
+    ${IPMITOOL} chassis policy always-on
+
+    # set the labels in the ecc driver.
+    do_ecc_modules "load"
+
+    # remove watchdog file to disable watchdog
+    rm -f /dev/watchdog
+
+    # on startup read disk power cycle count values from smart and
+    # put the current values and previous values into syslog
+
+    local DISK_LIST=`${HWTOOL_PY} -q disk=map | ${GREP} online | ${AWK} '{print $2}'`
+    # @@@ ldt collect disk smart power stats still in progress
+    #collect_disk_smart_power_stats "${DISK_LIST}"
+
+    # Check to make sure that the nmi_watchdog is disabled
+    ${CAT} /proc/cmdline |${GREP} "nmi_watchdog=0" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        # Additional settings for the ipmi watchdog
+        if [ -f /var/opt/rbt/.nmi_disable ]; then
+            set_nmi_wdt_sysfs_nodes "disabled"
+        else
+            set_nmi_wdt_sysfs_nodes "enabled"
+        fi
+    else
+        ${HAL_LOG_WARN} "Internal error, unable to disable NMI Watchdog, contact Riverbed support"
+    fi
+
+    # removing then re-creating wd because it is removed early on to prevent firing during booting
+    rm -f /dev/watchdog
+    mknod /dev/watchdog c 10 130
+    if [ $? -ne 0 -a ! -c /dev/watchdog ]; then
+        ${HAL_LOG_WARN} "Unable to create watchdog device, hardware watchdog will be unavailable"
+    fi
+
+    # Start the sel rotation script so that we don't fill up the sel logs
+    # Xyratex logs too much data to the sel logs which will bog down our 
+    # mgmtd/hald interface if someone queries for it when its 100% full
+    /opt/hal/bin/selrotate > /dev/null 2>&1 &
+
+    # Start the envornmental collection script in the background
+    /opt/hal/bin/sensors/environmetal-logging.sh > /dev/null 2>&1 &
+
+    # run lsiraidd in oneShot mode to generate lsiraidd.xml file before hald starts
+    ${LSIRAIDD} --oneShot
+
+    # make the log tell logrotate theres work to do
+    gem_fill_log
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+deinit_hardware_phase1()
+{
+   echo
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+deinit_hardware_phase2()
+{
+    /bin/rm -f /dev/watchdog
+
+    #do_ecc_modules "unload"
+    # Some modules may not exist, but since we are redirecting error
+    # to /dev/null who cares. I don't want to change the ordering.
+    # If its a problem, I will just split the case statement
+    #${RMMOD} ipmi_devintf > /dev/null 2>&1
+    #${RMMOD} ipmi_watchdog > /dev/null 2>&1
+    #${RMMOD} ipmi_si > /dev/null 2>&1
+    #${RMMOD} ipmi_msghandler > /dev/null 2>&1
+
+    ## hwraid check integrity support
+
+    # Create the hwraid subdirectory if it doesn't exist already
+    if [ ! -d "${HWRAID_STATUS_DIR}" ]; then
+        /bin/mkdir ${HWRAID_STATUS_DIR}
+    fi
+
+    # Remove alarm file (if it exists) on clean shutdown
+    /bin/rm -f ${HWRAID_ALARM_FNAME}
+
+    # Remove log so it won't grow indefinitely
+    /bin/rm -f ${HWRAID_CHECK_INTEGRITY_LOG_FNAME}
+
+    # Remove the alarm file for HWRAID delayed bootup
+    /bin/rm -f ${HWRAID_ALARM_FNAME}
+
+    # Sync and Record that we had a clean shutdown
+    /bin/sync
+    /sbin/megacli -adpcacheflush -aAll -nolog
+    #  make status dir just in case it doesn't already exist
+    #   we can remove this when the directory gets created as part of the build process
+    echo `/bin/date` > ${HWRAID_CLEAN_SHUTDOWN_FNAME}
+
+    hwraid_state_save
+
+    /bin/sync
+}
+
+
+#------------------------------------------------------------------------------
+# get_riverbed_serial
+# This prints out the serial number of all the Riverbed Boxes in the system
+#------------------------------------------------------------------------------
+get_riverbed_serial()
+{
+    #Get all Riverbed Boxes
+    local SG_DEVS=`${SG_MAP} -x -i | ${GREP} "RIVERBED" | ${AWK} '{print $1}'`
+    for dev in ${SG_DEVS}; do
+        local SG_DATA=`${SG_INQ} ${dev}`
+        (IFS='
+'
+        for line in ${SG_DATA}; do
+            if [[ "$line" ==  *"Vendor identification:"* ]]; then
+                VEND=`echo ${line} | ${AWK} -F : '{print $2}' | ${SED} 's/\s//g'`
+            elif [[ "$line" ==  *"Product identification:"* ]]; then
+                PID=`echo ${line} | ${AWK} -F : '{print $2}' | ${SED} 's/\s//g'`
+            elif [[ "$line" ==  *"Product revision level:"* ]]; then
+                PRL=`echo ${line} | ${AWK} -F : '{print $2}' | ${SED} 's/\s//g'`
+            elif [[ "$line" ==  *"Unit serial number:"* ]]; then
+               SRNO=` echo ${line} | ${AWK} -F : '{print $2}' | ${SED} 's/\s//g'`
+            fi
+        done
+        echo "${VEND}::${PID}::${PRL}::${SRNO}"
+        )
+    done
+}
+
+
+#------------------------------------------------------------------------------
+# get_data_partition_type
+# This just prints out the data partition type for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition_type()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            FSTYPE=`/opt/hal/bin/raid/rrdm_tool.py -l | ${GREP} "data" | ${AWK} -F : '{print $3}'`
+            if [ $? -ne 0 ]; then
+                echo "Error getting MD device"
+                return 1
+            fi
+
+            echo "${FSTYPE}"
+            ;;
+        *)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# get_data_partition
+# This just prints out the data partition for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            MDDEV=`/opt/hal/bin/raid/rrdm_tool.py -l | ${GREP} "data" | ${AWK} -F : '{print $2}'`
+            if [ $? -ne 0 ]; then
+                echo "Error getting MD device"
+                return 1
+            fi
+
+            echo "/dev/${MDDEV}"
+            ;;
+        *)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# get_hardware_pass_support
+# This hal function is called by mgmt do check whether
+# the machine has a 10G card in it. 
+# The command is being used my mgmtd for a wrong reason, but its 
+# framework code so can't change easily
+#------------------------------------------------------------------------------
+get_hardware_pass_support()
+{
+    for IFACE in `${HWTOOL_PY} -q mactab -o | ${GREP} "eth" | ${AWK} '{print $1}'`; do
+        ${ETHTOOL} ${IFACE} | ${GREP} "Supported link modes" | ${GREP} "10000" > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "false"
+            return
+        else
+            echo "true"
+            return
+        fi
+    done
+}
+
+
+##################################################################################
+# Fan Monitoring
+##################################################################################
+# Display fan info in the format <fanid> <rpm> <min rpm> <status msg>
+#
+get_fan_info()
+{
+    # use gem cli to get fan info then process to the format we need
+    ${GEMCLI_BUTSER2} get_fan_info
+}
+
+#------------------------------------------------------------------------------
+get_fan_status()
+{
+    get_fan_info
+}
+
+#------------------------------------------------------------------------------
+# get_shelf_fan_status
+#------------------------------------------------------------------------------
+
+get_shelf_fan_status()
+{
+    shelf_sgx_list=($(${SG_MAP} -i | ${GREP} $SHELF_ID | ${CUT} -d " " -f 1))
+    shelf_num=${#shelf_sgx_list[@]}
+    if [ "x$shelf_num" = "x0" ]
+    then
+        echo "External storage unit not found"
+    else
+        shelf_num=`expr $shelf_num - 1`
+        for element in $(seq 0 $shelf_num); do
+            serial_number=$(${SG_INQ} ${shelf_sgx_list[$element]} \
+                    | ${GREP} "Unit serial number:" | ${CUT} -d " " -f 5)
+            ${GEMCLI_BUTSER2} ${shelf_sgx_list[$element]} get_fan_info $serial_number
+        done
+    fi
+}
+
+#------------------------------------------------------------------------------
+# shelf_present
+#------------------------------------------------------------------------------
+shelf_present()
+{
+    num=$(${SG_MAP} -i | ${GREP} $SHELF_ID | ${CUT} -d " " -f 1 | ${WC} -l)
+    if [ "x$num" = "x0" ]
+    then 
+        echo "0"
+        return 0
+    else 
+        echo "1"
+        return 1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# get_power_supply_status
+#------------------------------------------------------------------------------
+
+get_power_supply_status()
+{
+    ${GEMCLI_BUTSER2} get_power_supply_status
+}
+
+#------------------------------------------------------------------------------
+# get_shelf_power_supply_status
+#------------------------------------------------------------------------------
+
+get_shelf_power_supply_status()
+{
+    shelf_sgx_list=($(${SG_MAP} -i | ${GREP} $SHELF_ID | ${CUT} -d " " -f 1))
+    shelf_num=${#shelf_sgx_list[@]}
+    if [ "x$shelf_num" = "x0" ]
+    then
+        echo "External storage unit not found"
+    else
+        shelf_num=`expr $shelf_num - 1`
+        for element in $(seq 0 $shelf_num); do
+            # Get the software serial number for this enclosure
+            software_serial=`${GEMUTILS} --sestarget=${shelf_sgx_list[$element]} --mode=customer_vpd --vpdaction=read --vpdtarget=0 --vpdlength=13`
+            serial_number=$(${SG_INQ} ${shelf_sgx_list[$element]} \
+                    | ${GREP} "Unit serial number:" | ${CUT} -d " " -f 5)
+            ${GEMCLI_BUTSER2} ${shelf_sgx_list[$element]} get_power_supply_status $software_serial
+        done
+    fi
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+get_num_raid_arrays()
+{
+    RRDM_SUPPORTED=`${RRDM_TOOL} --uses-sw-raid`
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "unable to determine if unit uses sw raid."
+        ${HAL_LOG_WARN} "Raid status and alarms will be unavailable."
+    echo "0"
+        return
+    fi
+
+    if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+        # mgmt is only hooked up to support 1 raid array
+        # so we report one, and the rrdm_tool, presents all the
+        # different arrays as a single array of disks
+        # when asking for disk status.
+        echo "1"
+        return
+    fi
+
+    # no raid arrays.
+    echo "0"
+}
+
+#-------------------------------------------------------------------------------
+# show_raid_physical
+#
+# Display physical information about the drives
+#-------------------------------------------------------------------------------
+
+show_raid_physical()
+{
+    ${GEMCLI_BUTSER2} show_raid_physical
+}
+#-------------------------------------------------------------------------------
+# show_raid_diagram
+#
+# draws the picture of the front drive bays.
+#-------------------------------------------------------------------------------
+
+show_raid_diagram()
+{
+    ${GEMCLI_BUTSER2} show_raid_diagram
+}
+
+#------------------------------------------------------------------------------
+# show_raid_config
+#------------------------------------------------------------------------------
+show_raid_config()
+{
+    ${GEMCLI_BUTSER2} show_raid_config
+}
+
+#------------------------------------------------------------------------------
+# show_raid_info
+#------------------------------------------------------------------------------
+show_raid_info()
+{
+    ${GEMCLI_BUTSER2} show_raid_info
+}
+
+show_raid_info_detail()
+{
+    ${GEMCLI_BUTSER2} show_raid_info_detail
+}
+
+show_raid_config_detail()
+{
+    ${GEMCLI_BUTSER2} show_raid_config_detail
+}
+
+
+#------------------------------------------------------------------------------
+# get_raid_status
+# Abbreviated raid status for mgmtd
+#------------------------------------------------------------------------------
+get_raid_status()
+{
+    # Per bug # 128022 just return dummy string
+    echo "0   online"
+}
+
+#------------------------------------------------------------------------------
+# get_hwraid_status
+#------------------------------------------------------------------------------
+get_hwraid_status()
+{
+    ${GEMCLI_BUTSER2} get_raid_physical_status
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+uses_disk_led()
+{
+    echo "True"
+}
+
+#------------------------------------------------------------------------------
+# Disk LED Interfaces
+#------------------------------------------------------------------------------
+get_single_disk_led_status()
+{
+    drivenum=$1
+
+    # Note: To set a disk's LED indicator, one must use MegaCli, not gem:
+    # MegaCli -PDLocate -start -PhysDrv[16:0] -a0
+    # But it's OK to monitor with GEM
+
+    LED_STATUS=`${GEMCLI_BUTSER2} getdrivestatus $drivenum | ${GREP} "fault LED" | ${AWK} -F ":" '{print $2}' | ${TR} -d "[:space:]"`
+    if [ ${LED_STATUS} == "OFF" ]; then
+       echo -n "Off"
+    else
+       echo -n "On"
+    fi
+
+}
+
+#------------------------------------------------------------------------------
+# get_disk_led_status
+#------------------------------------------------------------------------------
+get_disk_led_status()
+{
+    MODEL=`get_model`
+    case "x${MODEL}" in
+    "x730")
+        EXPECTED_LEDS=${EXPECTED_DRIVES_730}
+    ;;
+    "x2030")
+        EXPECTED_LEDS=${EXPECTED_DRIVES_2030}
+    ;;
+    "x3030")
+        EXPECTED_LEDS=${EXPECTED_DRIVES_3030}
+    ;;
+    *)
+        ${HAL_LOG_WARN} "get_disk_led_status: model number ${MODEL} not found."
+        return 1
+    ;;
+    esac
+
+    for led in ${EXPECTED_LEDS}; do
+        STATUS=`get_single_disk_led_status ${led}`
+        echo "${led} ${STATUS}"
+    done
+
+    return 0 
+}
+
+#------------------------------------------------------------------------------
+get_single_disk_power_state()
+{
+    drivenum=$1
+
+    # Note: To set a disk's power state, one must use MegaCli, not gem:
+    # But it's OK to monitor with GEM
+    # To power off a drive for testing:
+    #   - Silence RAID card's alarm: ${MEGACLI} -AdpSetProp AlarmSilence -aAll
+    ####   - take drive offline: MegaCli -PDOffline -PhysDrv[16:0] -a0
+    # MegaCli –PDPrpRmv –PhysDrv[16:0] -a0
+    #   - Power down with GEM: 
+    
+    POWER_STATUS=`${GEMCLI_BUTSER2} getdrivestatus $drivenum | ${GREP} "current" | ${AWK} -F ":" '{print $2}' | ${TR} -d "[:space:]"`
+
+    if [ ${POWER_STATUS} == "OFF" ]; then
+       echo -n "Off"
+    else
+       echo -n "On"
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# get_vd_mapping
+# @param: decimal Adapter ID number as understood by megacli
+# @param: decimal Enclosure ID number as understood by megaRaid/megacli/sg_map
+#
+# prints the model:serial number of the selected enclosure (if it exists) or nothing
+
+get_vd_mapping()
+{
+    adapterId=$1
+    if [ "x${adapterId}" = "x" ]; then
+        echo "Adapter Id must be specified"
+        exit 1
+    fi
+
+    enclosureId=$2 #enclosure ID number
+    if [ "x${enclosureId}" = "x" ]; then
+        echo "External Enclosure Id must be specified"
+        exit 1
+    fi
+
+    # If this is the first adapter then its the swordfish box
+    if [ "x${adapterId}" = "x0" ]; then
+        model=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/model`
+        if [ "x${model}" = "x" ]; then
+            ${HAL_LOG_WARN} "Failed to determine model number."
+            exit 1
+        fi
+
+        LD_serial_number=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/serialnum`
+        if [ "x${LD_serial_number}" = "x" ]; then
+            ${HAL_LOG_WARN} "Failed to determine serial number."
+            exit 1
+        fi
+        echo "${model}:${LD_serial_number}"
+        return 0
+    fi
+
+    # Run sg_map only once and store the results
+    sgmap_list=$(${SG_MAP} -i -x | ${GREP} RIVERBED | ${GREP} "${SHELF_ID}")
+    if [ $? -ne 0 ]; then
+        echo "External storage unit not found"
+        exit 1
+    fi
+
+    sgmap_sgx_list=(`echo "${sgmap_list}" | ${AWK} '{print $1}'`)
+    sgmap_enclosure_list=(`echo "${sgmap_list}" | ${AWK} '{print $4}'`)
+    sgmap_model_list=(`echo "${sgmap_list}" | ${AWK} '{print $8}'`)
+    sgmap_array_limit=`expr ${#sgmap_enclosure_list[@]} - 1`
+
+    for element in $(eval echo {0..$sgmap_array_limit}); do
+        if [ "x${enclosureId}" = "x${sgmap_enclosure_list[$element]}" ]; then
+            local model_prefix=`echo ${sgmap_model_list[$element]} | ${AWK} -F '-' '{print $1}'`
+            local model=`echo ${sgmap_model_list[$element]} | ${AWK} -F '-' '{print $2}'`
+            case "x${model_prefix}" in
+                "xWWS")
+                    LD_serial_number=`${GEMUTILS}  --sestarget=${sgmap_sgx_list[$element]} --mode=customer_vpd --vpdtarget=0 --vpdaction=read --vpdlength=13`
+                    echo "${model}:${LD_serial_number}"
+                    ;;
+                *)
+                    ${HAL_LOG_WARN} "get_vd_mapping: model prefix not found."
+                    return 1
+                    ;;
+            esac
+        fi
+    done
+
+}
+
+
+#------------------------------------------------------------------------------
+# get_enclosure_serial
+# @param: decimal Enclosure ID number as understood by megaRaid/megacli/sg_map
+#
+# prints the serial number of the selected enclosure (if it exists) or nothing
+
+get_enclosure_serial()
+{
+    arg=$1 #enclosure ID number
+    if [ "x${arg}" = "x" ]; then
+        echo "External Enclosure Id must be specified"
+        exit 1
+    fi
+
+    # Run sg_map only once and store the results
+    sgmap_list=$(${SG_MAP} -i -x | ${GREP} RIVERBED | ${GREP} "${SHELF_ID}")
+    if [ $? -ne 0 ]; then
+        echo "External storage unit not found"
+        return 1
+    fi
+
+    sgmap_sgx_list=(`echo "${sgmap_list}" | ${AWK} '{print $1}'`)
+    sgmap_enclosure_list=(`echo "${sgmap_list}" | ${AWK} '{print $4}'`)
+    sgmap_array_limit=`expr ${#sgmap_enclosure_list[@]} - 1`
+
+    for element in $(eval echo {0..$sgmap_array_limit}); do
+        if [ "x${arg}" = "x${sgmap_enclosure_list[$element]}" ]; then
+            LD_serial_number=`${GEMUTILS}  --sestarget=${sgmap_sgx_list[$element]} --mode=customer_vpd --vpdtarget=0 --vpdaction=read --vpdlength=13`
+            echo "${LD_serial_number}"
+            return 0
+        fi
+    done
+    echo "External storage unit not found"
+    return 1
+}
+
+#------------------------------------------------------------------------------
+# get_adapter_count
+# @param: whether to display or log the output
+#
+# Returns the number of megaraid adapters present
+get_adapter_count()
+{
+    display=$1
+    local linecount
+    local result
+    result=`${MEGACLI} -AdpCount -nolog | ${GREP} "Controller Count:"`
+    result=`expr match "$result" ".*\([0-9]\)"`
+    if [ $display -eq 0 ]; then
+        ${HAL_LOG_INFO} "adapter_count=$result"
+    else
+        echo "$result"
+    fi
+}
+
+#------------------------------------------------------------------------------
+alarm_silence()
+{
+   ${MEGACLI} -AdpSetProp AlarmSilence -aAll -nolog
+
+   # this may or may not work depending on the system state. For reliable muting,
+   # Install a jumper behind fan 9
+   ${GEMCLI_BUTSER2} hid_set_buzzer 0 0
+}
+
+#------------------------------------------------------------------------------
+uses_disk_power()
+{
+    echo "True"
+}
+
+#------------------------------------------------------------------------------
+get_disk_power_status()
+{
+    MODEL=`get_model`
+    case "x${MODEL}" in
+    "x730")
+        xEXPECTED_DRIVES=${EXPECTED_DRIVES_730}
+    ;;
+    "x2030")
+        xEXPECTED_DRIVES=${EXPECTED_DRIVES_2030}
+    ;;
+    "x3030")
+        xEXPECTED_DRIVES=${EXPECTED_DRIVES_3030}
+    ;;
+    *)
+        ${HAL_LOG_WARN} "get_disk_power_status: model number ${MODEL} not found."
+        return 1
+    ;;
+    esac
+
+    for drive in ${xEXPECTED_DRIVES}; do
+        STATUS=`get_single_disk_power_state ${drive}`
+        echo "${drive} ${STATUS}"
+    done
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_running_arch
+#------------------------------------------------------------------------------
+get_running_arch()
+{
+    ARCH=`uname -i`
+    case "x$ARCH" in
+        "xi386"|"xx86_64")
+            echo $ARCH
+            exit 0
+        ;;
+        *)
+            echo "error"
+            exit 1
+        ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_system_led_color
+#------------------------------------------------------------------------------
+get_system_led_color()
+{
+    #This is not really accurate: "led color" is a coded version of system state
+    # Even though the LED on this platform is always blue, this is more like
+    # Ok, yellow alert, red alert
+
+    RET=`get_system_led_state`
+    if [ $? -ne 0 ]; then
+        echo "Not implemented"
+        return 128
+    fi
+
+    normal="Blue"
+    degraded="Yellow"
+    critical="Red"
+
+    case "x${RET}" in
+    "xcritical")
+        echo ${critical}
+        ;;
+    "xdegraded")
+        echo ${degraded}
+        ;;
+    "xnormal")
+        echo ${normal}
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_system_led_state
+#------------------------------------------------------------------------------
+get_system_led_state()
+{
+    # Returns "normal", "degraded", or "critical"
+    # Note that this is a reflection of the indicator led setting, not the actual
+    # state of the box
+
+    # read system led state from gem cli 
+
+    STATE=`${GEMCLI_BUTSER2} ddump_hid | ${GREP} --after-context=5 "Unit Identifier LED" | ${GREP} "Current Status" | ${AWK} '{ print $4 }' | ${TR} -d "[:space:]"`
+
+    case "x$STATE" in
+        "x0xffffffee" )
+            # system ID led is Steady
+            echo "normal"
+            return 0
+        ;;
+        "x0xffffeffa" )
+            # Blink at 1s on/ 1s off
+            echo "degraded"
+            return 0
+        ;;
+        "x0xfffff7fa" )
+            # Blink 1/2 sec on, 1/2 sec off
+            echo "critical"
+            return 0
+        ;;
+        * )
+            ${HAL_LOG_WARN} "Invalid LED state returned ${STATE}"
+            echo "Invalid LED state returned ${STATE}"
+            return 1
+        ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+uses_fan_status()
+{
+    echo "true"
+}
+
+################################################################################
+# uses_flash_disk
+################################################################################
+uses_flash_disk()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# ECC Support HAL routines                                                     
+# Needed for figuring out which errors come from what chips
+# on what mainboards                                       
+#------------------------------------------------------------------------------
+                                                                               
+#------------------------------------------------------------------------------
+# Returns a list of available ECC memory controllers                                                                                                                                 
+#------------------------------------------------------------------------------
+get_ecc_mc_list()                                                                                                                                                                    
+{                                                                                                                                                                                    
+    for mc in "/sys/devices/system/edac/mc/mc?"                                                                                                                                      
+    do                                                                                                                                                                               
+        echo -n ${mc} | sed 's/\/sys\/devices\/system\/edac\/mc\/mc\([0-9]\)/\1/g'                                                                                                   
+    done                                                                                                                                                                             
+} 
+
+
+#------------------------------------------------------------------------------
+# Params0 - Type (ce/ue)
+# Params1 - row
+# Params2 - channel
+#------------------------------------------------------------------------------
+get_ecc_csrow_error()
+{
+    TYPE=$1;
+    ROW=$2;
+    CHANNEL=$3;
+    MC=$4
+
+    if [ ${TYPE} = "ce" ]; then
+
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_${TYPE}_count;
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    else
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ue_count
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    fi
+
+    cat ${EPATH}
+}
+
+
+#------------------------------------------------------------------------------
+# given a type/row/channel/mc get the label
+# for ue errors we don't know channel info so report both channels
+#------------------------------------------------------------------------------
+get_ecc_csrow_label()
+{
+    TYPE=$1
+    ROW=$2
+    CHANNEL=$3
+    MC=$4
+
+    if [ ! -e /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label ]; then
+                echo ""
+        return;
+    fi
+
+    RESULT=`cat /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label`
+    if [ ${#RESULT} ]; then
+        echo " ${RESULT}"
+    else
+        echo " NO_LABEL"
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# Returns a csv seperated list of errors for the particular error
+# type and mc/csrow/channel
+#
+# Param0 type (ce/ue)
+#------------------------------------------------------------------------------
+get_ecc_error_list()
+{
+    TYPE=$1;
+    CHANNEL_LIST="0 1"
+    MC_LIST=`get_ecc_mc_list`
+
+    for MC in ${MC_LIST}; do
+        for ROW in "0" "1" "2" "3" "4" "5" "6" "7"; do
+            for CHANNEL in ${CHANNEL_LIST}; do
+                ERRCNT=`get_ecc_csrow_error $TYPE $ROW $CHANNEL ${MC}`
+                if [ $ERRCNT = "Unsupported" ]; then
+                    continue
+                fi
+                if [ $ERRCNT -gt 0 ]; then
+                    get_ecc_csrow_label $TYPE $ROW $CHANNEL ${MC}
+                fi
+            done
+        done
+    done
+}
+
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support                                                          
+#------------------------------------------------------------------------------
+get_ecc_ram_support()                                                          
+{                                                                              
+                                     
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then                            
+        echo "1"                                   
+    else                           
+        echo "0"
+    fi                                                    
+}  
+
+
+#-----------------------------------------------------------------------------
+#  get_ecc_ram_count
+#-----------------------------------------------------------------------------
+get_ecc_ram_count()
+{
+    TYPE=$1
+    MC_LIST=`get_ecc_mc_list`
+
+    ERR_COUNT=0;
+
+    for MC in ${MC_LIST}; do
+       ERR_COUNT=$[${ERR_COUNT}+`cat /sys/devices/system/edac/mc/mc${MC}/${TYPE}_count`];
+    done
+
+    echo ${ERR_COUNT}
+}
+
+
+#------------------------------------------------------------------------------
+# supports_rfut
+# This hal function is called by mgmt to check whether
+# the machine supports rfut or not.
+#------------------------------------------------------------------------------
+supports_rfut()
+{
+        echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_status
+#------------------------------------------------------------------------------
+get_ecc_ram_status()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        CE_COUNT=`get_ecc_ram_count "ce"`;
+
+        if [ ${CE_COUNT} -gt 0 ]; then
+            CECHIPLIST=`get_ecc_error_list "ce" | sort -b -u | tr "\n" ","`
+            CELEN=${#CECHIPLIST}
+            if [ $CELEN -le 1 ]; then
+                   CELEN=2
+            fi
+            echo "CE ${CE_COUNT} ${CECHIPLIST:1:$[$CELEN-2]}"
+        else
+            echo "CE 0 NONE"
+        fi
+
+        if [ ${UE_COUNT} -gt 0 ]; then
+            UECHIPLIST=`get_ecc_error_list "ue" | sort -b -u | tr "\n" ","`
+            UELEN=${#UECHIPLIST}
+            if [ $UELEN -le 1 ]; then
+                    UELEN=2
+            fi
+            echo "UE ${UE_COUNT} ${UECHIPLIST:1:$[$UELEN-2]}"
+        else
+            echo "UE 0 NONE"
+        fi
+
+    else
+        echo "Hardware does not support ECC."
+    fi
+}
+
+
+CE_ERR_FILE=/var/tmp/ce_info
+
+#------------------------------------------------------------------------------
+# create_ce_info_file
+#------------------------------------------------------------------------------
+create_ce_info_file()
+{
+    echo "CE_DATE=$1" > ${CE_ERR_FILE}
+    echo "CE_COUNT=$2" >> ${CE_ERR_FILE}
+    echo "PENDING_CE=$3" >> ${CE_ERR_FILE}
+    echo "CURRENT_CE=$4" >> ${CE_ERR_FILE}
+}
+
+
+#------------------------------------------------------------------------------
+# check_ce_info
+#------------------------------------------------------------------------------
+check_ce_info()
+{
+        CUR_COUNT="$1"
+        DATE=`date +%s`
+
+        if [ ! -f ${CE_ERR_FILE} ]; then
+                create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+        fi
+
+        CUR_ALARM=`cat ${CE_ERR_FILE} | grep CURRENT_CE= | sed 's/CURRENT_CE=//'`
+        LAST_UPDATED=`cat ${CE_ERR_FILE} | grep CE_DATE= | sed 's/CE_DATE=//'`
+        PENDING_ALARM=`cat ${CE_ERR_FILE} | grep PENDING_CE= | sed 's/PENDING_CE=//'`
+        LAST_COUNT=`cat ${CE_ERR_FILE} | grep CE_COUNT= | sed 's/CE_COUNT=//'`
+
+
+        if [ "${CUR_ALARM}" = "" -o "${LAST_UPDATED}" = "" -o "${PENDING_ALARM}" = "" -o "${LAST_COUNT}" = "" ]; then
+                # internal error . history is corrupt reset to defaults
+                create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+                LAST_COUNT=0
+                PENDING_ALARM=0
+                CUR_ALARM=0
+        fi
+
+        TIME_INT=$[ ${DATE} - ${LAST_UPDATED} ];
+        if [ ${TIME_INT} -le 90 ]; then
+                # return the current alarm state
+                return ${CUR_ALARM};
+        fi
+
+        COUNT_DELTA=$[ ${CUR_COUNT} - ${LAST_COUNT} ];
+
+        STATE="$PENDING_ALARM$CUR_ALARM"
+
+        if [ ${COUNT_DELTA} -gt 3 ]; then
+                case "$STATE" in
+                        "00")
+                                create_ce_info_file "$DATE" "$CUR_COUNT" "1" "0"
+                                return 0;
+                        ;;
+                        "01"|"10"|"11")
+                                create_ce_info_file "$DATE" "$CUR_COUNT" "1" "1"
+                                return 1;
+                        ;;
+                esac
+        else
+                case "$STATE" in
+                        "00"|"01"|"10")
+                                create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+                                return 0;
+                        ;;
+                        "11")
+                                create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "1"
+                                return 1
+
+                        ;;
+                esac
+
+        fi
+}
+
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_alarm
+#------------------------------------------------------------------------------
+get_ecc_ram_alarm()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        if [ ${UE_COUNT} -gt 0 ]; then
+            # file generated when user issues the command:
+            # ---CLI> clear hardware edac-ue-alarm
+            ACK_FILE="/tmp/edac_ue_alarm_ack"
+            if [ -e ${ACK_FILE} ]; then
+                # if file is empty, it means user 
+                # recently acked the alarm. in that case, we 
+                # store alarm count, and report OK state
+                if [ ! -s ${ACK_FILE} ]; then
+                    echo "${UE_COUNT}" > ${ACK_FILE} # store alarm count
+                    echo "normal"
+                    return;
+                else
+                    # if file is nonempty, it means user 
+                    # already acked alarm. however, check if 
+                    # a new alarm was raised since
+                    UE_ALARM_COUNT=`cat ${ACK_FILE}`
+                    if [ ${UE_COUNT} -le ${UE_ALARM_COUNT} ]; then
+                        echo "normal"
+                        return;
+                    else
+                        /bin/rm -f ${ACK_FILE}
+                        echo "critical"
+                        return;
+                    fi
+                fi
+            else
+                echo "critical" # houston, we have a problem
+            fi
+            return
+        else
+            CE_COUNT=`get_ecc_ram_count "ce"`;
+            check_ce_info "${CE_COUNT}"
+            if [ $? -ne 0 ]; then
+                echo "degraded"
+                return;
+            fi
+        fi
+        echo "normal"
+    else
+        echo "normal"
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# uses_system_led_control
+#------------------------------------------------------------------------------
+
+uses_system_led_control()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+ssl_card_support()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# set_system_led_state
+#
+# Sets the system LED to the appropriate blink state based on the parameter.
+# Note that this is the chassis ID led.
+# normal   : off
+# degraded : blink slow
+# critical : blink fast
+#
+#------------------------------------------------------------------------------
+set_system_led_state()
+{
+    SUP=`uses_system_led_control`
+    if [ "x${SUP}" != "xtrue" ]; then
+        echo "Not implemented"
+        return 128
+    fi
+
+    STATE="$1"
+    if [ "x${STATE}" = "x" ]; then
+        ${HAL_LOG_WARN} "Invalid led state for set_system_led_state"
+        echo "Invalid led state for set_system_led_state"
+        return 1
+    fi
+
+    case "x${STATE}" in
+        "xnormal")
+            # Solid Blue
+            newstate="ok"
+        ;;
+        "xok")
+            # Solid Blue
+            newstate="ok"
+        ;;
+        "xdegraded")
+            # Blink at 1s on/ 1s off
+            newstate="warn"
+        ;;
+        "xcritical")
+            # Blink 1/2 sec on, 1/2 sec off
+            newstate="error"
+        ;;
+        *)
+            ${HAL_LOG_WARN} "Invalid LED state requested ${STATE}"
+            echo "Invalid LED state requested ${STATE}"
+            return 1
+        ;;
+    esac
+
+    gem_cli_output=`${GEMCLI_BUTSER2} set_system_led_state $newstate`
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "Unable to set system led state to ${STATE}."
+        ${HAL_LOG_WARN} "$gem_cli_output"
+        echo "Unable to set system led state to ${STATE}."
+        echo $gem_cli_output
+        return 1
+    fi
+
+    return 0
+}
+
+
+
+###############################################################################
+#
+# check_disk_fw_updates
+#
+# Loop over each disk and check if it needs an update
+# If so, perform the update, and print to stdout.
+# this routine should be run from within an initlog context, so messages will
+# be sent to syslog.
+#
+# $1 is the display flag; 1 to display to console, 0 display to log (not implemented)
+# $2 is the path name of the meta data file for the disk firmware
+#
+###############################################################################
+check_disk_fw_updates()
+{
+    display=$1
+    metaDataFilename=$2
+    if [ "x$metaDataFilename" == "x" ]; 
+    then
+        echo "check_disk_fw_updates requires meta data filename"
+        exit 1
+    fi
+    #echo check_disk_fw_updates: Calling ${GEMCLI_BUTSER2} check_disk_fw_updates ${metaDataFilename}
+    ${GEMCLI_BUTSER2} check_disk_fw_updates ${metaDataFilename}
+}
+
+#------------------------------------------------------------------------------
+# check_update_hwraid_fw
+#------------------------------------------------------------------------------
+check_update_hwraid_fw()
+{
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_bmc_ver
+#------------------------------------------------------------------------------
+get_bmc_ver()
+{
+    display=$1
+
+    BMCVER=`${IPMITOOL} hpm check 2>1 | ${GREP} BMC | ${AWK} -F "|" '{print $4}' | ${AWK} '{print $1}'`
+    if [ "${BMCVER}" != "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "BMC version is [${BMCVER}]"
+        else
+            echo "bmc_ver=${BMCVER}"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the BMC version."
+        else
+            echo "Could not find out the BMC version."
+        fi
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_fpga_ver
+#------------------------------------------------------------------------------
+get_fpga_ver()
+{
+    display=$1
+
+    FPGAVER=`${IPMITOOL} hpm check 2>1 | ${GREP} FPGA | ${AWK} -F "|" '{print $4}' | ${AWK} '{print $1}'`
+    if [ "${FPGAVER}" != "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "FPGA version is [${FPGAVER}]"
+        else
+            echo "fpga_ver=${FPGAVER}"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the FPGA version."
+        else
+            echo "Could not find out the FPGA version."
+        fi
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# hpm_update
+# Update items in an HPM file
+# $1: 1 to display on console, 0 to display in log
+# $2: Full path name of readable valid hpm file
+# $3: 1 to force update of all components in hpm, 0 to update only out of date components
+#------------------------------------------------------------------------------
+hpm_update()
+{
+    display=$1
+    filename=$2
+    force=$3
+    all=""
+
+    # if force flag set, then force an update
+    if [ "$force" == "1" ]; then
+        all="all"
+    fi
+    
+    #example from manual:
+    #ipmitool hpm upgrade <filename> [all] [component <x>] [activate]
+
+    # Check if file is present
+    if [ ! -f "$filename" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "hpm_update filename not found"
+        else
+            echo "hpm_update filename '$filename' not found"
+        fi
+        exit 1
+    fi
+    
+    # Attempt upgrade
+    $IPMITOOL -z 250 hpm upgrade $filename $all
+    if [ $? != 0 ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "hpm_update upgrade failed"
+        else
+            echo "hpm_update upgrade failed"
+        fi
+        exit 1
+    fi
+
+    # Attempt activate: Note that this may reboot the box
+#    $IPMITOOL hpm activate
+#    if [ $? != 0 ]; then
+#        if [ $display -eq 0 ]; then
+#            ${HAL_LOG_WARN} "hpm_update activate failed"
+#        else
+#            echo "hpm_update activate failed"
+#        fi
+#        exit 1
+#    fi
+
+    # Success!
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# supports_bmc_watchdog_pretimeout
+# This hal function is called by mgmt to check whether
+# the machine supports bmc hardware watchdog pre-timout.
+#------------------------------------------------------------------------------
+supports_bmc_watchdog_pretimeout()
+{
+	echo "true"
+}
+
+#------------------------------------------------------------------------------
+# After hpm_upgrade, an hpm_activate is required if any of the modules were
+# upgraded. Activate after upgrading BIOS or FPGA will reboot the box.
+#------------------------------------------------------------------------------
+hpm_activate()
+{
+    display=$1
+    if [ $display -eq 0 ]; then
+        ${HAL_LOG_WARN} "running hpm_activate. May reboot box"
+    else
+        echo "running hpm_activate. May reboot box"
+    fi
+
+    # Attempt activate: Note that this may reboot the box
+    $IPMITOOL hpm activate
+    if [ $? != 0 ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "hpm_update activate failed"
+        else
+            echo "hpm_update activate failed"
+        fi
+        exit 1
+    fi
+    # Success!
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_controller_ver
+#------------------------------------------------------------------------------
+get_controller_ver()
+{
+    display=$1
+    adapter=$2
+
+    if [ "$adapter" == "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "get_controller_ver invalid adapter"
+        else
+            echo "get_controller_ver invalid adapter"
+        fi
+        exit 1
+    fi
+
+    # Get current version
+    local VERSION=`${MEGACLI} -AdpAllinfo -a${adapter} -nolog 2>1 | ${GREP} "FW Package Build" | ${AWK} -F ":" '{print $2}' | ${TR} -d "[:space:]"`
+
+    if [ "$VERSION" == "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "get_controller_ver adapter=$adapter failed"
+        else
+            echo "get_controller_ver adapter=$adapter failed"
+        fi
+        exit 1
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "controller adapter=$adapter version=${VERSION}"
+        else
+            echo "${VERSION}"
+        fi
+        exit 1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# update_controller
+# Update items in an HPM file
+# $1: 1 to display on console, 0 to display in log
+# $2: Full path name of readable valid file
+# $3: Adapter number to update
+#------------------------------------------------------------------------------
+update_controller()
+{
+    display=$1
+    filename=$2
+    adapter=$3
+
+    echo "display = $display"
+    echo "filename = $filename"
+    echo "adapter = $adapter"
+
+    # Check if file is present
+    if [ -f $filename ]; then
+        echo > /dev/null
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "update_controller filename not found"
+        else
+            echo "update_controller filename not found"
+        fi
+        exit 1
+    fi
+
+    if [ "x$adapter" == "x" ]; then
+        adapter="All" 
+    fi
+    
+    # Attempt upgrade
+    # Note: Upgrade has not really happened until the controller reboots
+    $MEGACLI -AdpFwFlash -f ${filename} -a${adapter} -nolog
+    if [ $? != 0 ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "update_controller upgrade failed"
+        else
+            echo "update_controller upgrade failed"
+        fi
+        exit 1
+    fi
+
+    # Success!
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+
+case "${FUNCTION}" in
+
+    "get_motherboard")
+        get_motherboard
+        ;;
+    "get_platform")
+        get_platform
+        ;;
+    "get_model")
+        get_model
+        ;;
+    "check_kernel_options")
+        check_kernel_options
+        ;;
+    "init_hardware_phase0")
+        init_hardware_phase0
+        ;;
+    "init_hardware_phase1")
+        init_hardware_phase1
+        ;;
+    "init_hardware_phase2")
+        init_hardware_phase2
+        ;;
+    "deinit_hardware_phase1")
+        deinit_hardware_phase1
+        ;;
+    "deinit_hardware_phase2")
+        deinit_hardware_phase2
+        ;;
+    "get_num_raid_arrays")
+        get_num_raid_arrays
+        ;;
+    "get_raid_status")
+        get_raid_status ${ARGS}
+        ;;
+    "get_hwraid_status")
+        get_hwraid_status ${ARGS}
+        ;;
+    "show_raid_diagram")
+        show_raid_diagram ${ARGS}
+        ;;
+    "show_raid_config")
+        show_raid_config
+        ;;
+    "show_raid_info")
+        show_raid_info
+        ;;
+    "show_raid_info_detail")
+        show_raid_info_detail
+        ;;
+    "show_raid_config_detail")
+        show_raid_config_detail
+        ;;
+    "show_raid_physical")
+        show_raid_physical
+        ;;
+    "show_hwraid_diagram")
+        show_raid_diagram ${ARGS}
+        ;;
+    "show_hwraid_config")
+        show_raid_config
+        ;;
+    "show_hwraid_info")
+        show_raid_info
+        ;;
+    "show_hwraid_info_detail")
+        show_raid_info_detail
+        ;;
+    "show_hwraid_config_detail")
+        show_raid_config_detail
+        ;;
+    "show_hwraid_physical")
+        show_raid_physical
+        ;;
+    "get_temperature")
+        get_temperature
+        ;;
+    "uses_power_supplies")
+        uses_power_supplies
+        ;;
+    "get_power_supply_status")
+        get_power_supply_status
+        ;;
+    "get_shelf_power_supply_status")
+        get_shelf_power_supply_status
+        ;;
+    "uses_hardware_wdt")
+        uses_hardware_wdt
+        ;;
+    "get_ecc_ram_status")
+        get_ecc_ram_status
+        ;;
+    "get_ecc_ram_support")
+        get_ecc_ram_support
+        ;;
+    "get_ecc_ram_alarm")
+        get_ecc_ram_alarm
+        ;;
+    "uses_fan_status")
+        uses_fan_status
+        ;;
+    "get_fan_status")
+        get_fan_status
+        ;;
+    "get_shelf_fan_status")
+        get_shelf_fan_status
+        ;;
+    "uses_flash_disk")
+        uses_flash_disk
+        ;;   
+    "ssl_card_support")
+        ssl_card_support
+        ;;
+    "get_running_arch")
+        get_running_arch
+        ;;
+    "get_if_type")
+        get_if_type ${ARGS}
+        ;;
+    "get_if_status")
+        get_if_status ${ARGS}
+        ;;
+    "get_if_wdt_status")
+        get_generic_if_wdt_status ${ARGS}
+        ;;
+    "set_if_wdt_block")
+        set_if_wdt_block ${ARGS}
+        ;;
+    "set_if_wdt_bypass")
+        set_if_wdt_bypass ${ARGS}
+        ;;
+    "set_if_bypass")
+        set_if_bypass ${ARGS}
+        ;;
+    "set_if_normal")
+        set_if_normal ${ARGS}
+        ;;
+    "get_hw_if_status")
+        get_hw_if_status ${ARGS}
+        ;;
+    "get_er_if_status")
+        get_er_if_status ${ARGS}
+        ;;
+    "get_er_if_wdt_status")
+        get_er_if_wdt_status ${ARGS}
+        ;;
+    "get_hw_if_wdt_status")
+        get_hw_if_wdt_status ${ARGS}
+        ;;
+    "do_start_rios_volumes")
+        do_start_rios_volumes
+        ;;
+    "uses_disk_led")
+        uses_disk_led
+        ;;
+    "get_disk_led_status")
+        get_disk_led_status
+        ;;
+    "uses_disk_power")
+        uses_disk_power
+        ;;
+    "get_disk_power_status")
+        get_disk_power_status
+        ;;
+    "uses_system_led_control")
+        uses_system_led_control
+        ;;
+    "set_system_led_state")
+        set_system_led_state ${ARGS}
+        ;;
+    "get_system_led_state")
+        get_system_led_state
+        ;;
+    "get_system_led_color")
+        get_system_led_color
+        ;;
+    "supports_txhang_noflap")
+        supports_txhang_noflap
+        ;;
+    "get_ipmi_ver")
+        get_ipmi_ver 1
+        ;;
+    "get_bios_ver")
+        get_bios_ver 1
+        ;;
+    "get_bmc_ver")
+        get_bmc_ver 1
+        ;;
+    "hpm_update")
+        hpm_update 1 ${ARGS}
+        ;;
+    "hpm_activate")
+        hpm_activate 1
+        ;;
+    "get_controller_ver")
+        get_controller_ver 1 ${ARGS}
+        ;;
+    "check_disk_fw_updates")
+        check_disk_fw_updates 1 ${ARGS}
+        ;;
+    "update_controller")
+        update_controller 1 ${ARGS}
+        ;;
+    "supports_hw_upgrades")
+        supports_hw_upgrades
+        ;;
+    "sw_supports_ether_relay")
+        sw_supports_ether_relay
+        ;;
+    "get_avail_speed_duplex")
+        get_avail_speed_duplex ${ARGS}
+        ;;
+    "get_default_speed_duplex")
+        get_default_speed_duplex ${ARGS}
+        ;;
+    "set_speed_duplex")
+        set_speed_duplex ${ARGS}
+        ;;
+    "get_default_ipmi_wdt_timeout")
+        get_default_ipmi_wdt_timeout
+        ;;
+    "change_nmi_wdt_state")
+        change_nmi_wdt_state ${ARGS}
+        ;;
+    "get_data_partition")
+        get_data_partition
+        ;;
+    "get_data_partition_type")
+        get_data_partition_type
+        ;;
+    "get_riverbed_serial")
+        get_riverbed_serial
+        ;;
+    "alarm_silence")
+        alarm_silence
+        ;;
+    "check_update_bios")
+        check_update_bios
+        ;;
+    "get_fpga_ver")
+        get_fpga_ver 1
+        ;;
+    "get_enclosure_serial")
+        get_enclosure_serial ${ARGS}
+        ;;
+    "get_vd_mapping")
+        get_vd_mapping ${ARGS}
+        ;;
+    "get_adapter_count")
+        get_adapter_count 1
+        ;;
+    "shelf_present")
+        shelf_present 1
+        ;;
+    "gem_fill_log")
+        gem_fill_log
+        ;;
+    "supports_bmc_watchdog_pretimeout")
+        supports_bmc_watchdog_pretimeout
+        ;;
+    "supports_rfut")
+        supports_rfut
+        ;;
+    "smartctl")
+        smartctl 1
+        ;;
+    "get_hardware_pass_support")
+        get_hardware_pass_support
+        ;;
+    "hwraid_state_save")
+        hwraid_state_save ${ARGS}
+        ;;
+    "hwraid_state_show")
+        hwraid_state_show ${ARGS}
+        ;;
+    "hwraid_check_integrity")
+        hwraid_check_integrity ${ARGS}
+        ;;
+    *)
+        echo "Not implemented"
+        exit 128
+        ;;
+esac
+

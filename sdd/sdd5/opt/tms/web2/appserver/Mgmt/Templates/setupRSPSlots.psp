@@ -1,0 +1,1464 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# This page governs RSP slots.
+
+# Some packages that are worth of testing include
+# http://rspimages.nbttech.com/guam/qa_inpath_bridge/v7/inpathbridge_v7.zip
+# http://rspimages/guam/riverbed_openwrt_test/002/riverbed_openwrt_test_002.pkg
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, rsp, RVBDUtils, Logging" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+/* Match width of fieldset */
+p.textContainer { width: 530px; }
+p.textContainer a { text-decoration: underline; }
+fieldset#watchdogContainer { width: 500px; }
+fieldset.operation { width: 400px; }
+td.powerOn {
+  color: #3A3;
+}
+td.powerUnknown,
+td.powerOff {
+  color: #999;
+}
+td.rspSlotFailure {
+  color: #D00000;
+  font-style: italic;
+}
+td.rspSlotGracePeriod { font-style: italic; }
+td.rspServiceDisabled,
+td.rspSlotDisabled {
+  color: #999;
+}
+td.rspServiceNotCompatible {
+  color: #D00000;
+}
+#slotTable_main { width: 100%; }
+
+/* Icons in AET buttons */
+#slotTable_button_disable {
+    background-image: url(/images/aet_stop.gif);
+    background-position: 4px 3px;
+    padding-left: 19px;
+}
+#slotTable_button_enable {
+    background-image: url(/images/aet_play.gif);
+    background-position: 5px 3px;
+    padding-left: 19px;
+}
+#slotTable_button_restart {
+    background-image: url(/images/aet_restart.gif);
+    background-position: 3px 0px;
+    padding-left: 19px;
+}
+
+span#slotDiskTotalSizeAttached,
+span#slotDiskTotalSizeUnattached {
+  font-style: italic;
+}
+div#slotOperationWarning div.indent {
+  margin-left: 2em;
+}
+div#slotEdit_emptySlot div.entry {
+  margin: 0.4em 0;
+}
+div#slotActionBar.interactiveCommand {
+  padding: 10px 12px;
+  margin: 1em 0;
+  width: 400px;
+  height: 1.75em;
+  overflow: hidden;
+}
+div#slotActionBar div.status {
+  float: left;
+  line-height: 1.75em;
+}
+div#slotActionBar div.buttons {
+  float: right;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    # For RBM permissioning that works on SH and CMC
+    return {
+        'permNode': FormUtils.NodeEntry(
+        path='/rbt/rsp2/config/dataflow/inpath0_0')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    rspPublicName = rsp.publicName()
+
+    return {
+        'vmEnable': FormUtils.NodeEntry(
+            path='/rbt/rsp2/config/webaccess/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable VM Consoles'),
+        # Slot Table NodeEntries
+        'newSlotName': FormUtils.NodeEntry(
+            name='newSlotName',
+            validate='validateSlotName',
+            label='Slot Name'),
+        'slotInstallSource': FormUtils.NodeEntry(
+            name='slotInstallSource',
+            widget='radio',
+            label={'package': 'Install from %s Package:' % rspPublicName,
+                   'backup': 'Restore from %s Backup:' % rspPublicName},
+            labelClass='labelPaddedBoth',
+            displayDiv={'package': 'installPackageButton',
+                        'backup': 'restoreBackupButton'},
+            value='package'),
+        'selectedPackageNameCMC': FormUtils.NodeEntry(
+            name='selectedPackageNameCMC',
+            widget='select',
+            label='Package',
+            action='return packageSlotName(this);'),
+        'selectedPackageName': FormUtils.NodeEntry(
+            name='selectedPackageName',
+            widget='select',
+            action='return packageSlotName(this);'),
+        'selectedBackup_emptySlot': FormUtils.NodeEntry(
+            name='selectedBackup_emptySlot',
+            widget='select'),
+        'slotPriority': FormUtils.NodeEntry(
+            name='slotPriority',
+            type='string',
+            selectOptions=[('low', 'Low'), ('normal', 'Normal'), ('high', 'High')],
+            label='Priority'),
+        'slotEditMemory': FormUtils.NodeEntry(
+            name='slotEditMemory',
+            label='Memory Footprint',
+            inputOptional=True,
+            validate='uint16',
+            widgetClass='small',
+            units='MB'),
+        'slotEditWatchdogTimeout': FormUtils.NodeEntry(
+            name='slotEditWatchdogTimeout',
+            validate='uint32',
+            units='second(s)',
+            widgetClass='small',
+            label='Watchdog Timeout'),
+        'slotEditWatchdogGracePeriod': FormUtils.NodeEntry(
+            name='slotEditWatchdogGracePeriod',
+            validate='uint32',
+            label='Startup Grace Period',
+            widgetClass='small',
+            units='second(s)'),
+        'slotEditWatchdogVniPolicy': FormUtils.NodeEntry(
+            name='slotEditWatchdogVniPolicy',
+            widget='select',
+            selectOptions=(('block', 'Block on failure'),
+                           ('bypass', 'Bypass on failure')),
+            label='VNI Policy on Failure'),
+        'slotEditWatchdogReboot': FormUtils.NodeEntry(
+            name='slotEditWatchdogReboot',
+            widget='checkbox',
+            label='Reboot VM on Failure'),
+        'slotEditWatchdogPingUse': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingUse',
+            widget='checkboxLeft',
+            label='Enable Ping Monitoring',
+            enableDiv='pingSettings'),
+        'slotEditWatchdogHeartbeatUse': FormUtils.NodeEntry(
+            name='slotEditWatchdogHeartbeatUse',
+            widget='checkboxLeft',
+            label='Enable Heartbeat Monitoring',
+            enableDiv='heartbeatSettings'),
+        'slotEditWatchdogPingIp': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingIp',
+            validate='ipv4addr',
+            inputOptional=True,
+            hint='empty for no ping watchdog IP',
+            label='Ping Watchdog IP'),
+        'slotEditWatchdogPingInterval': FormUtils.NodeEntry(
+            name='slotEditWatchdogPingInterval',
+            validate='uint32',
+            widgetClass='small',
+            units='second(s)',
+            label='Ping Watchdog Interval'),
+        # Disk Table NodeEntries
+        'slotDiskName': FormUtils.NodeEntry(
+            name='slotDiskName',
+            validate='name', # XXX/ahao ???
+            label='Disk Name'),
+        'slotDiskSize': FormUtils.NodeEntry(
+            name='slotDiskSize',
+            label='Disk Size',
+            validate='createDiskSizeValidator("add")',
+            units='MB',
+            hint=' (up to <span class="rspFreeSpace">&nbsp;</span> MB)',
+            widgetClass='small'),
+        'slotDiskAdapter': FormUtils.NodeEntry(
+            name='slotDiskAdapter',
+            widget='select',
+            label='Disk Adapter',
+            selectOptions=(('ide', 'IDE adapter'),
+                           ('lsilogic', 'LSI Logic SCSI adapter'),
+                           ('buslogic', 'Bus Logic SCSI adapter'))),
+        'slotEditExtendDiskSize': FormUtils.NodeEntry(
+            name='slotEditExtendDiskSize',
+            validate='createDiskSizeValidator("extend")',
+            units='MB',
+            label='New Disk Size',
+            hint=' (up to <span class="rspFreeSpace">&nbsp;</span> MB)',
+            widgetClass='small'),
+        'slotEditAttachDiskController': FormUtils.NodeEntry(
+            name='slotEditAttachDiskController',
+            widget='select',
+            label='Controller'),
+        'slotEditAttachDiskDevice': FormUtils.NodeEntry(
+            name='slotEditAttachDiskDevice',
+            widget='select',
+            label='Device'),
+        # VNI Table NodeEntries
+        'editOptVniVlan': FormUtils.NodeEntry(
+            name='editOptVniVlan',
+            validate='validateVLAN',
+            widgetClass='small',
+            label='VLAN',
+            hint='none, trunk, or 0-4094'),
+        # Operation NodeEntries
+        'selectedBackup_slotOperation': FormUtils.NodeEntry(
+            name='selectedBackup_slotOperation',
+            widget='select',
+            label='Backup File',
+            selectOptions=(('', '--'))),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+rspInstalled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/image/state/installed')
+rspPublicName = rsp.publicName()
+
+# Set up VM link url for slots table.
+if policyType: {
+    vmLinkText = ''
+} elif (Nodes.present(mgmt, '/rbt/rsp2/config/webaccess/enable') == 'true'): {
+    vmLinkText = '''<div class="midLevel">[ <a href="" title="Launch VM Console" id="vmConsoleUrl">Launch VM Console</a> ]</div>'''
+} else: { # Web Access is disabled.
+    vmLinkText = '''<div class="midLevel">[ VM Console is Disabled ]</div>'''
+}
+
+# If we're on a SH and RSP is not installed, the entire RSP slots page
+# is invalid.  If we're on a CMC, in which case we're editing a policy
+# and we want to show the page.
+if RVBDUtils.isSH() and not rspInstalled: {
+    self.beginPagelet()
+    self.writeln('''<p><a href="/mgmt/gui?p=setupRSPService">%s must be installed</a>
+before configuring slots.</p>''' % rspPublicName)
+    self.endPagelet()
+    return
+}
+
+# Check if RSP is supported in the current disk layout.
+rspDiskLayout = Nodes.present(mgmt, '/rbt/rsp2/state/disk_layout/supported', 'true') == 'true'
+if RVBDUtils.isSH() and not rspDiskLayout: {
+    self.beginPagelet()
+    self.writeln('<p>VSP is not supported in the current ' \
+                 '<a href="/mgmt/gui?p=setupDiskManagement">disk layout</a>.</p>')
+    self.endPagelet()
+    return
+}
+
+rspEnabled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/config/enable')
+# inpathOop stands for inpath-out-of-path, which is another term for
+# virtual inpath. That is, the SH is physically out-of-path,
+# but is using a routing mechanism such as WCCP or PBR to send
+# packets to the SH as if it were inpath.
+# inpathOop is True if the SH is virtually inpath.
+inpathOop = 'true' == Nodes.present(mgmt,
+    '/rbt/sport/intercept/config/inpath_oop')
+%>
+
+<% self.beginPagelet() %>
+
+<%
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+if RVBDUtils.isSH(): {
+    packageList = mgmt.getChildren('/rbt/rsp2/package/state').keys()
+}
+elif RVBDUtils.isCMC(): {
+    packageList = mgmt.getChildren('/cmc/state/package_library/rsp2').keys()
+}
+packageList.sort(FormUtils.alphanumericCompare)
+dialogEntries['selectedPackageName'].selectOptions = [('', 'Install...')] + \
+                                                             packageList
+dialogEntries['selectedPackageNameCMC'].selectOptions = [('', 'Select...')] + \
+                                                                packageList
+
+pkgSlotNameMappingJSList = []
+for pkgFileName in packageList: {
+    pkgSlotName = Nodes.present(mgmt, '/rbt/rsp2/package/state/%s/slotname' % (pkgFileName), '')
+    pkgSlotNameMappingJSList.append('"%s": "%s"' % (pkgFileName, pkgSlotName))
+}
+packageSlotNameMappingJS = 'var packageNameMapping = {%s};' % (', '.join(pkgSlotNameMappingJSList))
+
+# RSP Backup restore
+# For each slot, get a list of valid backup files.
+backupList = Nodes.getMgmtSetEntries(mgmt,
+                                     '/rbt/rsp2/state/backup')
+
+# Create mapping from slot name to a list of backup files
+backupSlots = {}
+for backupName, backupData in backupList.iteritems(): {
+    slotName = backupData.get('slot_name', '')
+
+    # Get the current list of backups for this slot by looking
+    # up the slotName as the key. If the key doesn't exist,
+    # insert an empty array there.
+    backups = backupSlots.setdefault(slotName, [])
+
+    # Add this backup to the bucket.
+    backups.append(backupName)
+}
+
+# Sort each (backup) file list.
+for fileList in backupSlots.itervalues(): {
+    fileList.sort(FormUtils.alphanumericCompare)
+}
+
+# Represent this dict as a Javascript associative array.
+backupMapEntriesJS = ['"%s": %s' % (slotName, backupList)
+                      for slotName, backupList
+                      in backupSlots.iteritems()]
+backupMapJS = 'var backupMapping = {%s};' % (', '.join(backupMapEntriesJS))
+
+# Slot install meter
+slotInstallMeter = FormUtils.Meter(self, 'rspSlotInstall',
+                                   buttonName='installSlot',
+                                   buttonText='Install',
+                                   formId='slotsForm',
+                                   onClick='return checkForDefaultPkgName(this);')
+backupRestoreMeter = FormUtils.Meter(self, 'rspBackupRestore',
+                                     buttonName='restoreBackup_emptySlot',
+                                     buttonText='Restore',
+                                     formId='slotsForm')
+
+# Steelhead VNI AET has "MAC" column,
+# CMC policy VNI AET does not.
+slotOptVniTableHeaderSpecSH = \
+    (('Name', '', 'sortAttrib("name")'),
+     ('Type', '', 'sortAttrib("type")'),
+     ('Default IP Policy', '', 'sortAttrib("defIP")'),
+     ('Default Non-IP Policy', '', 'sortAttrib("defNonIP")'),
+     ('VLAN', '', 'sortAttrib("vlan")'),
+     ('MAC', '', 'sortAttrib("mac")'))
+slotOptVniTableRowSpecSH = """
+[AjaxEntryTable.td([AjaxEntryTable.edit('name', 'name')]),
+ AjaxEntryTable.tdAttr('type'),
+ AjaxEntryTable.tdAttr('defIP'),
+ AjaxEntryTable.tdAttr('defNonIP'),
+ AjaxEntryTable.tdAttr('vlan'),
+ AjaxEntryTable.tdAttr('mac')]
+"""
+slotOptVniTableHeaderSpecCMC = \
+    (('Name', '', 'sortAttrib("name")'),
+     ('Type', '', 'sortAttrib("type")'),
+     ('Default IP Policy', '', 'sortAttrib("defIP")'),
+     ('Default Non-IP Policy', '', 'sortAttrib("defNonIP")'),
+     ('VLAN', '', 'sortAttrib("vlan")'))
+slotOptVniTableRowSpecCMC = """
+[AjaxEntryTable.td([AjaxEntryTable.edit('name', 'name')]),
+ AjaxEntryTable.tdAttr('type'),
+ AjaxEntryTable.tdAttr('defIP'),
+ AjaxEntryTable.tdAttr('defNonIP'),
+ AjaxEntryTable.tdAttr('vlan')]
+"""
+
+# The details for an installed slot in the slotTable include
+# a nested AET of optimization VNIs defined by the package
+# installed in the slot.
+#
+# The type of each Optimization VNI is either LAN, WAN, or V-Inpath,
+# the package may optionally define a MAC for the VNI,
+# and may optionally define a VLAN.
+# The VLAN for a VNI of an installed slot is user settable from this AET,
+# unless RSP is enabled and the SH is in virtual inpath mode
+# (AKA inpath-out-of-path mode).
+slotOptVniTable = ajaxentrytable.AjaxEntryTable('slotOptVni',
+    titleText='Optimization Virtual Network Interfaces',
+    headerSpec=RVBDUtils.isSH() and slotOptVniTableHeaderSpecSH \
+                                                    or slotOptVniTableHeaderSpecCMC,
+    rowSpec=RVBDUtils.isSH() and slotOptVniTableRowSpecSH \
+                                                    or slotOptVniTableRowSpecCMC,
+    emptyMessage='No Optimization Virtual Network Interfaces')
+
+slotOptVniTable.editDivContent = '''
+  <input type="hidden" name="editOptVniName" />
+  <div id="optVniVlanEditPane">
+    <div class="midLevel">
+      <table>
+        ''' + dialogEntries['editOptVniVlan'].html(self) + '''
+      </table>
+    </div>
+  </div>
+  ''' + FormUtils.formSubmitButtons(self, {'name': 'editOptVni',
+                                     'value': 'Update VNI'})
+
+
+# SH has MAC column, CMC policy page does not.
+slotMgmtVniTableHeaderSpecSH = \
+    (('Name', '', 'sortAttrib("name")'),
+     ('Physical Interface', '', 'sortAttrib("physical")'),
+     ('MAC', '', 'sortAttrib("mac")'))
+slotMgmtVniTableRowSpecSH = """
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.td([fillMgmtVniPhysicalCell]),
+ AjaxEntryTable.tdAttr('mac')]
+"""
+slotMgmtVniTableHeaderSpecCMC = \
+    (('Name', '', 'sortAttrib("name")'),
+     ('Physical Interface', '', 'sortAttrib("physical")'))
+slotMgmtVniTableRowSpecCMC = """
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.td([fillMgmtVniPhysicalCell])]
+"""
+
+# A slot table also includes a nested AET of management VNIs.
+#
+# The user may select a physical interface ('pri', 'aux') to
+# associate with each management VNI
+slotMgmtVniTable = ajaxentrytable.AjaxEntryTable('slotMgmtVni',
+    titleText='Management Virtual Network Interfaces',
+    headerSpec=RVBDUtils.isSH() and slotMgmtVniTableHeaderSpecSH \
+                                                     or slotMgmtVniTableHeaderSpecCMC,
+    rowSpec=RVBDUtils.isSH() and slotMgmtVniTableRowSpecSH \
+                                                     or slotMgmtVniTableRowSpecCMC,
+    emptyMessage='No Management Virtual Network Interfaces')
+
+# The slot's VM disks.
+slotDiskTable = ajaxentrytable.AjaxEntryTable('slotDisk',
+    titleText='Disks',
+    headerSpec=('',
+                ('Name', '', 'sortAttrib("name")'),
+                ('Attached', '', 'sortAttrib("attached")'),
+                ('Adapter', '', 'sortAttrib("adapter")'),
+                ('Bus', '', 'sortAttrib("bus")'),
+                ('Size', '', 'sortAttrib("size_in_mb")')),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedSlotDisk_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('attached'),
+ AjaxEntryTable.tdAttr('adapter'),
+ AjaxEntryTable.tdAttr('bus'),
+ AjaxEntryTable.tdAttr('size')]
+""",
+    emptyMessage='No disks',
+    addButtonText='Create a Disk',
+    removeName='removeDisk',
+    removeButtonText='Delete Selected Disks',
+    removeButtonAction='showDeleteDiskConfirmation')
+
+slotDiskTable.addDivContent = """
+  <div id="diskAddPane" class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+  %s
+""" % (dialogEntries['slotDiskName'].html(self),
+       dialogEntries['slotDiskSize'].html(self),
+       dialogEntries['slotDiskAdapter'].html(self),
+       FormUtils.formSubmitButtons(self, {'name': 'createDisk',
+                                    'value': 'Create Disk'}))
+
+slotDiskTable.editDivContent = """
+  <input type="hidden" name="editDiskName" />
+  <div id="slotDiskEditPane" class="midLevel">
+    <h3>Extend disk</h3>
+    <table>
+      %s
+    </table>
+    %s
+    <hr />
+  </div>
+  <div id="slotDiskAttachPane" class="midLevel">
+    <h3><span id="slotDiskAttachHeader">Attach</span> disk</h3>
+    <p>Disk is currently <span id="slotDiskAttachStatus">&nbsp;</span>.</p>
+    <div id='slotDiskAttachOptionsPane'>
+      %s %s
+    </div>
+    %s
+  </div>
+""" % (dialogEntries['slotEditExtendDiskSize'].html(self),
+       FormUtils.formSubmitButtons(self, {'name': 'extendDisk',
+                                    'value': 'Extend Disk'}),
+       dialogEntries['slotEditAttachDiskController'].html(self,
+                                                          format='inline'),
+       dialogEntries['slotEditAttachDiskDevice'].html(self,
+                                                      format='inline'),
+       FormUtils.formSubmitButtons(self, {'name': 'attachDisk',
+                                    'value': 'Attach'}))
+
+# Different columns on SH vs. CMC. CMC policy gets a crippled version of the table.
+if RVBDUtils.isSH(): {
+    slotTableHeaderSpec = \
+        ('Slot', 'Power', 'Status', 'Name', 'Version', 'Description')
+    slotTableRowSpec = """[
+        AjaxEntryTable.tdEdit('name', 'name'),
+        AjaxEntryTable.tdAttrStyle('powerState', 'powerStateClass'),
+        AjaxEntryTable.tdAttrStyle('watchdogStatusEnhanced', 'wdStatusClass'),
+        AjaxEntryTable.tdAttr('packageName'),
+        AjaxEntryTable.tdAttr('packageVersion'),
+        AjaxEntryTable.tdAttr('packageDescription')]"""
+}
+elif RVBDUtils.isCMC(): {
+    slotTableHeaderSpec = ('Slot', 'Name', 'Description')
+    slotTableRowSpec = """[
+        AjaxEntryTable.tdEdit('name', 'name'),
+        AjaxEntryTable.tdAttr('packageName'),
+        AjaxEntryTable.tdAttr('packageDescription')]"""
+}
+
+slotTable = ajaxentrytable.AjaxEntryTable('slot',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=rspSlots'),
+    headerSpec=slotTableHeaderSpec,
+    rowSpec=slotTableRowSpec,
+    emptyMessage='No slots.')
+
+# Different tabs in the slot table edit div.
+if RVBDUtils.isSH(): {
+    slotTableTabControlParams = [
+        ('operations', 'Slot Operations', 'slotEdit_operationsSH'),
+        ('params', 'VM Settings', 'slotEdit_params'),
+        ('watchdog', 'Watchdog Settings', 'slotEdit_watchdog'),
+        ('vnis', 'VNIs', 'slotEdit_vniTable'),
+        ('disks', 'Disks', 'slotEdit_diskTable'),
+    ]
+}
+elif RVBDUtils.isCMC(): {
+    slotTableTabControlParams = [
+        ('params', 'VM Settings', 'slotEdit_params'),
+        ('watchdog', 'Watchdog Settings', 'slotEdit_watchdog'),
+        ('vnis', 'VNIs', 'slotEdit_vniTable'),
+        ('operations', 'Slot Operations', 'slotEdit_operationsCMC'),
+    ]
+}
+
+slotTable.editDivContent = '''
+  <input type="hidden" name="slotName" />
+
+  <p style="display: %(cmcDisplay)s" class="textContainer">
+      In order to push a slot configuration and dataflow, the slot policy must be configured to
+      reflect the slot names and installed packages that are present on the Steelhead.
+      Pushing this policy does not actually rename slots or install packages on the Steelhead;
+      those operations are performed from the <a href="/mgmt/gui?p=setupRSPAppliances">RSP/VSP Appliances page</a>.
+  </p>
+
+  <!-- Slot Install Pane (empty slot) -->
+  <div id="slotEdit_emptySlot" class="midLevel">
+
+    <fieldset>
+      <legend>Rename Slot</legend>
+      <div class="midLevel">
+        %(newSlotName)s %(renameSlotButton)s
+      </div>
+      <p class="textContainer warning">
+        Once a slot is occupied, it may no longer be renamed.
+      </p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Install Into Slot</legend>
+      <div class="midLevel">
+
+        <div style="display: %(shDisplay)s">
+          <div class="package entry">
+            <span class="radioWidget">%(sourcePackage)s</span>
+            <span id="installPackage">%(selectedPackageName)s</span>
+          </div>
+          <div class="backup entry">
+            <span class="radioWidget">%(sourceBackup)s</span>
+            <span id="restoreBackup">%(selectedBackup_emptySlot)s</span>
+          </div>
+          <p class="warning">
+            Operation may take five minutes or more to complete.
+            Please do not navigate away from this page until the operation completes.
+          </p>
+          <div id="installPackageButton">%(slotInstallMeterButton)s</div>
+          <div id="restoreBackupButton">%(backupRestoreMeterButton)s</div>
+        </div>
+
+        <div style="display: %(cmcDisplay)s">
+          %(selectedPackageNameCMC)s
+          %(slotInstallMeterButtonCMC)s
+        </div>
+
+     </div>
+   </fieldset>
+
+   </div>
+
+  <!-- Slot Edit Pane -->
+  <div id="slotEdit_installedSlot" class="midLevel">
+
+    <!-- Radio Tabs -->
+    <div class="tabControl" id="rspSlotTabs">
+    <div class="grayBorder">
+
+      %(tabControl)s
+
+      <!-- Operations Pane (SH) -->
+      <div id="slotEdit_operationsSH" style="display: %(cmcHide)s">
+
+        <!-- Slot Operation Buttons -->
+        <div id="slotActionBar" class="interactiveCommand">
+          <div class="status">Slot is <strong id="slotState">&nbsp;</strong>.</div>
+          <div class="buttons">
+            %(enableSlotButton)s
+            %(disableSlotButton)s
+            %(restartSlotButton)s
+          </div>
+        </div>
+
+        <fieldset id="uninstallOperation" class="operation">
+          <legend>Uninstall Slot</legend>
+          <p id="eraseSlotWarning" class="warning">
+            All data in this slot will be erased.
+          </p>
+          <p id="disableSlotHint">
+            Slot must be in a disabled state to proceed.
+          </p>
+          %(uninstallSlotButton)s
+        </fieldset>
+
+        <fieldset id="restoreOperation" class="operation">
+          <legend>Restore %(rspPublicName)s Backup</legend>
+          <p class="warning">All data in this slot will be erased.</p>
+          %(selectedBackup_slotOperation)s
+          %(restoreBackupButton)s
+        </fieldset>
+
+        <fieldset class="operation">
+          <legend>Create %(rspPublicName)s Backup</legend>
+          <p>
+            Create or schedule a %(rspPublicName)s backup from this slot on the
+            <a href="/mgmt/gui?p=setupRSPBackups">%(rspPublicName)s Backups</a> page.
+          </p>
+        </fieldset>
+      </div>
+
+      <!-- VM Settings Pane -->
+      <div id="slotEdit_params" class="midLevel">
+        <table>
+          <tbody id="vmStatus" style="%(vmStatusStyle)s">
+            <tr><td>Number of CPUs:</td><td><span id="numCpus">&nbsp;</span></td></tr>
+            <tr><td>VMware Tools:</td><td><span id="vmwareTools">&nbsp;</span></td></tr>
+          </tbody>
+          <tbody>
+            %(priority)s
+            %(memory)s
+          </tbody>
+        </table>
+        %(vmLinkText)s
+        %(updateSlotButton)s
+      </div>
+
+      <!-- Watchdog Settings Pane -->
+      <div id="slotEdit_watchdog" class="midLevel">
+        <table id="watchdogGroup">
+          %(watchdogTimeout)s
+          %(watchdogGracePeriod)s
+          %(watchdogVniPolicy)s
+          %(watchdogReboot)s
+        </table>
+        <!-- Ping Monitoring Settings -->
+        <div id="pingGroup">
+          %(watchdogPingUse)s
+          <div id="pingSettings" class="indent">
+            <table>
+             %(watchdogPingIp)s
+             %(watchdogPingInterval)s
+            </table>
+          </div>
+        </div>
+        <!-- Heartbeat Monitoring Settings -->
+        <div id="heartbeatGroup">
+          %(watchdogHeartbeatUse)s
+          <div id="heartbeatSettings" class="indent">
+            <table>
+              <tr>
+                <td>Heartbeat Port:</td>
+                <td><span id="wdHeartbeatPort">&nbsp;</span></td>
+              </tr>
+            </table>
+          </div>
+        </div>
+        %(updateSlotButton)s
+      </div>
+
+      <!-- Disks Pane -->
+      <div id="slotEdit_diskTable" class="midLevel" style="display: %(cmcHide)s">
+        <div id="slotDiskTable_div" class="midLevel">
+          %(diskTable)s
+          <p>
+            Total disk space:
+              <span id="slotDiskTotalSizeAttached">(Loading...)</span> attached,
+              <span id="slotDiskTotalSizeUnattached">(Loading...)</span> unattached.
+          </p>
+        </div>
+        <p id='cloneRestorePendingMessage' class='warning textContainer hidden'>
+          Disk operations cannot be performed because this slot has an unrestored snapshot from a %(rspPublicName)s HA transfer. To restore the snapshot and
+          enable disk operations, enable this slot on the <a href="#" onclick="return slotEditTabs.switchTo('operations');">Slot Operations tab</a>.
+        </p>
+      </div>
+
+      <!-- VNI Table Pane -->
+      <div id="slotEdit_vniTable" class="midLevel">
+        <!-- Optimization VNI table -->
+        <div id="slotOptVniTable_div" class="midLevel">
+          %(optVniTable)s
+        </div>
+        <!-- Management VNI table -->
+        <div id="slotMgmtVniTable_div" class="midLevel">
+          %(mgmtVniTable)s
+        </div>
+        %(updateSlotButton)s
+      </div>
+
+      <!-- Operations Pane (CMC) -->
+      <div id="slotEdit_operationsCMC" style="display: %(shHide)s">
+
+        <fieldset class="operation">
+          <legend>Clear Slot Configuration</legend>
+          <p>
+            This slot&#39;s configuration (including VNIs) will be removed from the policy.
+            Note that pushing this policy will not actually uninstall the package on the
+            Steelhead; that operation is performed from the
+            <a href="/mgmt/gui?p=setupRSPAppliances">RSP/VSP Appliances page</a>.
+          </p>
+          %(clearSlotButtonCMC)s
+        </fieldset>
+
+      </div>
+    </div>
+    </div>
+  </div>
+''' % {'tabControl': FormUtils.radioTabControl(
+                         self,
+                         'slotEditTabs',
+                         *slotTableTabControlParams),
+       'priority': dialogEntries['slotPriority'].html(self),
+       'memory': dialogEntries['slotEditMemory'].html(self),
+       'watchdogTimeout': dialogEntries['slotEditWatchdogTimeout'].html(self),
+       'watchdogGracePeriod': dialogEntries['slotEditWatchdogGracePeriod'].html(self),
+       'watchdogVniPolicy': dialogEntries['slotEditWatchdogVniPolicy'].html(self),
+       'watchdogReboot': dialogEntries['slotEditWatchdogReboot'].html(self),
+       'watchdogPingUse': dialogEntries['slotEditWatchdogPingUse'].html(self, format='block'),
+       'watchdogPingIp': dialogEntries['slotEditWatchdogPingIp'].html(self),
+       'watchdogPingInterval': dialogEntries['slotEditWatchdogPingInterval'].html(self),
+       'watchdogHeartbeatUse': dialogEntries['slotEditWatchdogHeartbeatUse'].html(self, format='block'),
+       'diskTable': slotDiskTable.html(self, 'midLevel'),
+       'optVniTable': slotOptVniTable.html(self, 'midLevel'),
+       'mgmtVniTable': slotMgmtVniTable.html(self, 'midLevel'),
+       'renameSlotButton': FormUtils.renderButton(self, {'name': 'renameSlot',
+                                                   'value': 'Rename Slot'}),
+       'vmLinkText': vmLinkText,
+       'updateSlotButton': FormUtils.formSubmitButtons(self, {'name': 'updateSlot',
+                                                        'value': 'Update Slot'}),
+       'enableSlotButton': FormUtils.renderButton(self, {'name': 'enableSlot',
+                                                   'value': 'Enable',
+                                                   'id': 'enableSlotButton'}),
+       'disableSlotButton': FormUtils.renderButton(self, {'name': 'disableSlot',
+                                                    'value': 'Disable',
+                                                    'id': 'disableSlotButton'}),
+       'restartSlotButton': FormUtils.renderButton(self, {'name': 'restartSlot',
+                                                    'value': 'Restart',
+                                                    'id': 'restartSlotButton'}),
+       'restoreBackupButton': FormUtils.formSubmitButtons(self, {'id': 'restoreOpButton',
+                                                           'name': 'restoreBackup_slotOperation',
+                                                           'value': 'Restore Backup',
+                                                           'onclick': 'return false;'}),
+       'uninstallSlotButton': FormUtils.formSubmitButtons(self, {'id': 'uninstallOpButton',
+                                                           'name': 'uninstallSlot',
+                                                           'value': 'Uninstall Slot',
+                                                           'onclick': 'return false;'}),
+       'clearSlotButtonCMC': FormUtils.formSubmitButtons(self, {'id': 'uninstallOpButtonCMC',
+                                                           'name': 'uninstallSlot',
+                                                           'value': 'Clear Slot'}),
+       'newSlotName': dialogEntries['newSlotName'].html(self, format='inline'),
+       'sourcePackage': dialogEntries['slotInstallSource'].html(self, format='inline', value='package'),
+       'sourceBackup': dialogEntries['slotInstallSource'].html(self, format='inline', value='backup'),
+       'selectedPackageNameCMC': dialogEntries['selectedPackageNameCMC'].html(self, format='block'),
+       'selectedPackageName': dialogEntries['selectedPackageName'].html(self, format='inline'),
+       'selectedBackup_slotOperation': dialogEntries['selectedBackup_slotOperation'].html(self, format='block'),
+       'selectedBackup_emptySlot': dialogEntries['selectedBackup_emptySlot'].html(self, format='inline'),
+       'slotInstallMeterButton': slotInstallMeter.buttonHtml(),
+       'backupRestoreMeterButton': backupRestoreMeter.buttonHtml(),
+       'slotInstallMeterButtonCMC': FormUtils.formSubmitButtons(self, {'name': 'installSlot', 'value': 'Configure Slot'}),
+       'shDisplay': RVBDUtils.isSH() and 'block' or 'none',
+       'cmcDisplay': RVBDUtils.isCMC() and 'block' or 'none',
+       'shHide': RVBDUtils.isSH() and 'none' or '',
+       'cmcHide': RVBDUtils.isCMC() and 'none' or '',
+       'vmStatusStyle': RVBDUtils.isCMC() and 'display: none' or '',
+       'rspPublicName': rspPublicName
+}
+
+%>
+
+<% if RVBDUtils.isCMC(): { %>
+<p>
+  <em>Note:</em> The slot names and installed packages should match the
+  configuration of the Steelheads that are affected by this policy.
+</p>
+<% } %>
+
+<form id="vmEnable" method="post" action="<%= self.thisPageletRequest() %>" onsubmit='slotsSubmit(this);'>
+  <fieldset>
+    <legend>Enable VM Consoles</legend>
+    <div class="midLevel">
+      <%= dialogEntries['vmEnable'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form id="slotsForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>"
+onsubmit='slotsSubmit(this);'>
+  <div>
+    <%= slotTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupRspSlots" />
+  </div>
+
+  <!-- ModalDialog: slot action warning -->
+  <div id="slotOperationWarning" style="width: 34em; display: none;">
+    <div class="midLevel">
+      <p>
+        Performing this operation will permanently remove all virtual machine data
+        in this slot. Consider <a href="/mgmt/gui?p=setupRSPBackups">backing up</a>
+        this slot before proceeding.
+      </p>
+      <div class="indent">
+        <%= FormUtils.NodeEntry(
+              name='confirm',
+              widget='checkboxLeft',
+              enableDiv='applyButton',
+              label='I understand and wish to proceed.').html(self, format='block') %>
+      </div>
+      <%= FormUtils.formSubmitButtons(self,
+              {'name': '',  # Dynamically populated...
+               'value': '', # Dynamically populated...
+               'id': 'applyButton'},
+              {'name': 'cancel',
+               'value': 'Cancel'}) %>
+    </div>
+  </div>
+
+  <!-- ModalDialog: slot name warning dialog -->
+  <div id="slotNameWarningDialog" style="width: 34em;">
+    <div class="midLevel">
+      <p>This <%= rspPublicName %> package may not work correctly if you do not use the package's recommended slot name, <strong id="recommendedSlotNameText">&nbsp;</strong>.</p>
+      <p>Do you wish to continue installing?</p>
+      <%= FormUtils.formSubmitButtons(self,
+                {'name': 'installSlot', 'value': 'Install', 'onclick': ''},
+                {'name': 'cancel', 'value': 'Cancel', 'onclick': ''}) %>
+    </div>
+  </div>
+
+</form>
+
+
+<!-- ModalDialog: delete disk action confirmation -->
+<div id="deleteDiskConfirmation" style="width: 34em; display: none;">
+  <div class="midLevel">
+    <p>
+      Performing this operation will permanently delete this disk.
+      Consider <a href="/mgmt/gui?p=setupRSPBackups">backing up</a>
+      this slot before proceeding.
+    </p>
+    <p>
+      Are you sure you want to delete the selected disks?
+    </p>
+    <div class="submitButtons">
+      <% # Not using formSubmitButtons because we need to call the Remove button's code, not submit the form. %>
+      <input type="button" name="deleteDisks" value="Delete Disks" />
+      <input type="button" name="cancel" value="Cancel" />
+    </div>
+  </div>
+</div>
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Slot operation modal dialog. This modal dialog does double duty for
+// both the uninstall action and restore-from-backup action.
+var slotOpDialogEl = Y.one('#slotOperationWarning');
+var slotOpDialog = null;
+
+// Modal dialog for Delete Disk Confirmation.
+var diskDeleteDialogEl = Y.one('#deleteDiskConfirmation');
+var diskDeleteDialog = null;
+
+var slotNameWarningDialogEl = Y.one('#slotNameWarningDialog');
+var slotNameWarningDialog = null;
+
+Y.on('domready', function() {
+    slotOpDialog = new ModalDialog(
+        'slotOperationWarning',
+        POPUP_AFFINITY_UPPER_LEFT,
+        1000);
+
+    diskDeleteDialog = new ModalDialog(
+        'deleteDiskConfirmation',
+        POPUP_AFFINITY_UPPER_LEFT,
+        1000);
+
+    slotNameWarningDialog = new ModalDialog(
+        'slotNameWarningDialog',
+        POPUP_AFFINITY_UPPER_LEFT,
+        1000);
+});
+
+// Close button will hide the dialog.
+slotOpDialogEl.one('input[name="cancel"]').on('click', function(e) {
+    slotOpDialog.hide();
+    e.halt();
+});
+diskDeleteDialogEl.one('input[name="cancel"]').on('click', function(e) {
+    diskDeleteDialog.hide();
+    e.halt();
+});
+
+slotNameWarningDialogEl.one('input[name="installSlot"]').on('click', function(e) {
+    slotNameWarningDialog.hide();
+    rspSlotInstallMeter.onClick(this);
+    slotsSubmit($('slotsForm'));
+    return true;
+});
+
+// Implement the hide "slot name warning dialog" behavior.
+Y.on('click', function(e) {
+            slotNameWarningDialog.hide();
+            e.halt();
+        }, [slotNameWarningDialogEl.one('input[name="cancel"]')]);
+
+// Register handlers that show the slot operation dialog.
+// The two operations that trigger this dialog are 1) uninstall and 2) restore.
+Y.all('#restoreOpButton, #uninstallOpButton').on('click', function(e) {
+    var buttonEl = e.target;
+    var dialogSubmitEl = slotOpDialogEl.one('input#applyButton');
+
+    // Clone name/value attributes from the original submit action button.
+    dialogSubmitEl.set('name', buttonEl.get('name'));
+    dialogSubmitEl.set('value', buttonEl.get('value'));
+
+    // A restore operation uses a custom click handler
+    // that hides the overlay and runs a Meter.
+    if (buttonEl.get('id') == 'restoreOpButton') {
+        dialogSubmitEl.on('click', restoreBackupOnclick);
+    }
+    // Otherwise, this is an uninstall operation. Detach
+    // the custom click handler and go with the default submit.
+    else {
+        dialogSubmitEl.detach('click');
+    }
+
+    // Clear the checkbox.
+    slotOpDialogEl.one('input[name="confirm"]').set('checked', false);
+    updateUpdateables(slotOpDialogEl);
+
+    // Show the dialog.
+    slotOpDialog.setPositionEl(buttonEl);
+    slotOpDialog.show();
+    e.halt();
+});
+
+/**
+ * Onclick handler for the "restore" button in the slot operation
+ * warning dialog. When the button is clicked, hide the modal dialog
+ * and run the backup restore meter.
+ *
+ * @param {Y.Event} e
+ *    The click event that triggered the restore from the
+ *    modal dialog.
+ */
+function restoreBackupOnclick(e) {
+    slotOpDialog.hide();
+    // Starts Meter polling and opens up the LiveStatus overlay.
+    return rspBackupRestoreMeter.onClick($(e.target));
+}
+
+function showDeleteDiskConfirmation() {
+    diskDeleteDialog.setPositionEl($('slotDiskTable_button_remove'));
+    diskDeleteDialog.show();
+}
+
+function showSlotNameWarningDialog(submitElement, recommendedName) {
+    setElementText('recommendedSlotNameText', recommendedName);
+    slotNameWarningDialog.setPositionEl(submitElement.form['renameSlot']);
+    slotNameWarningDialog.show();
+}
+
+// An AET callback that fills a table cell with controls that allow a
+// mgmt VNI to be associated with a physical interface.  The radio
+// button names are the mgmt VNI interface names prefixed with
+// "mgmtVni_".
+function fillMgmtVniPhysicalCell(aet, td, xmlElement) {
+    var name = 'mgmtVni_' + xmlElement.getAttribute('name');
+    var vniTypes = ['primary', 'aux'];
+    for (var i = 0; i < vniTypes.length; i++) {
+        var vniType = vniTypes[i];
+        var isChecked = (vniType == xmlElement.getAttribute('physical'));
+        var eltId = name + '_' + vniType;
+
+        var labelElt = Y.Node.create('<label />');
+        labelElt.setAttribute('class', 'labelPaddedLeft labelPaddedRight');
+        labelElt.setAttribute('for', eltId);
+        labelElt.setContent(vniType);
+
+        // Constructing the DOM element this way fixes an IE6 bug,
+        // where radio input buttons would be unresponsive if created the DOM
+        // (createElement()) way. Creating a DOM element via Y.Node.create()
+        // with type="radio" and name="" specified gets around this.
+        radioHtml = '<input type="radio" name="' + name + '"';
+        radioHtml += 'id="' + eltId + '" value="' + vniType + '"';
+        if (isChecked)
+            radioHtml += ' checked="checked"';
+        radioHtml += ' />';
+        var radioElt = Y.Node.create(radioHtml);
+        radioElt.set('checked', isChecked);
+        radioElt.set('defaultChecked', isChecked);
+
+        Y.one(td).append(radioElt).append(labelElt);
+    }
+}
+
+// In slot table add slot pane, the slot name must not duplicate an
+// existing slot name.
+function validateSlotName(value, inputElement) {
+    inputElement = Y.Node.getDOMNode(inputElement);
+    if (!value) {
+        throw 'A slot name is required.';
+    }
+    var slotNameElement = getFormElement(inputElement.form, 'slotName');
+    var slotName = slotNameElement.value;
+    if (value == slotName) {
+        return;
+    }
+    if (!value.match(/^[\w\-]+$/)) {
+        throw 'A valid name is necessary (alphanumeric, underscore, hyphen only).';
+    }
+    for (var xmlEl = slotTable.docElement.firstChild;
+         xmlEl;
+         xmlEl = xmlEl.nextSibling) {
+        if (value == xmlEl.getAttribute('name')) {
+            throw 'Another slot named ' + value +
+                   ' exists. Choose a unique slot name.';
+        }
+    }
+}
+
+/**
+ * In slotTable, when a package is selected for an uninstalled slot,
+ * if the package comes with a slot name suggestion,
+ * insert the slot name suggestion into the new slot name,
+ * and validate it.
+ *
+ * @param selectElement
+ *   The select list element whose value is the package file name used in the packageNameMapping mapping.
+ *
+ * @return
+ *   false
+ */
+function packageSlotName(selectElement) {
+    <%= packageSlotNameMappingJS %>
+    var newSlotNameEl =    selectElement.form['newSlotName'];
+    var recommendedName =  packageNameMapping[selectElement.form['selectedPackageName'].value]
+    var newSlotNameValue = recommendedName ? recommendedName : selectElement.form['newSlotName'].value;
+
+    if ((newSlotNameValue) && (newSlotNameEl.value != newSlotNameValue)) {
+        newSlotNameEl.focus();
+        setFormValue(selectElement.form, 'newSlotName', newSlotNameValue);
+        RBT.Validator.validateForm(selectElement.form);
+    }
+    return false;
+}
+
+/**
+ * When attempting to install a package, the slot's name should match the
+ * recommended name in the package. If it doesn't, display a warning
+ * modal dialog that asks the user to confirm installation.
+ *
+ * @param submitElement
+ *   The submit element of the form.
+ */
+function checkForDefaultPkgName(submitElement) {
+    <%= packageSlotNameMappingJS %>
+    var recommendedName =  packageNameMapping[submitElement.form['selectedPackageName'].value];
+    var userGivenName = submitElement.form['newSlotName'].value;
+
+    if ((userGivenName != recommendedName) && (recommendedName != '')) {
+        showSlotNameWarningDialog(submitElement, recommendedName);
+        return false; // the dialog has its own submit button, so return false here
+    }
+
+    // if using the package's recommended name (or the package has no
+    // recommended name), show the meter's dialog and return true
+    rspSlotInstallMeter.onClick(submitElement);
+    return true;
+}
+
+// ]]>
+</script>
+
+<%
+openEditSlot = req.fields().get('openEditSlot')
+if openEditSlot: {
+    self.addPageletJavascript('slotTable.editAfterLoad = ["name", "%s"];' % openEditSlot)
+}
+openEditTab = req.fields().get('openEditTab')
+if openEditTab: {
+    self.addOnload('slotEditTabs.switchTo("%s");' % (openEditTab))
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Clicking the "Delete Disks" button in the Delete Disk Confirmation dialog
+// simulates clicking the "Delete Selected Disks" in the AET.
+diskDeleteDialogEl.one('input[name="deleteDisks"]').on('click', function(e) {
+    diskDeleteDialog.hide();
+    AjaxEntryTable.submitCommandField(slotDiskTable.tableId, 'removeDisk', 'removeDisk');
+    e.halt();
+});
+
+// Maps slots to a list of corresponding backup files.
+<%= backupMapJS %>
+
+// Update the edit div with the correct disk parameters.
+slotDiskTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    var form = document.getElementById('slotsForm');
+
+    // Toggle display of the disk extend panel
+    var isAttached = el.getAttribute('attached').toLowerCase() == 'yes';
+    enableElements('slotDiskEditPane', isAttached || 'hide');
+
+    // Update form values
+    var attachStatus = isAttached ? 'attached' : 'detached';
+    var attachAction = isAttached ? 'Detach' : 'Attach';
+    setFormValue(form, 'editDiskName', editName);
+    setFormValue(form, 'slotEditExtendDiskSize', el.getAttribute('size_in_mb'));
+    setFormValue(form, 'attachDisk', attachAction);
+    setElementText('slotDiskAttachStatus', attachStatus);
+    setElementText('slotDiskAttachHeader', attachAction);
+
+    // Hide disk options pane if not attached.
+    enableElements('slotDiskAttachOptionsPane', !isAttached || 'hide');
+
+    // Populate the controller/device fields based on adapter type.
+    // IDE adapters only have 2 controllers; each controller has 2 devices.
+    // SCSI adapters have 4 controllers, each with 16 devices.
+    var isIdeAdapter = 'ide' == el.getAttribute('adapter');
+    var maxControllerIdx = isIdeAdapter ? 2 : 4;
+    var maxDeviceIdx = isIdeAdapter ? 2 : 16;
+
+    // Calculate device/controller option array.
+    var controllerOptions = [];
+    for (var i = 0; i < maxControllerIdx; i++) {
+        controllerOptions.push(i+''); // Coerce number to string, then push on
+    }
+    var deviceOptions = [];
+    for (var i = 0; i < maxDeviceIdx; i++) {
+        deviceOptions.push(i+'');
+    }
+
+    populateSelect(form, 'slotEditAttachDiskController', controllerOptions);
+    populateSelect(form, 'slotEditAttachDiskDevice', deviceOptions);
+}
+
+// Overload default slot table XML handler to also inject
+// total disk size data into the page.
+slotDiskTable.handleResponseText = function(request) {
+    AjaxEntryTable.prototype.handleResponseText.call(this, request);
+
+    var data = request.responseXML.documentElement.firstChild;
+    var totalAttachedSize = data.getAttribute('total_attached_size');
+    var totalUnattachedSize = data.getAttribute('total_unattached_size');
+    var totalRspFreeSpace = data.getAttribute('total_rsp_free_space');
+
+    setElementText('slotDiskTotalSizeAttached', totalAttachedSize);
+    setElementText('slotDiskTotalSizeUnattached', totalUnattachedSize);
+    Y.all('.rspFreeSpace').setContent(totalRspFreeSpace);
+}
+
+// Populate the edit div with attributes of the XML element corresponding
+// to editName.
+slotOptVniTable.editEntry = function(editName) {
+    var form = document.getElementById('slotsForm');
+    var el = this.getEntryElement('name', editName);
+
+    setFormValue(form, 'editOptVniName', editName);
+    setFormValue(form, 'editOptVniVlan', el.getAttribute('vlan'));
+}
+
+<% if rspEnabled and inpathOop: { %>
+// When RSP is enabled and the SH is in virtual inpath mode,
+// AKA inpath-out-of-path or inpathOop,
+// the VLAN options for an Optimization VNI should be disabled
+// because they have no effect in this mode.
+// We still show them, because their settings still exist,
+// and if we reconfigured the SH to be physically inpath,
+// the settings will resume their effect.
+//
+// Since VLAN is the only element within the details for an Optimization VNI,
+// if we disable it, we should disable the submit button.
+// In order to disable the submit button and keep it disabled, we have to
+// turn off validation, which has to be done in the updateHook.
+//
+// See the VirtualInpathRSP TWiki page for more information.
+slotOptVniTable.updateHook = function() {
+    var editDiv = Y.one('#slotOptVniTable_editDiv');
+    // Disable the fields in the edit div.
+    if ('edit' == this.editMode) {
+        enableElements(editDiv, false);
+    }
+    // Add a filter that always returns false.
+    editDiv.all('input[type=submit]').each(function(inputEl) {
+        RBT.Validator.addButtonValidation(
+            inputEl, function() { return false; });
+    });
+}
+<% } %>
+
+/**
+ * Validator for two disk size fields on the Slot Disk table, one in the add div
+ * and the other in the edit div.
+ *
+ * @param {String} fieldRole
+ *     Value can be either 'add' or 'extend'. The role determines the validation
+ *     technique applied on each field.
+ *     - 'add' role applies to the Add div field, and specifies that the field
+ *       size must be between 1 and [RSP_FREE_SPACE].
+ *     - 'extend' role applies to the edit div field, and specifies that the field
+ *       size must be between [CURRENT_DISK_SIZE] and [RSP_FREE_SPACE].
+ */
+function createDiskSizeValidator(fieldRole) {
+    return function(val) {
+        var intVal = parseInt(val, 10);
+        var xmlRoot = slotDiskTable.docElement;
+        var maxDiskSize = parseInt(xmlRoot.getAttribute('total_rsp_free_space'), 10);
+        var minDiskSize;
+        var msg = ''
+
+        // Short-circuit the 'extend' validator (which lives in the edit div)
+        // when table is not in edit mode
+        if ('extend' == fieldRole && 'edit' != slotDiskTable.editMode) { return; }
+
+        switch(fieldRole) {
+            case 'add':
+                minDiskSize = 1;
+                msg = 'The disk must be initialized to an integer size between '
+                break;
+            case 'extend':
+                var xmlEntry = slotDiskTable.getEntryElement('name',
+                                                             slotDiskTable.editName);
+                minDiskSize = parseInt(xmlEntry.getAttribute('size_in_mb'), 10);
+                msg = 'The disk may only extend to an integer size between ';
+                break;
+            default:
+                return;
+        }
+
+        var isInt = (val.match(/^\d+$/) != null);
+        if (!isInt || intVal < minDiskSize || intVal > maxDiskSize) {
+            throw msg + minDiskSize + ' and ' + maxDiskSize;
+        }
+        return;
+    }
+}
+
+// The VLAN specified for an Optimization VNI is a string,
+// containing either 'none', 'trunk', or a string representation
+// of an integer between 0 and 4094.
+//
+// See the GuamRSPDesignDoc TWiki page slot nodes API for more information.
+function validateVLAN(val) {
+    val  = val.trim().toLowerCase();
+    var errorMessage = 'Enter \u201Cnone\u201D, \u201Ctrunk\u201D, ' +
+                       'or a value from 0 to 4094.';
+    if (('none' == val) || ('trunk' == val)) {
+        return;
+    }
+    if (val.match(/^\d+$/)) {
+        var valInt = parseInt(val, 10);
+        if ((0 <=  valInt) && (valInt <= 4094)) {
+            return;
+        }
+        throw errorMessage;
+    }
+    throw errorMessage;
+}
+
+// Enable or disable the "Enable Heartbeat" checkbox depending on
+// the existence of a configured heartbeat port.
+var heartbeatPortDisplay = new DisplayControl();
+heartbeatPortDisplay.display = function() {
+    var xmlEl = slotTable.editXMLElement;
+    var supportsHeartbeat = (xmlEl.getAttribute('watchdogHeartbeatPort') != 'N/A');
+    return supportsHeartbeat;
+}
+addUpdateable('enable', heartbeatPortDisplay, 'heartbeatGroup');
+
+slotTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    var form = document.getElementById('slotsForm');
+    setFormValue(form, 'slotName', editName);
+    setFormValue(form, 'newSlotName', editName);
+    setFormValue(form, 'selectedPackageName', el.getAttribute('packageName'));
+
+    // Hide/show the Disks table, based on the "clone pending" state.
+    if (el.getAttribute('cloneRestorePending') == 'true') {
+        Y.one('#slotDiskTable_div').addClass('hidden');
+        Y.one('#cloneRestorePendingMessage').removeClass('hidden');
+    }
+    else {
+        Y.one('#slotDiskTable_div').removeClass('hidden');
+        Y.one('#cloneRestorePendingMessage').addClass('hidden');
+    }
+
+
+    // Display the VM link if it exists.
+    var vmConsoleEl = Y.one('#vmConsoleUrl');
+    if (vmConsoleEl) {
+        if (hasAttribute(el, 'consoleUrl')) {
+            vmConsoleEl.set('href', el.getAttribute('consoleUrl'));
+            vmConsoleEl.set('target', '_blank');
+            vmConsoleEl.get('parentNode').removeClass('hidden');
+        } else {
+            vmConsoleEl.get('parentNode').addClass('hidden');
+        }
+    }
+
+    // Reset the source radio button to highlight "Install Package" option.
+    setFormValue(form, 'slotInstallSource', 'package');
+
+    setElementText('numCpus', el.getAttribute('numCpus'));
+    setElementText('vmwareTools', el.getAttribute('vmwareTools'));
+    setFormValue(form, 'slotPriority', el.getAttribute('priority'));
+    setFormValue(form, 'slotEditMemory', el.getAttribute('memSize'));
+    setFormValue(form, 'slotEditWatchdogTimeout', el.getAttribute('watchdogTimeout'));
+    setFormValue(form, 'slotEditWatchdogGracePeriod', el.getAttribute('watchdogGracePeriod'));
+    setFormValue(form, 'slotEditWatchdogVniPolicy', el.getAttribute('watchdogVniPolicy'));
+    setFormValue(form, 'slotEditWatchdogReboot', el.getAttribute('watchdogReboot'));
+    setFormValue(form, 'slotEditWatchdogPingUse', el.getAttribute('watchdogPingUse'));
+    setFormValue(form, 'slotEditWatchdogPingIp', el.getAttribute('watchdogPingIp'));
+    setFormValue(form, 'slotEditWatchdogPingInterval', el.getAttribute('watchdogPingInterval'));
+    setFormValue(form, 'slotEditWatchdogHeartbeatUse', el.getAttribute('watchdogHeartbeatUse'));
+    setElementText('wdHeartbeatPort', el.getAttribute('watchdogHeartbeatPort'));
+
+    var enabled = 'true' == el.getAttribute('enabled');
+    var installed = 'true' == el.getAttribute('installed');
+
+    setElementText('slotState', enabled ? 'enabled' : 'disabled');
+    $('slotState').className = enabled ? 'statusSuccess' : '';
+
+    // If the slot is enabled/installed, then tables will be shown. Load up the XML data.
+    if (enabled || installed) {
+
+<% if RVBDUtils.isSH(): { %>
+        slotDiskTable.sendRequest('/mgmt/xmldata?p=rspSlotDisks&slot=' + editName);
+<% } %>
+
+        slotOptUrl = '<%= self.urlForCmcEdit("/mgmt/xmldata?p=rspSlotOptVnis") %>';
+        slotMgmtUrl = '<%= self.urlForCmcEdit("/mgmt/xmldata?p=rspSlotMgmtVnis") %>';
+
+        slotOptVniTable.sendRequest(slotOptUrl + '&slot=' + editName);
+        slotMgmtVniTable.sendRequest(slotMgmtUrl + '&slot=' + editName);
+    }
+
+    // Populate the restore backup dropdown with files.
+    var backupList = backupMapping[editName];
+    var hasBackups = (backupList != null);
+    // Populate select dropdown on installed slot operation pane
+    populateSelect(form, 'selectedBackup_slotOperation', hasBackups ? backupList : [['', 'No backups']]);
+    // Select dropdown on empty slot panel.
+    populateSelect(form, 'selectedBackup_emptySlot', hasBackups ? backupList : [['', 'No backups']]);
+}
+
+// Dis/enable wrapper containing the source radio button and its label.
+// This resides in the empty slot panel.
+slotTable.updateHook = function() {
+    var backupList = backupMapping[slotTable.editName];
+    var hasBackups = (backupList != null);
+    var backupRadioWrapper = Y.one('div.backup.entry');
+    enableElements(backupRadioWrapper, hasBackups);
+}
+
+// Show and hide the correct fields and buttons, depending on the slot and VM state.
+var slotDisplayControl = new DisplayControl();
+slotDisplayControl.display = function(targetDiv) {
+    var el = slotTable.getEntryElement('name', slotTable.editName);
+    var enabled = 'true' == el.getAttribute('enabled');
+    var installed = 'true' == el.getAttribute('installed');
+    var powered = 'on' == el.getAttribute('powerState').toLowerCase();
+    var backupList = backupMapping[slotTable.editName];
+    var hasBackups = (backupList != null);
+
+    switch(targetDiv) {
+        case 'slotEdit_emptySlot':
+            return !installed;
+        case 'slotEdit_installedSlot':
+            return installed;
+
+        // Buttons in operation pane
+        case 'uninstallOperation':
+            enableElements('eraseSlotWarning', (enabled) ? 'hide' : true);
+            enableElements('disableSlotHint', (enabled) ? true : 'hide');
+            return !enabled;
+        case 'restoreOperation':
+            return !enabled && hasBackups;
+        case 'enableSlotButton':
+            return !enabled;
+        case 'disableSlotButton':
+        case 'restartSlotButton':
+            return enabled;
+        default:
+            return null;
+    }
+}
+// Slot panels are shown or hidden
+addUpdateable('display', slotDisplayControl, 'slotEdit_installedSlot');
+addUpdateable('display', slotDisplayControl, 'slotEdit_emptySlot');
+
+// Slot operations get disabled
+addUpdateable('enable', slotDisplayControl, 'uninstallOperation');
+addUpdateable('enable', slotDisplayControl, 'restoreOperation');
+addUpdateable('enable', slotDisplayControl, 'enableSlotButton');
+addUpdateable('enable', slotDisplayControl, 'disableSlotButton');
+addUpdateable('enable', slotDisplayControl, 'restartSlotButton');
+
+// Remember which slot and tab to open after form submit.
+function slotsSubmit(form) {
+    if (slotTable.editMode) {
+        // replace the current (if any) openEditSlot and openEditTab
+        form.action = form.action.replace(/openEditSlot=[^&]*&?/, '').replace(
+                                          /openEditTab=[^&]*&?/, '').replace(
+                                          /&*$/, '');
+        form.action += '&openEditSlot=' + slotTable.editName;
+        form.action += '&openEditTab=' + slotEditTabs.current;
+    }
+}
+// ]]>
+</script>

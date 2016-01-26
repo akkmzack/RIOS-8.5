@@ -1,0 +1,235 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupAdministrationJobs.psp
+## This is the template for controlling scheduled jobs and seeing their status.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, ajaxentrytable, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#jobsTable_main { width: 100%; }
+
+#editJob_status img {
+  border: 0px;
+  padding-right: 1em;
+}
+
+code.jobCommands { display: block; }
+
+/*
+ * When we get tdIcon() to apply styles properly, check to see if this
+ * is what we want on the job status page:
+ */
+.ajaxEntryTable_table td.table_job_status { border: 0px; font-size: 1px; margin: 0px; padding: 0px; width: 13px; }
+.ajaxEntryTable_table td.table_job_status img { border: 0px; height: 13px; margin: 0px; padding: 0px; width: 13px; }
+.ajaxEntryTable_table td.table_job_jobId { text-align: right; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'JobAction': FormUtils.NodeEntry(
+            path='/sched/job/actions/execute',
+            type='action')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'editJob_name': FormUtils.NodeEntry(
+            name='editJob_name',
+            widgetClass='wide2',
+            label='Name'),
+        'editJob_comment': FormUtils.NodeEntry(
+            name='editJob_comment',
+            widgetClass='wide3',
+            label='Comment'),
+        'editJob_frequency': FormUtils.NodeEntry(
+            name='editJob_frequency',
+            widgetClass='wide2',
+            label='Interval (seconds)',
+            hint='(0 for one-time only)',
+            validate='uint32'),
+        'editJob_datetime': FormUtils.NodeEntry(
+            name='editJob_datetime',
+            widgetClass='wide2',
+            label='Executes On',
+            hint='(YYYY/MM/DD HH:MM:SS)',
+            validate='datetime',
+            inputOptional=True),
+        'editJob_enable': FormUtils.NodeEntry(
+            name='editJob_enable',
+            widget='checkbox',
+            label='Enable/Disable Job',
+            units='Enable')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+## Jobs Table
+jobsTable = ajaxentrytable.AjaxEntryTable('jobs',
+    url='/mgmt/xmldata?p=jobsXmldata',
+    headerSpec=('', '', '', '', ('ID', 'table_job_jobId'), 'Name', 'Comment', 'Executes On', 'Created', 'Last Run'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('jobId', 'selectedJob_'),
+ AjaxEntryTable.tdIcon('statusIcon', 'statusDetail', null, 'table_job_status'),
+ AjaxEntryTable.tdIcon('recurIcon', 'frequencyLang', null, 'table_job_status'),
+ AjaxEntryTable.tdActiveSelect('enabled', 'Job_', 'jobId', [['enabled', 'Enabled'], ['disabled', 'Disabled']], 'sendJobEnabledControl(this)'),
+ AjaxEntryTable.tdEdit('jobId',   'jobId', 'table_job_jobId'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('comment'),
+ AjaxEntryTable.tdAttr('datetime'),
+ AjaxEntryTable.tdAttr('creation'),
+ AjaxEntryTable.tdAttr('lastrun')]""",
+    emptyMessage='No scheduled jobs.',
+    removeName='removeJobs',
+    removeButtonText='Remove Selected Jobs',
+    editDivTitle='Details for Job <span id="editJob_jobIdDisplay">&nbsp;</span>')
+
+jobsTable.editDivContent = '''
+  <table>
+    <tr>
+      <td class="label">Status:</td>
+      <td id="editJob_status"><img src="" alt="" title="" width="13" height="13" />&nbsp;</td>
+    </tr>
+      %s
+      %s
+      %s
+      %s
+      %s
+  </table>
+  <hr />
+  <b>Job Commands:</b>
+  <div id="editJob_commands"></div>
+  <hr />
+  <b>Job Output:</b>
+  <pre id="editJob_output">None.</pre>
+  <hr />
+  <input type="hidden" name="editJob_jobId" />
+  %s
+''' % (dialogEntries['editJob_name'].html(self),
+       dialogEntries['editJob_comment'].html(self),
+       dialogEntries['editJob_frequency'].html(self),
+       dialogEntries['editJob_datetime'].html(self),
+       dialogEntries['editJob_enable'].html(self),
+       FormUtils.formSubmitButtons(self,
+          {'name': 'editJob_modifyJob', 'value': 'Apply Changes'},
+          {'name': 'editJob_cancelJob', 'value': 'Cancel/Remove This Job', 'validate': False},
+          {'name': 'editJob_executeJob', 'value': 'Execute Now', 'validate': False}))
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAdministrationJobs"
+      id="jobsForm">
+  <div>
+    <input type="hidden" name="_action_" value="jobsAction" />
+    <%= jobsTable.html(self) %>
+    <div class="topLevel">
+      <table style="margin-left: auto; margin-right: auto; width: 80%;">
+        <tr>
+          <td style="width: 20%;"><img alt="Completed" title="Completed"
+            src="/images/icon_job_completed.gif"
+            width="13" height="13" /> Completed</td>
+          <td style="width: 20%;"><img alt="Error" title="Error"
+            src="/images/icon_job_error.gif"
+            width="13" height="13" /> Error</td>
+          <td style="width: 20%;"><img alt="Pending" title="Pending"
+            src="/images/icon_job_pending.gif"
+            width="13" height="13" /> Pending</td>
+          <td style="width: 20%;"><img alt="Inactive" title="Inactive"
+            src="/images/icon_job_inactive.gif"
+            width="13" height="13" /> Inactive</td>
+          <td style="width: 20%;"><img alt="Unknown" title="Unknown"
+            src="/images/icon_job_unknown.gif"
+            width="13" height="13" /> Unknown</td>
+        </tr>
+        <tr>
+          <td><img alt="Recurs" title="Recurs"
+            src="/images/icon_refresh.gif"
+            width="13" height="13" /> Recurs</td>
+          <td><img alt="Occurs Once" title="Occurs Once"
+            src="/images/icon_job_once.gif"
+            width="13" height="13" /> Occurs Once</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+
+<script type="text/javascript">
+<!--
+
+function sendJobEnabledControl(opt) {
+    opt.name = "control" + opt.name;
+    opt.form.submit();
+}
+
+jobsTable.editEntry = function(editName) {
+    var jobForm = document.getElementById('jobsForm');
+    var jobEl = this.getEntryElement('jobId', editName);
+    if (!jobForm || !jobEl) {
+        alert("No job form or no job element");
+        return;
+    }
+    var el = document.getElementById('editJob_jobIdDisplay');
+    if (el && el.hasChildNodes()) {
+        el = el.firstChild;
+        if (el && 3 == el.nodeType) {
+            el.nodeValue = editName;
+        }
+    }
+    el = document.getElementById('editJob_status');
+    if (el && el.hasChildNodes()) {
+        el = el.firstChild;
+        if (el && 'IMG' == el.nodeName) {
+            el.src = '/images/' + jobEl.getAttribute('statusIcon');
+            el.alt = jobEl.getAttribute('statusDetail');
+            el = el.nextSibling;
+        }
+        if (el && 3 == el.nodeType) {
+            el.nodeValue = jobEl.getAttribute('statusDetail');
+        }
+    }
+    el = document.getElementById('editJob_output');
+    if (el) {
+        el = el.firstChild;
+        if (el) {
+            var output = jobEl.getAttribute('output');
+            el.nodeValue = output.replace(/#012;/g, "\r\n");
+        }
+    }
+
+    jobForm.editJob_jobId.value = editName;
+    jobForm.editJob_name.value = jobEl.getAttribute('name');
+    jobForm.editJob_comment.value = jobEl.getAttribute('comment');
+    jobForm.editJob_frequency.value = jobEl.getAttribute('frequencySeconds');
+    jobForm.editJob_datetime.value = jobEl.getAttribute('datetime');
+    jobForm.editJob_enable.checked = ('enabled' == jobEl.getAttribute('enabled'));
+
+    var jobCommandsText = '';
+    for (var i = 0; i < jobEl.childNodes.length; i++) {
+        jobCommandsText += 
+            '<code class="jobCommands">' + jobEl.childNodes.item(i).getAttribute('instruction') + '</code>';
+    }
+    Y.one('#editJob_commands').setContent(
+        jobCommandsText);
+}
+// -->
+</script>

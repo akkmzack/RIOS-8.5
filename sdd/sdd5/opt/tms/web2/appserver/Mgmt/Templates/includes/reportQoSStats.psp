@@ -1,0 +1,481 @@
+<%
+## Copyright 2012 Riverbed Technology, Inc., All rights reserved.
+## Authors: Aaron Endelman, Kyle Getz
+##
+## Inbound/Outbound QoS reports:  common code.
+##
+## Note that the Python variable 'qosDirection' is defined in the parent file.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, Nodes, RVBDUtils, UserConfig" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+select[name="graph_type"],
+select[name="units"] {
+  margin: 0;
+}
+
+#qosClassControls label {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+input[name="update"] {
+  margin-top: 4px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'graph_type': FormUtils.NodeEntry(
+            name='graph_type',
+            label='Show',
+            widget='select',
+            selectOptions=(('selected', 'Selected classes'),
+                           ('total', 'Total')),
+            userPath='sh/web/reports/qos/%s/graph_type' % qosDirection,
+            userConfigAutoSave=True,
+            action='updateClassControlsVisibility()',
+            value='total'),
+        'units': FormUtils.NodeEntry(
+            name='units',
+            label='Units',
+            widget='select',
+            selectOptions=(('bits', 'bps'),
+                           ('packets', 'packets/sec')),
+            userPath='sh/web/reports/qos/units',
+            userConfigAutoSave=True,
+            value='packets')
+    }
+</psp:method>
+
+<psp:method name="classSelectorsHtml" params="classIdToNameMap">
+    MAX_CLASSES = 7
+
+    # Get the classes the user last specified.
+    classIdsCSV = UserConfig.get(self.session(), 'sh/web/reports/qos/%s/classes' % qosDirection)
+    classIds = classIdsCSV and classIdsCSV.split(',') or []
+
+    # Remove duplicate class ids and class ids that no longer exist.
+    prunedClassIds = []
+    for classId in classIds:
+        if classId == '':
+            prunedClassIds.append(classId)
+        elif classId not in prunedClassIds and classId in classIdToNameMap:
+            prunedClassIds.append(classId)
+    classIds = prunedClassIds
+
+    # Limit the number we display.
+    classIds = classIds[:MAX_CLASSES]
+
+    # Set the UserConfig in case the classes changed:
+    if classIdsCSV and ','.join(classIds) != classIdsCSV:
+        UserConfig.set(self.session(), ('sh/web/reports/qos/%s/classes' % qosDirection, ','.join(classIds)))
+
+    # Pad out classIds so the length is equal to MAX_CLASSES.
+    classIds += max(0, MAX_CLASSES - len(classIds)) * ['0']
+
+    # Build the HTML.
+    html = ''
+    i = 1
+    for classId in classIds:
+        className = classIdToNameMap.get(classId, '')
+        html += FormUtils.NodeEntry(
+            name='class%d' % i,
+            label='Class %d' % i,
+            widget='text',
+            widgetClass='wide2',
+            validate='validateClassName',
+            inputOptional=True,
+            value=className).html(self)
+        i += 1
+
+    return html
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+# Build a couple data structures for mapping between class ids and names.
+classIdToNameMap = {'0': ''}
+classNameToIdMap = {}
+classDetails = Nodes.getTreeifiedSubtree(mgmt, nodeTreePath)
+for className in classDetails: {
+    classId = self.getClassId(classDetails, className)
+    classIdToNameMap[classId] = className
+    classNameToIdMap[className] = classId
+}
+
+# Add the LAN Bypass class to the mappings
+assert qosDirection in ('inbound', 'outbound'), '%s is an invalid value for qosDirection, must be either "inbound" or "outbound".' % (repr(qosDirection))
+LANBypassClassId = Nodes.present(mgmt, '/rbt/qos/state/%s/classes/LAN_Class/classid' % (qosDirection), None)
+if LANBypassClassId is not None: {
+    classNameToIdMap['LAN Class'] = LANBypassClassId
+    classIdToNameMap[LANBypassClassId] = 'LAN Class'
+}
+
+# Build the autocomplete options.
+classNames = classNameToIdMap.keys()
+classNames.sort(FormUtils.alphanumericCompare)
+autocompleteOptions = [{'name': className, 'description': ''}
+                       for className in classNames]
+%>
+
+<% self.beginPagelet() %>
+
+<div id="qosChart"><!-- placeholder for the chart  --></div>
+<div id="qosControls" style="display: none;">
+  <form action="">
+    <table>
+      <tbody>
+        <%= self.nodeEntries()['units'].html(self) %>
+        <%= self.nodeEntries()['graph_type'].html(self) %>
+      </tbody>
+      <tbody id="qosClassControls">
+        <%= self.classSelectorsHtml(classIdToNameMap) %>
+        <tr>
+          <td></td>
+          <td>
+            <%= FormUtils.renderButton(self, {'name': 'update',
+                                              'value': 'Update Chart',
+                                              'onclick': 'updateChart(); return false'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </form>
+</div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var classNameToIdMap = <%= RVBDUtils.jsonizeAndEscapeForJs(classNameToIdMap) %>;
+var autocompleteOptions = <%= RVBDUtils.jsonizeAndEscapeForJs(autocompleteOptions) %>;
+var chart = null;
+
+// Create the chart after the DOM is initialized.
+Y.on('domready', function() {
+    // Use all the available vertical space.
+    $('qosChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Get the initial parameters and create the chart.
+    chart = new RBT.Reports2.TimeSeriesChartWithControls(getChartParams(true));
+
+    // Hide or show the class controls.
+    updateClassControlsVisibility();
+
+    // Set up the autocomplete widgets.
+    Y.all('#qosControls input[type="text"]').each(
+        function(node, i, nodeList) {
+            RBT._AutoComplete.makeAutoComplete(node.get('name'), autocompleteOptions);
+        }
+    );
+});
+
+function getSelectedGraphType() {
+    return Y.one('select[name="graph_type"]').get('value');
+}
+
+function getSelectedUnits() {
+    return Y.one('select[name="units"]').get('value');
+}
+
+function validateClassName(value) {
+    if (!(value in classNameToIdMap)) {
+        throw 'Enter the name of a QoS class or select one from the list.';
+    }
+}
+
+// Update the chart and set the user config node when a parameter changes.
+function updateChart() {
+    // Ensure that no classes are selected more than once.  This might seem
+    // harmless, but actually cascades into some nasty Highstock issues that
+    // are very hard to debug.  See bug 112878 for more info.
+    var selectedClasses = {};
+    var duplicateClassesFound = false;
+    Y.all('#qosClassControls input[type="text"]').each(
+        function(node, i, nodeList) {
+            var className = node.get('value');
+
+            // Ignore empty text fields.
+            if (className == '') {
+                return;
+            }
+
+            // If we've already found a class that's been selected more than
+            // once, don't do any more processing since a dialog is already
+            // being shown.
+            if (duplicateClassesFound) {
+                return;
+            }
+
+            if (className in selectedClasses) {
+                duplicateClassesFound = true;
+                RBT.Reports2.showErrorMessage(
+                    className + ' has already been selected.',
+                    { affinity: RBT.Dialog.AFFINITY_SE,
+                      alignNode: node }
+                );
+            } else {
+                selectedClasses[className] = true;
+            }
+        }
+    );
+
+    // If a class has been selected more than once, don't do the update.
+    if (duplicateClassesFound) {
+        return;
+    }
+
+    // Do the update.
+    chart.replaceChart(getChartParams());
+
+    // Hide or show the class controls.
+    updateClassControlsVisibility();
+
+    // Save the current arrangement of classes to the user config node.
+    if (getSelectedGraphType() == 'selected') {
+        var classIds = [];
+
+        Y.all('#qosClassControls input[type="text"]').each(
+            function(node, i, nodeList) {
+                var nodeValue = node.get('value');
+                if (nodeValue == '') {
+                    classIds.push('');
+                } else {
+                    classIds.push(classNameToIdMap[nodeValue]);
+                }
+            }
+        );
+
+        var setUserConfigParams = {};
+        var userConfigNodePath = 'sh/web/reports/qos/' + '<%= qosDirection %>' + '/classes';
+        setUserConfigParams[userConfigNodePath] = classIds.join();
+        setUserConfig(setUserConfigParams);
+    }
+}
+
+// Update the visibility and appearance of the class controls.
+function updateClassControlsVisibility () {
+    if (getSelectedGraphType() == 'selected') {
+        // Enable all the text fields.
+        Y.all('#qosClassControls input[type="text"]').each(
+            function(node, i, list) {
+                node.removeAttribute('disabled');
+            }
+        );
+
+        // Colorize all the labels.
+        var colors = RBT.Reports2.defaultHighstockOptions()['colors'];
+        Y.all('#qosClassControls label').each(
+            function(node, i, nodeList) {
+                var seriesColor = colors[i % colors.length];
+                var textColor = RBT.Reports2.getTextColor(seriesColor);
+                node.setStyle('color', textColor);
+            }
+        );
+    } else {
+        // Disable all the text fields.
+        Y.all('#qosClassControls input[type="text"]').each(
+            function(node, i, list) {
+                node.setAttribute('disabled', 'disabled');
+            }
+        );
+
+        // Decolorize all the labels.
+        Y.all('#qosClassControls label').each(
+            function(node, i, nodeList) {
+                node.setStyle('color', '#999999');
+            }
+        );
+    }
+}
+
+// Create the parameters array for creating or updating a chart.
+// Parameter 'initial' says whether to return an initial or update array.
+function getChartParams(initial) {
+
+    // Current value of the "Units" selector.
+    var units = getSelectedUnits();
+
+    // Current value of the "Classes" selector.
+    var graphType = getSelectedGraphType();
+
+    // Start with the default options.  Arg of 'true' means dual panes.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    // The upper Y axis is "Traffic [Sent|Received] (bps)/(packets/sec)"
+    // The lower Y axis is "Traffic Dropped (bps)/(packets/sec)"
+    var rate = (units == 'bits') ? '(bps)' : '(packets/sec)';
+    highstockOptions.yAxis[0].title.text = sentReceivedLabel + ' ' + rate;
+    highstockOptions.yAxis[2].title.text = 'Dropped ' + rate;
+
+    // Class IDs are the stringified back-end number representing the class.
+    var classIds = [];
+
+    // Initialize the chart's series list.
+    highstockOptions.series = [];
+
+    // Create the series for the two graph types.
+    if (graphType == 'total') {
+
+        // "Classes" == "Total"
+
+        // This is not a stacked graph.
+        highstockOptions.plotOptions.series.stacking = undefined;
+
+        highstockOptions.series = [
+            { name: 'Total ' + sentReceivedLabel,
+              type: 'line',
+              color: RBT.Reports2.GRAY_DARK,
+              type: 'area' },
+            { name: 'Total Dropped',
+              yAxis: 2,
+              type: 'line',
+              color: RBT.Reports2.GRAY_DARK,
+              type: 'area' }
+        ];
+
+        // Make the navigator shadow the first series (Total Sent/Received).
+        highstockOptions.navigator.baseSeries = 0;
+        highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+        highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+        highstockOptions.navigator.series.type = 'area';
+
+    } else {
+
+        // "Classes" == "Selected"
+
+        // This is a stacked graph (with opaque colors).
+        highstockOptions.plotOptions.area.fillOpacity = 1.0;
+        highstockOptions.plotOptions.series.stacking = 'normal';
+
+        // The standard colors list.
+        var colors = RBT.Reports2.defaultHighstockOptions()['colors'];
+
+        // Need nColors for modulus computation.
+        var nColors = colors.length;
+
+        var el, idx;
+        // Iterate over all the class text fields.
+        Y.all('#qosClassControls input[type="text"]').each(
+
+            function(el, idx) {
+
+                // The value of the current text field is the class name.
+                var className = el.get('value');
+
+                // Skip strings that don't correspond to known classes (which
+                // includes empty strings for blank text fields).
+                if (className in classNameToIdMap) {
+
+                    // Look up the class id.
+                    var classId = classNameToIdMap[className];
+
+                    // Add to the list of class IDs for the server request.
+                    classIds.push(classId);
+
+                    // Each class has a diferent graph color.
+                    var color = colors[idx % nColors];
+
+                    // Push configuration data for each series onto
+                    // the series list.  Sent data goes in the upper
+                    // graph pane, while dropped data goes in the lower
+                    // pane (yAxis: 2).
+                    //
+                    // Note that the name fields here must match those
+                    // in json_AdvancedNetworking._reportQos(), defined
+                    // in support_advancednetworking.py, exactly.
+                    highstockOptions.series.push(
+                        {name: className + ' ' + sentReceivedLabel,
+                         type: 'area',
+                         color: color,
+                         fillcolor: color,
+                         stack: 'sent'}
+                    );
+                    highstockOptions.series.push(
+                        {name: className + ' Dropped',
+                         yAxis: 2,
+                         type: 'area',
+                         color: color,
+                         fillcolor: color,
+                         stack: 'dropped'}
+                    );
+                }
+            }
+        );
+
+        // Color the label of each selector with the appropriate text color.
+        Y.all('#qosClassControls label').each(
+            function(el, idx) {
+                el.setStyle('color', RBT.Reports2.getTextColor(colors[idx % nColors]));
+            }
+        );
+    }
+
+    // Assemble the data URL.
+    var dataUrl = '<%= dataUrl %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'direction', '<%= qosDirection %>');
+    dataUrl = addQueryStringParameter(dataUrl, 'graphType', graphType);
+    dataUrl = addQueryStringParameter(dataUrl, 'classIds', classIds);
+    dataUrl = addQueryStringParameter(dataUrl, 'units', units);
+
+    // Return the config array.  Initialization requires more data than update does.
+    if (initial) {
+        return {
+            parent: '#qosChart',
+            hideLegend: true,
+            options: highstockOptions,
+            boundariesChangedFn: setReports2ChartWindow,
+            initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+            topPaneHeightPercent: 67,
+            dataUrl: dataUrl,
+            dataFormatterFn: dataFormatter,
+            customControlDiv: Y.one('div#qosControls'),
+            optionsModifierFn: modifyOptions
+        };
+    } else {
+        return {
+            options: highstockOptions,
+            dataUrl: dataUrl
+        };
+    }
+}
+
+function dataFormatter(value) {
+    if (getSelectedUnits() == 'bits') {
+        return RBT.Reports2.scale(value, 1, 'si', 'bps');
+    } else {
+        var roundedValue = RBT.Reports2.roundWithPadding(value, 1);
+        return RBT.Reports2.addThousandsSeparators(roundedValue) + ' packets/sec';
+    }
+}
+
+function modifyOptions(options, response) {
+    if (getSelectedGraphType() == 'selected') {
+        // Make the navigator shadow the first Sent/Received series that is
+        // non-empty.  If one can't be found, don't bother setting any navigator
+        // options since the framework won't create a Highstock object anyway.
+        for (var i = 0; i < response.length; i += 2) {
+            if (response[i].data.length > 0) {
+                options.navigator.baseSeries = i;
+                options.navigator.series.color = options.series[i].color;
+                options.navigator.series.lineColor = options.series[i].color;
+                options.navigator.series.type = 'area';
+                options.navigator.series.fillOpacity = 1.0;
+                return;
+            }
+        }
+    }
+}
+
+// ]]>
+</script>

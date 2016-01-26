@@ -1,0 +1,866 @@
+<%
+## Copyright 2013, Riverbed Technology, Inc., All rights reserved.
+## Author: Jeremy Hou
+##
+## setupGraniteSummary.psp
+##
+## Template for displaying all the details of the granite Connections -
+##   * Connection to Granite Core(s)
+##   * Edge HA connections
+##   * iSCSI connections/Target details
+##
+## Assumptions:
+## This file assumes the following variables to be already defined in the PSP file including
+## setupGraniteSummary.psp:
+##      mgmt (standard management reference)
+##      fields (request fields dictionary)
+##      configDict (dictionary of granit core configurations)
+##      appliance (appliance connected to CMC - 'productType_serialNumber')
+##      app_prod (product type of appliance connected to CMC)
+##      app_sn (serial number of appliance connected to CMC)
+##      conn (boolean variable representing if the appliance is connected to CMC)
+%>
+
+<%@page imports="RVBDUtils, eva, FormUtils:NodeEntry, json" %>
+
+<psp:method name="dialogEntries_granite">
+    return {
+        'addDVAPeer_hostname': NodeEntry(
+            name='addDVAPeer_hostname',
+            label='Hostname/IP',
+            validate='hostname'),
+        'addDVAPeer_port': NodeEntry(
+            name='addDVAPeer_port',
+            label='Port',
+            validate='port',
+            value='7970',
+            widgetClass='small',
+            inputOptional=True),
+        'addDVAPeerLocal_interface': NodeEntry(
+            name='addDVAPeerLocal_interface',
+            label='Local RDisk Interface',
+            selectOptions=(('n/a', 'n/a'),),
+            value='primary'),
+        'addMPIO_interface': NodeEntry(
+            name='addMPIO_interface',
+            label='Local Interface',
+            selectOptions=(('n/a', 'n/a'),),
+            value='primary'),
+        'snapProtect': NodeEntry(
+            name='snapProtect',
+            label='Enable Proxy Backup?',
+            hint=' (Requires Proxy Backup to be configured at Granite Core)',
+            tooltip=('When this snapshot of this LUN reaches Granite Core, '
+                     'should the Granite Core execute proxy backup '
+                     'integration measures (if configured for this LUN)?'),
+            widget='checkboxLeft',
+            value='false'),
+    }
+</psp:method>
+
+<%
+dvaConnDict = eva.dvaConnectionStatus(mgmt, fields)
+edgeHADict = eva.edgeHAStatus(mgmt, fields)
+
+dialogEntries = self.dialogEntries_granite()
+
+now = int(time.time())
+lbField = GfxUtils.getLbForRange('week', now)
+ubField = GfxUtils.timestampToBound(now, 0)
+params = {'params': {'ub': ubField,
+                     'lb': lbField,
+                     'per': 'week',
+                     'refresh': '60000',
+                     'dir': 'bi'},
+          'range': {'min': reportsHC.adjustTime_str(lbField),
+                    'max': reportsHC.adjustTime_str(ubField)} }
+
+graphSpecs = {
+    'params': params,
+    'graphs': [{'id' : 'blockstoreAllocationStats','title': 'Blockstore Cached Data', 'subtitle': 'Warmer Colors: Pinned Data, Cooler Colors: Non pinned Data <br />(Mouse over chart for details)', 'scale': reportsHC.SCALER_BYTES, 'optionSet': 'PIE_OPTIONS_HOME'},
+      {'id' : 'pinnedAllocationStats','title': 'Blockstore Pinned/Local Storage', 'subtitle': 'Mouse over chart for details', 'scale': reportsHC.SCALER_BYTES, 'optionSet': 'PIE_OPTIONS_HOME'}]
+}
+
+URLS = {}
+# AET URLs
+URLS['targetUrl'] = '/mgmt/xmldata?p=targetState'
+URLS['connectedInitiatorUrl'] = '/mgmt/xmldata?p=connectedInitiators'
+URLS['configuredInitiatorUrl'] = '/mgmt/xmldata?p=configuredInitiators'
+URLS['configuredGroupUrl'] = '/mgmt/xmldata?p=configuredGroups'
+URLS['allLUNsUrl'] = '/mgmt/xmldata?p=allLUNs'
+# AddRemoveList URLs
+URLS['localIfaceURL'] = '/mgmt/jsondata?p=dvaLocalIfaces'
+URLS['dcHostnameURL'] = '/mgmt/jsondata?p=dvaHostnames'
+URLS['mpioIfaceURL'] = '/mgmt/jsondata?p=mpioIfaces'
+# Appliance details report on CMC
+if eva.isCMC and 'appliance' in fields: {
+    # Append the appliance requesting this branch storage information
+    pr_sn = '&appliance=' + appliance
+    for key, url in URLS: {
+        URLS[key] = url + pr_sn
+    }
+}
+
+targetStateTable = ajaxentrytable.AjaxEntryTable('targetState',
+    url=URLS['targetUrl'],
+    headerSpec=(),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name', 'table_target_state_name'),
+AjaxEntryTable.td([RBT.VE.tdAttrStyle('value', 'className')], 'table_target_state_value')]""",
+    emptyMessage='No iSCSI target configured.')
+
+connectedInitiatorsTable = ajaxentrytable.AjaxEntryTable('connectedInitiators',
+    url=URLS['connectedInitiatorUrl'],
+    headerSpec=(("", 'table_initiator_icon'),
+                ("Connected Initiators", 'table_initiator_display')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_icon', '16', '16'),
+AjaxEntryTable.td([RBT.VE.tdAttrStyle('name', 'className')], 'table_initiator_display')]""",
+    emptyMessage='No Initiators connected.')
+
+configuredInitiatorsTable = ajaxentrytable.AjaxEntryTable('configuredInitiators',
+    url=URLS['configuredInitiatorUrl'],
+    headerSpec=(("", 'table_initiator_icon'),
+                ("Configured Initiators", 'table_initiator_display')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_icon', '16', '16'),
+AjaxEntryTable.td([RBT.VE.tdAttrStyle('name', 'className')], 'table_initiator_display')]""",
+    emptyMessage='No Initiators configured.')
+
+configuredGroupsTable = ajaxentrytable.AjaxEntryTable('configuredGroups',
+    url=URLS['configuredGroupUrl'],
+    headerSpec=(("", 'table_initiator_group_icon'),
+                ("Configured Initiator Groups", 'table_initiator_group_display'),
+                ("Members", 'table_initiator_group_members')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_group_icon', '16', '16'),
+AjaxEntryTable.tdEdit('name', 'name', 'table_initiator_group_display'),
+AjaxEntryTable.tdAttr('member_count', 'table_initiator_group_members')]""",
+    emptyMessage='No Initiator Groups configured.')
+
+configuredGroupsTable.editDivContent = '''
+<div class="midLevel">
+  <p class="label">Member Initiators:</p>
+  <div id="edit_initiator_group_members" class="divInitiatorMembers"></div>
+</div>
+'''
+
+lunSnapshotsTable = ajaxentrytable.AjaxEntryTable('lunSnapshots',
+    headerSpec=(
+        ("", 'table_lun_snapshots_icon'),
+        ("ID", 'table_lun_snapshots_id'),
+        ("Type", 'table_lun_snapshots_type'),
+        ("Taken On", 'table_lun_snapshots_timestamp', "sortAttrib('epoch')"),
+        ("Replicated to Core", 'table_lun_snapshots_replicated'),
+        ("Proxy Mounted", 'table_lun_snapshots_protected'),
+        ("Remove", 'table_lun_snapshots_remove')
+    ),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_lun_snapshots_icon', '16', '16'),
+ AjaxEntryTable.tdAttr('id', 'id', 'table_lun_snapshots_id'),
+ AjaxEntryTable.tdAttr('type', 'table_lun_snapshots_type'),
+ AjaxEntryTable.tdAttr('timestamp', 'table_lun_snapshots_timestamp'),
+ AjaxEntryTable.tdAttr('replicated', 'table_lun_snapshots_replicated'),
+ AjaxEntryTable.tdAttr('protected', 'table_lun_snapshots_protected'),
+ AjaxEntryTable.td([RBT.VE.confirmRemove(
+    'table_lun_snapshots_removelink',
+    'removeSnapshot',
+    'id',
+    function (args) { lunSnapshotsTable.removeSnapshot(args); }
+ )], 'table_lun_snapshots_remove')
+]""",
+    emptyMessage='No Snapshots of this LUN.')
+
+allLUNsTable = ajaxentrytable.AjaxEntryTable('allLUNs',
+    url=URLS['allLUNsUrl'],
+    headerSpec=(("", 'table_all_luns_icon'),
+                ("LUN Alias (Serial)", 'table_all_luns_display', "sortAttrib('name')"),
+                ("Type", 'table_all_luns_type', "sortAttrib('member_lun_type_display')"),
+                ("Status", 'table_all_luns_status', "sortAttrib('status_display')"),
+                ("LUN ID", 'table_all_luns_lunid', "sortAttrib('lunid')"),
+                ("Size", 'table_all_luns_size', "sortAttrib('lun_size')"),
+                ("Cached Data", 'table_all_luns_size', "sortAttrib('cached')"),
+                ("Pinned", 'table_all_luns_pinned', "sortAttrib('pinned_display'),"),
+                ("Client Type", 'table_all_luns_client_type', "sortAttrib('client_type_display'),")),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_all_luns_icon', '16', '16'),
+AjaxEntryTable.tdEdit('name', 'display', 'table_all_luns_display'),
+AjaxEntryTable.tdAttr('member_lun_type_display', 'table_all_luns_type'),
+AjaxEntryTable.td([RBT.VE.tdStatus(RBT.VE.tdAttrStyle, 'status_display', 'status_class')], 'table_all_luns_status'),
+AjaxEntryTable.tdAttr('lunid', 'table_all_luns_lunid'),
+AjaxEntryTable.tdAttr('lun_size', 'table_all_luns_size'),
+AjaxEntryTable.tdAttr('cached', 'table_all_luns_size'),
+AjaxEntryTable.tdAttr('pinned_display', 'table_all_luns_pinned'),
+AjaxEntryTable.tdAttr('client_type_display', 'table_all_luns_client_type')]""",
+    emptyMessage='No LUNs configured.')
+
+allLUNsTable.editDivContent = '''
+<div class="tabControl midLevel" id="editSnapshotPolicyDiv" style="position: relative;">
+  <div class="grayBorder">
+    %(editLUNTab)s
+    <div class="midLevel" id="editLUNInitiators">
+      <table>
+        <tr>
+          <td>
+            <p class="label">Initiators Granted Access:</p>
+            <div id="editLUN_initiators" class="divInitiators"></div>
+          </td>
+          <td>
+            <p class="label">Initiator Groups Granted Access:</p>
+            <div id="editLUN_initiator_groups" class="divInitiatorGroups"></div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <div class="midLevel" id="editLUNSnapshots">
+      <div id="appConsistentDiv"></div>
+      <p class="strong topLevel">Take a Snapshot of this LUN:</p>
+      %(snapProtect)s
+      %(snapLUNButton)s
+      <p class="strong topLevel">Snapshots taken of this LUN:</p>
+      %(lunSnapshotsTable)s
+    </div>
+    <div class="midLevel" id="editLUNSnapshotSchedule">
+      <div id="snapshotPolicyDisabled">Automatic snapshots are not enabled.</div>
+      <div id="snapshotPolicyEnabled">
+        <p class="strong">Automatically take snapshots:</p>
+        <ul>
+          <li id="scheduleWeekly">
+            Every week on <span id="scheduleWeeklyDay"></span> at
+            <span id="scheduleWeeklyHour"></span>, keeping
+            <span id="scheduleWeeklyNumber"></span> snapshots.
+          </li>
+          <li id="scheduleDaily">
+            Every <span id="scheduleDailyDays"></span> at
+            <span id="scheduleDailyHour"></span>, keeping
+            <span id="scheduleDailyNumber"></span> snapshots.
+          </li>
+          <li id="scheduleHourly">
+            Every day at <span id="scheduleHourlyHours"></span>, keeping
+            <span id="scheduleHourlyNumber"></span> snapshots.
+          </li>
+        </ul>
+        <br />
+        <div id="scheduleView"></div>
+      </div>
+    </div>
+  </div>
+</div>
+''' % {
+    'editLUNTab': FormUtils.radioTabControl(self, 'editLUNTab',
+        ('acl', 'Initiator Access', 'editLUNInitiators'),
+        ('snapshots', 'Snapshots', 'editLUNSnapshots'),
+        ('schedule', 'Snapshot Schedule', 'editLUNSnapshotSchedule')
+    ),
+    'snapProtect': dialogEntries['snapProtect'].html(self, widgetId='snapProtect'),
+    'snapLUNButton': FormUtils.formSubmitButtons(self, {
+        'name': 'snapLUNButton',
+        'value': 'Take Snapshot',
+        'onclick': 'lunSnapshotsTable.takeSnapshot(); return false;'
+    }),
+    'lunSnapshotsTable': lunSnapshotsTable.html(self, 'topLevel'),
+}
+%>
+
+<div id="coloredDivContainer">
+<% if not eva.isCMC: {
+    # The form is not required on the Appliance Details page on the CMC since it does not do a submit there %>
+<form method="post" action="<%= self.thisPageletRequest() %>" id="dvaPeerForm">
+  <div style="display: none;"><input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" /></div>
+<% } %>
+  <div id="dvaSettings">
+    <p class="strong">Granite Settings</p>
+    <table id="dvaDetails">
+    <tbody>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Primary Granite Core Hostname/IP:</td>
+        <td class="nodeEntry" id="dvaHostname">
+          <span id="dvaHostnameSpan"></span>
+          <span id="editCoreLink" style="display: none;">
+            (<a href="#" style="color: #33C;" onclick="RBT.VE.showActionDialog(editHostnameDialog); return false;">edit</a>)
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">IP Address:</td>
+        <td class="nodeEntry" id="dvaIPAddress"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Port:</td>
+        <td class="nodeEntry" id="dvaPort"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Granite Edge Identifier:</td>
+        <td class="nodeEntry" id="dvaSelfIdentifier"></td>
+      </tr>
+      <tr id="redundantWANRow" style="display: none;">
+        <td class="nodeEntry labelPaddedRight">
+          <span class="popupTitle"
+            title="These network interfaces on the Granite Core (specified by their hostname or IP address set at the Granite Core) will be used for data and management connections.">
+            Redundant Granite Core Interfaces:
+          </span>
+        </td>
+        <td class="nodeEntry"><div id="dvaRedundantHostnames"></div></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">
+          <span class="popupTitle"
+            title="These interfaces will be used for data and management connections to the Granite Core.">
+            Local Interfaces:
+          </span>
+        </td>
+        <td class="nodeEntry"><div id="dvaNetworkInterfaces"></div></td>
+      </tr>
+    </tbody>
+    <tbody id="edgeHARows" style="display: none;">
+      <tr>
+        <td colspan="2" class="sectionHeader strong">Granite Failover Settings</td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Peer Granite Edge:</td>
+        <td class="nodeEntry" id="edgeHAPeer"></td>
+      </tr>
+      <tr id="edgeHARoleRow">
+        <td class="nodeEntry labelPaddedRight">Local Granite Edge Role:</td>
+        <td class="nodeEntry" id="edgeHARole"></td>
+      </tr>
+    </tbody>
+    <tbody id="dvaFailoverRows" style="display: none;">
+      <tr>
+        <td class="nodeEntry labelPaddedRight">
+          <span class="popupTitle"
+            title="This is the IP address on the Failover Granite Core will be used for management and LUN data traffic, when Granite Core failover is triggered.">
+            Failover Granite Core:
+          </span>
+        </td>
+        <td class="nodeEntry" id="dvaFailoverPeerAddr"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Port:</td>
+        <td class="nodeEntry" id="dvaFailoverPeerPort"><%= configDict['dvaFailoverPeerPort'] %></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">
+          <span class="popupTitle"
+            title="This is the IP address of the currently active Granite Core.  If failover has not yet been triggered, this will be one of the Main Granite Core's IP addresses.  If failover has been triggered, this will be the Failover Granite Core's IP address.">
+            Active Granite Core:
+          </span>
+        </td>
+        <td class="nodeEntry" id="dvaFailoverActivePeer"><%= configDict['dvaFailoverActivePeer'] %></td>
+      </tr>
+      <tr id="dvaFailoverPeerIpsRow">
+        <td class="nodeEntry labelPaddedRight">Redundant Granite Core Interfaces:</td>
+        <td class="nodeEntry" id="dvaFailoverPeerIps"></td>
+      </tr>
+    </tbody>
+    </table>
+    <!-- On CMC we provide remove functionality via Manage > Appliance page -->
+    <div class="midLevel">
+      <%= FormUtils.renderButton(self, {
+          'name': 'removeDVAPeer',
+          'id': 'removeDVAPeerBtn',
+          'value': 'Remove Core',
+          'disabled': 'disabled',
+          'validate': False,
+          'onclick': 'removeCoreDialog.show(); return false;'
+      }) %>
+      <%= FormUtils.renderButton(self, {
+          'name': 'haClearPeer',
+          'id': 'haClearPeerBtn',
+          'value': 'Clear High Availability Peer',
+          'validate': False,
+          'style': 'display: none;',
+          'onclick': 'clearHAPeerDialog.show(); return false;'
+      }) %>
+    </div>
+  </div>
+<% if not eva.isCMC: { %>
+</form>
+<% } %>
+
+  <div id="dvaConnectivity" class="statusDivRight" style="display: none;">
+    <div id="edgeHAStatus" style="visibility: hidden;">
+      <div id="edgeHAStateDiv">
+        <div class="evaDvaState">
+          <strong>Granite Edge High Availability State:</strong><br />
+          <div id="edgeHAState"></div>
+        </div>
+      </div>
+      <div id="edgeHAHeartbeats"></div>
+    </div>
+    <img id="dvaConnImg" src="/images/img-transparent.png" alt="" />
+    <div id="evaCoreConnDiv"></div>
+    <div id="evaCoreFailoverConnDiv"></div>
+    <div id="dvaInfoDiv">
+      <strong>Granite Core Connection Status</strong>
+      <div id="dvaConnDiv"></div>
+    </div>
+  </div>
+
+</div>
+<br style="clear: both;" />
+<div class="tabControl hidden" id="branchRadioTabDiv">
+  <div class="grayBorder radioSection">
+    <%= FormUtils.radioTabControl(self, 'branchRadioTab',
+        ('blockstore', 'Blockstore Allocation', 'branchTab_blockstoreDiv'),
+        ('target', 'Target Details', 'branchTab_targetConfigDiv'),
+        ('initiator', 'Initiators', 'branchTab_initiatorDiv'),
+        ('group', 'Initiator Groups', 'branchTab_groupDiv'),
+        ('luns', 'LUNs', 'branchTab_lunsDiv'),
+        ('mpio', 'MPIO', 'branchTab_mpioDiv')
+    ) %>
+    <div class="topLevel tabContent" id="branchTab_blockstoreDiv">
+      <div><%= reportsHC.graphHTML(graphSpecs) %></div>
+    </div>
+    <div class="topLevel hidden tabContent" id="branchTab_targetConfigDiv">
+      <%= targetStateTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_initiatorDiv">
+      <%= configuredInitiatorsTable.html(self, 'topLevel') %>
+      <br />
+      <%= connectedInitiatorsTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_groupDiv">
+      <%= configuredGroupsTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_lunsDiv">
+      <%= allLUNsTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_mpioDiv">
+      <table>
+        <tr>
+          <td class="nodeEntry labelPaddedRight">
+            <span class="popupTitle"
+              title="When Initiators connect to this Granite Edge, these interfaces will be presented as available for iSCSI connections.">
+              Local Interfaces for MPIO:
+            </span>
+          </td>
+          <td class="nodeEntry" id="mpioInterfaces"></td>
+        </tr>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<% if not eva.isCMC: {
+    # Only EVA or EX appliances can update granite core hostnames or interfaces %>
+<form id="editHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="editHostnameDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <strong>Update Granite Core Hostname</strong><br /><br />
+      <table>
+        <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+      </table>
+    </div>
+</form>
+<form id="removeCoreDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeCoreDialog" class="dvaDialogForm" style="display: none; width: 250px;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <strong>Remove Granite Core</strong><br /><br />
+      <span>Are you sure you want to disconnect from this Granite Core?</span>
+    </div>
+</form>
+<form id="clearHAPeerDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="clearHAPeerDialog" class="dvaDialogForm" style="display: none; width: 250px;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <strong>Clear High Availability Granite Edge</strong><br /><br />
+      <span>Are you sure you want to clear the High Availability Peer?</span>
+    </div>
+</form>
+<form id="addHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="addHostnameDialog" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <strong>Add Hostname/IP for Granite Core Connection</strong><br /><br />
+      <table>
+        <%= dialogEntries['addDVAPeer_hostname'].html(self) %>
+        <%= dialogEntries['addDVAPeer_port'].html(self) %>
+      </table>
+    </div>
+</form>
+<form id="removeHostnameDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeHostnameDialog" class="dvaDialogForm" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <input type="hidden" class="rbt-addremovelist-remove-input" name="removeDVAPeer_hostname" value="" />
+      <div>Are you sure you want to remove <span class="rbt-addremovelist-remove-text"></span>?</div>
+    </div>
+</form>
+<form id="addInterfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="addInterfaceDialog" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <strong>Add Local Interface for Granite Core Connection</strong><br /><br />
+      <table class="rbt-addremovelist-dialog-content">
+        <%= dialogEntries['addDVAPeerLocal_interface'].html(self) %>
+      </table>
+      <table class="rbt-addremovelist-empty-message">
+        <tr>
+          <td>
+            <p>There are no more interfaces configured with IP addresses.</p>
+            <p>
+              To configure your appliance's interfaces please visit
+              the <a href="/mgmt/gui?p=setupHostInterfaces">Networking Configuration</a>
+              pages.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+</form>
+<form id="removeInterfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeInterfaceDialog" style="display: none;">
+      <input type="hidden" name="curDVAPeer_hostname" value="<%= configDict['dva'] %>" />
+      <input type="hidden" class="rbt-addremovelist-remove-input" name="removeDVAPeerLocal_interface" value="" />
+      <div>Are you sure you want to remove <span class="rbt-addremovelist-remove-text"></span>?</div>
+    </div>
+</form>
+<form id="addMPIOIfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="addMPIOIfaceDialog" style="display: none;">
+      <strong>Add MPIO Interface</strong><br /><br />
+      <table class="rbt-addremovelist-dialog-content">
+        <%= dialogEntries['addMPIO_interface'].html(self) %>
+      </table>
+      <table class="rbt-addremovelist-empty-message">
+        <tr>
+          <td>
+            <p>There are no more interfaces configured with IP addresses.</p>
+            <p>
+              To configure your appliance's interfaces please visit
+              the <a href="/mgmt/gui?p=setupHostInterfaces">Networking Configuration</a>
+              pages.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+</form>
+<form id="removeMPIOIfaceDialogForm" method="post" action="<%= self.thisPageletRequest() %>">
+    <div id="removeMPIOIfaceDialog" style="display: none;">
+      <input type="hidden" class="rbt-addremovelist-remove-input" name="removeMPIO_interface" value="" />
+      <div>Are you sure you want to remove <span class="rbt-addremovelist-remove-text"></span>?</div>
+    </div>
+</form>
+<% } %>
+
+<%
+js_granite = []
+
+# for EVA or Steelhead EX
+if not eva.isCMC: {
+    js_granite.append('''
+var liveStatus_branchTab = new LiveStatus({ attachPoint: '#branchRadioTabDiv' }).render();
+var liveStatus_dvas = new LiveStatus({ attachPoint: '#dvaSettings' }).render();
+
+Y.on('domready', function () {
+    RBT.Reports.HC.generateGraphs(%s);
+});
+// set up the auto-updater (if so desired)
+if (window.location.search.indexOf('dynstatus=off') === -1) {
+    var updater = new AjaxUpdater('/mgmt/xmldata?p=edgeStatus');
+    updater.repeatTime = 10000; // 10 seconds
+    updater.update = function (xhr) {
+        var configXML, dvaConnXML, edgeHAXML, mgmtConnected, lunsConnected,
+            graniteConfig = {},
+            dvaConn = {},
+            edgeHAStatus = {},
+            docEl = xhr.responseXML.documentElement;
+
+        configXML = docEl.getElementsByTagName('graniteConfig')[0];
+        dvaConnXML = docEl.getElementsByTagName('dvaConnectionStatus')[0];
+        edgeHAXML = docEl.getElementsByTagName('edgeHAStatus')[0];
+        try {
+            graniteConfig = Y.JSON.parse(configXML.firstChild.data);
+            dvaConn = Y.JSON.parse(dvaConnXML.firstChild.data);
+            edgeHAStatus = Y.JSON.parse(edgeHAXML.firstChild.data);
+        } catch (e) {
+            alert('Unable to parse appliance status response.');
+            // return;  // should we return?
+        }
+        RBT.VE.updateConfig(graniteConfig, edgeHAStatus);
+        RBT.VE.updateConnStatus(dvaConn, graniteConfig, edgeHAStatus);
+
+        function updateAETXML(table, tagName) {
+            var xml = docEl.getElementsByTagName(tagName)[0].cloneNode(true);
+            if (table.editName) {
+                table.editAfterLoad = ["name", table.editName];
+                table.restEditDiv();
+            } else {
+                table.editAfterLoad = null;
+            }
+            table.setData(xml);
+            table.update();
+        }
+        updateAETXML(targetStateTable, 'targetState');
+        updateAETXML(connectedInitiatorsTable, 'connectedInitiators');
+        updateAETXML(configuredInitiatorsTable, 'configuredInitiators');
+        updateAETXML(configuredGroupsTable, 'configuredGroups');
+        updateAETXML(allLUNsTable, 'allLUNs');
+    };
+}
+    ''' % json.dumps(graphSpecs))
+}
+
+if not eva.isCMC or (eva.isCMC and 'appliance' in fields and 'true' == conn): {
+    js_granite.append('''
+// setup the Core Hostname edit dialog
+var editHostnameDialog = RBT.VE.createActionDialog({
+    srcNode: '#editHostnameDialog',
+    alignNode: '#dvaHostname',
+    actionButtonText: 'Update Hostname',
+    actionFunc: RBT.VE.ajaxSubmit,
+    actionArgs: Y.Array({
+        formEl: Y.one('#editHostnameDialogForm'),
+        reqMethod: 'updateDVAPeerHostname',
+        respMethod: 'veWaitForResponse',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Updating Granite Core Hostname...',
+        onSuccess: RBT.VE.reloadPage
+    })
+});
+var removeCoreDialog = RBT.VE.createActionDialog({
+    srcNode: '#removeCoreDialog',
+    alignNode: '#removeDVAPeerBtn',
+    actionButtonText: 'Remove Core',
+    actionFunc: RBT.VE.ajaxSubmit,
+    actionArgs: Y.Array({
+        formEl: Y.one('#removeDVAPeerBtn').get('form'),
+        reqMethod: 'removeDVAPeer',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Removing Core...',
+        onSuccess: RBT.VE.reloadPage
+    })
+});
+var clearHAPeerDialog = RBT.VE.createActionDialog({
+    srcNode: '#clearHAPeerDialog',
+    alignNode: '#haClearPeerBtn',
+    actionButtonText: 'Clear Peer',
+    actionFunc: RBT.VE.ajaxSubmit,
+    actionArgs: Y.Array({
+        formEl: Y.one('#haClearPeerBtn').get('form'),
+        reqMethod: 'haClearPeer',
+        liveStat: liveStatus_dvas,
+        liveStatMsg: 'Clearing High Availability Peer...',
+        onSuccess: RBT.VE.reloadPage
+    })
+});
+
+// setup the MPIO interfaces add/remove widget/dialogs
+var mpioIfaceAddRemoveList = new RBT.VE.AddRemoveList({
+    containerNode: '#mpioInterfaces',
+    addDialogNode: '#addMPIOIfaceDialog',
+    addMethod: 'addMPIOInterface',
+    removeDialogNode: '#removeMPIOIfaceDialog',
+    removeMethod: 'removeMPIOInterface',
+    liveStat: liveStatus_branchTab,
+    isPulldown: true,
+    contentURL: '%(mpioIfaceURL)s',
+    objectName: 'Interface',
+    showControls: %(notIsCMC)s
+});
+// setup the interfaces add/remove widget/dialogs
+var dcLocalIntfAddRemoveList = new RBT.VE.AddRemoveList({
+    containerNode: '#dvaNetworkInterfaces',
+    addDialogNode: '#addInterfaceDialog',
+    addMethod: 'addDVAPeerInterface',
+    removeDialogNode: '#removeInterfaceDialog',
+    removeMethod: 'removeDVAPeerInterface',
+    liveStat: liveStatus_dvas,
+    isPulldown: true,
+    contentURL: '%(localIfaceURL)s',
+    objectName: 'Interface',
+    showControls: %(showControls)s
+});
+// setup the redundant hostnames add/remove widget/dialogs
+var dcHostnameAddRemoveList = new RBT.VE.AddRemoveList({
+    containerNode: '#dvaRedundantHostnames',
+    addDialogNode: '#addHostnameDialog',
+    addMethod: 'addDVAPeerHostname',
+    removeDialogNode: '#removeHostnameDialog',
+    removeMethod: 'removeDVAPeerHostname',
+    liveStat: liveStatus_dvas,
+    isPulldown: false,
+    contentURL: '%(dcHostnameURL)s',
+    objectName: 'Hostname/IP',
+    showControls: %(showControls)s
+});
+
+// show the correct connection status
+var edgeHAStatus =  %(edgeHADict)s;
+RBT.VE.updateConfig(%(configDict)s, edgeHAStatus);
+RBT.VE.updateConnStatus(%(dvaConnDict)s, %(configDict)s, edgeHAStatus);
+
+Y.one('#branchRadioTabDiv').removeClass('hidden');
+branchRadioTab.setupPlaceKeeper();
+editLUNTab.setupPlaceKeeper();
+RBT.VE.placeKeeper.openTable(allLUNsTable, 'name');
+RBT.VE.snapScheduleView = new RBT.VE.SnapSchedule({
+    containerNode: '#scheduleView'
+});
+
+allLUNsTable.editEntry = function (editName) {
+    var el = this.editXMLElement,
+        lunGroups = el.getElementsByTagName('lun-igroup'),
+        lunInitiators = el.getElementsByTagName('lun-initiator'),
+        clientType = el.getAttribute('client_type'),
+        appConsistentDiv = Y.one('#appConsistentDiv'),
+        lunGroupsDiv = Y.one('#editLUN_initiator_groups'),
+        lunInitiatorsDiv = Y.one('#editLUN_initiators'),
+        snapEnableDiv = Y.one('#snapshotPolicyEnabled'),
+        snapDisableDiv = Y.one('#snapshotPolicyDisabled'),
+        weeklyDiv = Y.one('#scheduleWeekly'),
+        dailyDiv = Y.one('#scheduleDaily'),
+        hourlyDiv = Y.one('#scheduleHourly'),
+        appConsistentFields = ['State', 'Quiesce_Guest_VM', 'Branch_Hostname', 'Datacenter_Name', 'Included_VMs', 'Excluded_VMs'];
+
+    lunSnapshotsTable.setData(el.getElementsByTagName('snapshots').item(0));
+    lunSnapshotsTable.update();
+    RBT.VE.fillDiv(lunGroupsDiv, lunGroups, 'name', 'None');
+    RBT.VE.fillDiv(lunInitiatorsDiv, lunInitiators, 'name', 'None');
+
+    if (el.getAttribute('snap_enabled') !== 'true') {
+        snapEnableDiv.hide();
+        snapDisableDiv.show();
+    } else {
+        snapEnableDiv.show();
+        snapDisableDiv.hide();
+        if (el.getAttribute('weeklyEnable') !== 'true') {
+            weeklyDiv.hide();
+        } else {
+            weeklyDiv.show();
+            Y.one('#scheduleWeeklyDay').setContent(
+                RBT.VE.daysNumToStr(el.getAttribute('weeklyDay'))
+            );
+            Y.one('#scheduleWeeklyHour').setContent(
+                RBT.VE.hoursNumToStr(el.getAttribute('weeklyHour'))
+            );
+            Y.one('#scheduleWeeklyNumber').setContent(
+                el.getAttribute('weeklyNumber')
+            );
+        }
+        if (el.getAttribute('dailyEnable') !== 'true') {
+            dailyDiv.hide();
+        } else {
+            dailyDiv.show();
+            Y.one('#scheduleDailyDays').setContent(
+                el.getAttribute('dailyDays')
+            );
+            Y.one('#scheduleDailyHour').setContent(
+                RBT.VE.hoursNumToStr(el.getAttribute('dailyHour'))
+            );
+            Y.one('#scheduleDailyNumber').setContent(
+                el.getAttribute('dailyNumber')
+            );
+        }
+        if (el.getAttribute('hourlyEnable') !== 'true') {
+            hourlyDiv.hide();
+        } else {
+            hourlyDiv.show();
+            Y.one('#scheduleHourlyHours').setContent(
+                RBT.VE.hoursNumToStr(el.getAttribute('hourlyHours'))
+            );
+            Y.one('#scheduleHourlyNumber').setContent(
+                el.getAttribute('hourlyNumber')
+            );
+        }
+        RBT.VE.snapScheduleView.render({
+            weekly: {
+                day: el.getAttribute('weeklyDay'),
+                hour: el.getAttribute('weeklyHour')
+            },
+            daily: {
+                days: RBT.VE.daysStrToNum(el.getAttribute('dailyDays'), true),
+                hour: el.getAttribute('dailyHour')
+            },
+            hourly: {
+                hours: el.getAttribute('hourlyHours').split(',')
+            }
+        });
+    }
+    appConsistentDiv.setContent('');
+    if (clientType !== 'other') {
+        appConsistentDiv.appendChild('<p class="strong topLevel">Application Consistent Snapshot Configuration:</p>');
+        Y.each(appConsistentFields, function (field) {
+            if (el.getAttribute(field) !== '') {
+                var html = Y.substitute('<div><div class="inlineBlock">{appLabel}:</div><div id="{appId}" class="inlineBlock">{appValue}</div></div>', {
+                  appLabel: field.replace(/_/g," "),
+                  appId: field + '_id',
+                  appValue: el.getAttribute(field)
+                });
+                appConsistentDiv.appendChild(Y.Node.create(html));
+            }
+        });
+        Y.one('#' + appConsistentFields[0] + '_id').setStyle('color', el.getAttribute(appConsistentFields[0]) === 'Enabled' ? '#00B000' : '#DD0000');
+    }
+};
+allLUNsTable.updateHook = function () {
+    var el = this.editXMLElement
+        snapTabLink = Y.one('#editLUNTab_snapshots_title'),
+        snapSchedTabLink = Y.one('#editLUNTab_schedule_title');
+
+    if (this.editName) {
+        if (el.getAttribute('member_lun_type') === 'edge_local') {
+            // disable and move away from the snapshots tab (if that's displaying)
+            snapTabLink.hide();
+            snapSchedTabLink.hide();
+            if (editLUNTab.current === 'snapshots' ||
+                editLUNTab.current === 'schedule') {
+                editLUNTab.switchTo('acl');
+            }
+        } else {
+            snapTabLink.show();
+            snapSchedTabLink.show();
+        }
+        RBT.VE.placeKeeper.saveRow(this, 'name', this.editName);
+    } else {
+        RBT.VE.placeKeeper.removeRow(this, 'name');
+    }
+};
+
+configuredGroupsTable.editEntry = function (editName) {
+    var el = this.getEntryElement('name', editName),
+        memberInitiators = el.getElementsByTagName('member-initiator'),
+        memberInitiatorsDiv = Y.one('#edit_initiator_group_members');
+
+    RBT.VE.fillDiv(memberInitiatorsDiv, memberInitiators, 'name', 'None');
+};
+
+lunSnapshotsTable.removeSnapshot = function (args) {
+    RBT.VE.ajaxSubmit({
+        data: args,
+        reqMethod: 'removeEVASnapshot',
+        respMethod: 'veWaitForResponse',
+        liveStat: liveStatus_branchTab,
+        liveStatMsg: 'Removing Snapshot...',
+        onSuccess: function () { allLUNsTable.veRefresh(); }
+    });
+};
+lunSnapshotsTable.takeSnapshot = function () {
+    RBT.VE.ajaxSubmit({
+        data: {
+            snapLUNSerial: allLUNsTable.editName,
+            snapProtect: Y.one('#snapProtect').get('checked') ? 'true' : 'false'
+        },
+        reqMethod: 'createEVASnapshot',
+        respMethod: 'veWaitForResponse',
+        liveStat: liveStatus_branchTab,
+        liveStatMsg: 'Taking Snapshot...',
+        onSuccess: function () { allLUNsTable.veRefresh(); }
+    });
+};
+    ''' % {
+        'configDict': json.dumps(configDict),
+        'dvaConnDict': json.dumps(dvaConnDict),
+        'edgeHADict': json.dumps(edgeHADict),
+        'mpioIfaceURL': URLS['mpioIfaceURL'],
+        'localIfaceURL': URLS['localIfaceURL'],
+        'dcHostnameURL': URLS['dcHostnameURL'],
+        'showControls': json.dumps(not eva.isCMC and edgeHADict['isActive']),
+        'notIsCMC': json.dumps(not eva.isCMC)
+    })
+}
+
+self.addPageletJavascript(''.join(js_granite))
+%>

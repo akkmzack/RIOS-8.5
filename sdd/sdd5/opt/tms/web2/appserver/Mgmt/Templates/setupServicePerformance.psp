@@ -1,0 +1,206 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServicePerformance.psp
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils: NodeEntry, RbtUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+fieldset#perfDRModes table { width: 500px; }
+fieldset#perfDRModes tr.fields td { vertical-align: top; }
+fieldset#perfDRModes td.default { width: 40%; }
+fieldset#perfDRModes td.sdrA { width: 30%; }
+fieldset#perfDRModes td.sdrA .indent { margin-left: 26px; }
+fieldset#perfDRModes td.sdrA .nodeEntry { margin: 2px 0; }
+fieldset#perfDRModes td.sdrM {
+  width: 30%;
+  text-align: right;
+}
+fieldset#perfDRModes tr.desc td {
+    font-style: italic;
+    color: #664;
+}
+
+.hint {
+  white-space: normal; /* The very long hints on this particular page stretch
+                          outside of the table. BugID: 52771 */
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'diskLayout': NodeEntry(
+            path='/rbt/sport/datastore/config/disklayout',
+            selectOptions=(('fifo', 'FIFO'), ('rvbdlru', 'Riverbed LRU')),
+            label='Segment Replacement Policy'),
+        # Select the SDR-A button if either of the SDR-A options are
+        # selected: Legacy (sdr-a) or Advanced (sdr-a-advanced).
+        'sdrPolicy': NodeEntry(
+            path='/rbt/sport/datastore/config/sdr_policy',
+            filter=lambda x: x == 'sdr-a-advanced' and 'sdr-a' or x,
+            widget='radio',
+            widgetClass='sdrPolicy',
+            enableDiv={'sdr-a': 'sdrAdaptiveWrapper'},
+            action='updateUpdateables("perfSettings");',
+            label={'default': 'Default',
+                   'sdr-a': 'SDR-Adaptive',
+                   'sdr-m': 'SDR-M'},
+            tooltip={'sdr-m': 'Perform data reduction entirely in memory, which increases LAN throughput by eliminating disk latency.'}),
+        'cpu_compression': NodeEntry(
+            path='/rbt/sport/codec/config/global/lz_level',
+            type='int32',
+            selectOptions=[('-1', 'Default'), ('1', '1 (minimum)')] + map(str, range(2, 9)) + [('9', '9 (maximum)')],
+            label='Compression Level',
+            tooltip='Lower compression levels increase LAN-side throughput.'),
+        'cpu_adaptiveLZ': NodeEntry(
+            path='/rbt/sport/codec/config/global/adaptive_lz',
+            type='bool',
+            widget='checkboxLeft',
+            label='Adaptive Compression',
+            tooltip='Monitor the performance of data compression and dynamically disable it if it is not effective.'),
+        'cpu_loadBalancing': NodeEntry(
+            path='/rbt/sport/codec/config/global/conn_load_balancing',
+            type='bool',
+            widget='checkboxLeft',
+            label='Multi-Core Balancing',
+            tooltip='Increase LAN-side throughput by splitting the workload over the available cores for a single stream.'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    name, pathPrefix, mode = self.retargetCmcPolicyNodes()
+    policy = Nodes.present(mgmt, pathPrefix + '/rbt/sport/datastore/config/sdr_policy')
+
+    return {
+        # Set the correct initial state for the SDR-A subtype.  This
+        # should be Legacy if we're in sdr-a mode and Advanced for
+        # everything else.
+        'sdrAType': NodeEntry(
+            widget='radio',
+            name='sdrAType',
+            action='updateUpdateables("perfSettings");',
+            widgetClass='sdrAType',
+            label={'legacy': 'Legacy',
+                   'advanced': 'Advanced'},
+            value=policy == 'sdr-a' and 'legacy' or 'advanced',
+            tooltip={'legacy': 'Blend disk-based and non-disk-based data reduction techniques to enable sustained throughput during periods of disk-intensive workloads.',
+                     'advanced': 'Balance throughput and data reduction dynamically, taking into account the available WAN bandwidth.'}),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+name, pathPrefix, mode = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# The disk layout random option is expert only, and to enforce it we've decided
+# that the random option should only be shown if we're already in random mode,
+# (from the cli).
+diskLayoutMode = Nodes.present(mgmt, pathPrefix + '/rbt/sport/datastore/config/disklayout')
+if 'random' == diskLayoutMode: {
+    nodeEntries['diskLayout'].selectOptions = (('fifo', 'FIFO'),
+                                               ('rvbdlru', 'Riverbed LRU'),
+                                               ('random', 'Random (expert only)'))
+}
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="perfSettings">
+
+  <fieldset>
+    <legend>Data Store</legend>
+    <div class="midLevel">
+      <%= nodeEntries['diskLayout'].html(self, format="block") %>
+    </div>
+  </fieldset>
+
+  <fieldset id="perfDRModes">
+    <legend>Adaptive Data Streamlining Modes</legend>
+    <div class="midLevel">
+      <div class="indent">
+        <table>
+          <tr class="desc">
+            <td class="default">Maximize Data Reduction</td>
+            <td class="sdrA"></td>
+            <td class="sdrM">Maximize LAN Throughput</td>
+          </tr>
+          <tr><td colspan="3"><hr /></td></tr>
+          <tr class="fields">
+            <td class="default">
+              <%= nodeEntries['sdrPolicy'].html(self, value='default', format='inline') %>
+            </td>
+            <td class="sdrA">
+              <%= nodeEntries['sdrPolicy'].html(self, value='sdr-a', format='block') %>
+              <div id="sdrAdaptiveWrapper" class="indent">
+                <%= dialogEntries['sdrAType'].html(self, value='legacy', format='block') %>
+                <%= dialogEntries['sdrAType'].html(self, value='advanced', format='block') %>
+              </div>
+            </td>
+            <td class="sdrM">
+              <%= nodeEntries['sdrPolicy'].html(self, value='sdr-m', format='inline') %>
+            </td>
+          </tr>
+
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset id="perfCPUSettings">
+    <legend>CPU Settings</legend>
+    <div class="midLevel">
+      <table>
+        <tbody id="lzLevel">
+          <%= nodeEntries['cpu_compression'].html(self) %>
+        </tbody>
+      </table>
+      <div id="adaptiveCompression">
+        <%= nodeEntries['cpu_adaptiveLZ'].html(self) %>
+      </div>
+      <div id="multiCore">
+        <%= nodeEntries['cpu_loadBalancing'].html(self) %>
+      </div>
+    </div>
+  </fieldset>
+
+  <div>
+    <input type="hidden" name="_action_" value="setupServicePerformance" />
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Disable the Compression Level and Multi-Core Balancing options in
+// SDR-Adaptive Advanced mode.
+var displayControl = new DisplayControl();
+displayControl.display = function(el) {
+    var isSdrA = radioValue(
+        'perfSettings',
+        '<%= nodeEntries["sdrPolicy"].elementName(self) %>') == 'sdr-a';
+    var isAdvanced = radioValue('perfSettings', 'sdrAType') == 'advanced';
+    return !(isSdrA && isAdvanced);
+}
+
+addUpdateable('enable', displayControl, 'lzLevel');
+addUpdateable('enable', displayControl, 'multiCore');
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

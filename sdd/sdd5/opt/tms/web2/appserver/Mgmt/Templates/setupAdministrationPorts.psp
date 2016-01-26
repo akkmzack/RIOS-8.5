@@ -1,0 +1,119 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupAdministrationPorts.psp
+## This is the template for the server administrative communication settings,
+## Monitored Ports.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, RVBDUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = [
+        'reportTrafficSummary',
+    ]
+%>
+
+<psp:method name="pageletNodes">
+    # This file is in framework, which means it will be included on every
+    # appliance, which means it'll be picked up by the permissioning code, which
+    # will execute pageletNodes(), which will invoke monitoredPortsPath(), which
+    # will throw an error on certain appliances.
+    fields = self.request().fields()
+    try:
+        return [RVBDUtils.monitoredPortsPath(fields) + '/*']
+    except AssertionError:
+        return []
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addPort_number': FormUtils.NodeEntry(
+            name='addPort_number',
+            widgetClass='small',
+            label='Port Number',
+            validate='port'),
+        'port_desc': FormUtils.NodeEntry(
+            name='desc',
+            widgetClass='wide4',
+            label='Port Description'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+addPort = 'addPort_'
+editPort = 'editPort_'
+%>
+
+<% self.beginPagelet() %>
+
+<%
+portsTable = ajaxentrytable.AjaxEntryTable('ports',
+  url=self.urlForCmcEdit('/mgmt/xmldata?p=monitoredPorts'),
+  titleText='Monitored Ports',
+  headerSpec = (('', 'table_monport_select'),
+    ('Port Number', 'table_monport_number'),
+    'Description'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('number', 'ck_'),
+ AjaxEntryTable.tdEdit('number', 'number'),
+ AjaxEntryTable.tdAttr('desc')]""",
+    emptyMessage='No ports to unconditionally monitor.',
+    removeName='removePorts',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_',
+    addButtonText='Add Port',
+    addButtonName='addPort',
+    editDivTitle='Description for Port <span id="editPortNumber">&nbsp;</span>',
+    editButtonName='editPort')
+
+portsTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+  ''' % (dialogEntries['addPort_number'].html(self),
+         dialogEntries['port_desc'].html(self, namePrefix=addPort))
+
+portsTable.editDivContent = '''
+  <div class="midLevel">
+    %s
+  </div>
+  <div class="submitButtons">
+    <input type="hidden" name="editPort_number" />
+  </div>''' % dialogEntries['port_desc'].html(self, namePrefix=editPort, format="block")
+
+%>
+<form method="post"
+      action="<%= self.thisPageletRequest()%>"
+      id="portsForm">
+  <div>
+    <input type="hidden" name="_action_" value="monitoredPorts" />
+    <%= portsTable.html(self) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+
+<script type="text/javascript">
+<!--
+portsTable.editEntry = function(portNum) {
+    setElementText('editPortNumber', portNum);
+    var form = $('portsForm');
+    form.editPort_number.value = portNum;
+    var portEl = this.getEntryElement('number', portNum);
+    form.editPort_desc.value = portEl.getAttribute('desc');
+}
+// -->
+</script>

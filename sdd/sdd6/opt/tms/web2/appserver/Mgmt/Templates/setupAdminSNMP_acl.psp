@@ -1,0 +1,561 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdminSNMP_acl.psp
+## SNMP ACL Settings Page
+##
+## Security Names Table
+## Groups Table
+## Views Table
+## Access Policies Table
+%>
+
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+#snmpSecurityNameTable_main,
+#snmpGroupTable_main,
+#snmpViewTable_main,
+#snmpAclTable_main { width: 500px; }
+
+.simpleAddSubButton {
+  width: 20px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'snmpGropus': NodeEntry(
+            path='/snmp/vacm/groups/*'),
+        'snmpViews': NodeEntry(
+            path='/snmp/vacm/views/*'),
+        'snmpSecurityNames': NodeEntry(
+            path='/snmp/vacm/sec_names/*'),
+        'snmpAcls': NodeEntry(
+            path='/snmp/vacm/acls/*'),
+        'snmpUsers': NodeEntry(
+            path='/snmp/usm/users/*')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addSecurityName_name': NodeEntry(
+            name='addSecurityName_name',
+            label='Security Name',
+            validate='nonempty'),
+        'addSecurityName_community': NodeEntry(
+            name='addSecurityName_community',
+            label='Community String',
+            validate='nonempty'),
+        'addSecurityName_ip': NodeEntry(
+            name='addSecurityName_ip',
+            label='Source IP Address and Mask Bits',
+            validate='ipv4prefix',
+            hint='(nnn.nnn.nnn.nnn/mm)'),
+
+        'addGroup_name': NodeEntry(
+            name='addGroup_name',
+            label='Group Name',
+            labelClass='label-fixed-small',
+            validate='nonempty'),
+
+        'addView_name': NodeEntry(
+            name='addView_name',
+            label='View Name',
+            validate='nonempty'),
+        'addView_includes': NodeEntry(
+            name='addView_includes',
+            label='Includes',
+            widget='textarea',
+            widgetClass='wide2',
+            validate='validateOIDList',
+            inputOptional=True,
+            hint='(one .x.y.z per line)'),
+        'addView_excludes': NodeEntry(
+            name='addView_excludes',
+            label='Excludes',
+            widget='textarea',
+            widgetClass='wide2',
+            validate='validateOIDList',
+            inputOptional=True,
+            hint='(one .x.y.z per line)'),
+
+        'editView_includes': NodeEntry(
+            name='editView_includes',
+            label='Includes',
+            widget='textarea',
+            widgetClass='wide2',
+            validate='validateOIDList',
+            inputOptional=True,
+            hint='(one .x.y.z per line)'),
+        'editView_excludes': NodeEntry(
+            name='editView_excludes',
+            label='Excludes',
+            widget='textarea',
+            widgetClass='wide2',
+            validate='validateOIDList',
+            inputOptional=True,
+            hint='(one .x.y.z per line)'),
+
+        'addAcl_group': NodeEntry(
+            name='addAcl_group',
+            widget='select',
+            label='Group Name',
+            labelClass='label-fixed-small'),
+        'addAcl_auth': NodeEntry(
+            name='addAcl_auth',
+            selectOptions=(('noauth', 'No Auth'), ('auth', 'Auth'), ('authpriv', 'AuthPriv')),
+            label='Security Level',
+            labelClass='label-fixed-small'),
+        'addAcl_readView': NodeEntry(
+            name='addAcl_readView',
+            widget='select',
+            label='Read View',
+            labelClass='label-fixed-small'),
+    }
+</psp:method>
+
+<%
+self.hasHelp = True
+
+mgmt = self.session().value('mgmt')
+name, pathPrefix, mode = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+groupSecurityModelOptions = ['v1', 'v2c', 'usm']
+
+addAclGroupOptions = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/snmp/vacm/groups')
+addAclGroupOptions.sort(FormUtils.alphanumericCompare)
+dialogEntries['addAcl_group'].selectOptions = addAclGroupOptions
+
+addAclReadViewOptions = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/snmp/vacm/views')
+addAclReadViewOptions.sort(FormUtils.alphanumericCompare)
+dialogEntries['addAcl_readView'].selectOptions = addAclReadViewOptions
+
+nameOptionsV1 = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/snmp/vacm/sec_names')
+nameOptionsV1.sort(FormUtils.alphanumericCompare)
+
+nameOptionsUsm = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/snmp/usm/users')
+nameOptionsUsm.sort(FormUtils.alphanumericCompare)
+
+snmpSecurityNameTable = ajaxentrytable.AjaxEntryTable('snmpSecurityName',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpSecurityNames'),
+    titleText='Security Names',
+    headerSpec=('', 'Security Name', 'Community String', 'Source IP / Mask Bits'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'secName_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('community'),
+ AjaxEntryTable.tdAttr('src')]""",
+    emptyMessage='No Security Names.',
+    removeName='removeSecurityNames',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New Security Name',
+    addButtonName='addSecurityName')
+
+# display a warning about the security name community string if the
+# Read-Only Community String is set
+if Nodes.present(mgmt, '/snmp/access/rocommunity'): {
+    communityStringWarning = '''
+        <p>
+          <strong>Note:</strong>  Users can still access the entire
+          MIB tree from any source host using the Read-Only Community
+          String on the SNMP Basic page.  If this is not desired,
+          please delete the &ldquo;Read-Only Community String&rdquo;
+          on the <a href="/mgmt/gui?p=setupAdminSNMP_basic">SNMP
+          Basic</a> page.
+        </p>'''
+}
+else: {
+    communityStringWarning = ''
+}
+
+snmpSecurityNameTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+    %s
+  </div>
+''' % (dialogEntries['addSecurityName_name'].html(self),
+       dialogEntries['addSecurityName_community'].html(self),
+       dialogEntries['addSecurityName_ip'].html(self),
+       communityStringWarning)
+
+snmpGroupTable = ajaxentrytable.AjaxEntryTable('snmpGroup',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpGroups'),
+    titleText='Groups',
+    headerSpec=('', 'Group Name', 'Security Models, Names'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'group_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdChildAttr('entry', 'pretty')]""",
+    emptyMessage='No Groups.',
+    removeName='removeGroups',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New Group',
+    addButtonName='addGroup')
+
+if mode: {
+    snmpGroupHelperText = '''Specify the group name and select the security
+    models. For v1 and v2c security models, select the security name. For usm
+    security models, specify the user name.'''
+    snmpGroupCMCHtml = '''<input class="hidden" name="addSnmpGroupUsm_secName_0"></input>'''
+}
+else: {
+    snmpGroupHelperText = '''Specify the group name and select the security
+    models. For v1 and v2c security models, select the security name. For usm
+    security models, select the user name.'''
+    snmpGroupCMCHtml = ''
+}
+
+snmpGroupTable.addDivContent = '''
+  <div class="midLevel">
+    <p>%s</p>
+    <table>
+      %s
+      <tr>
+        <td class="label">Security Model and Name Pairs:</td>
+        <td>
+          <table id="addGroup_table">
+            <tr id="addGroup_primaryRow">
+              <td><select name="addSnmpGroup_secModel_0" onchange="groupModelChange(this)">%s</select></td>
+              <td><select name="addSnmpGroup_secName_0">%s</select>
+                  %s</td>
+              <td><input type="button" value="-" class="simpleAddSubButton"
+                         onclick="rowClick(this)" /></td>
+              <td></td>
+            </tr>
+            <tr id="addGroup_lastRow">
+              <td></td>
+              <td></td>
+              <td><input type="button" value="+" class="simpleAddSubButton"
+                         onclick="rowClick(this)" /></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+''' % (snmpGroupHelperText,
+       dialogEntries['addGroup_name'].html(self),
+       FormUtils.selectOptions(groupSecurityModelOptions),
+       FormUtils.selectOptions(nameOptionsV1),
+       snmpGroupCMCHtml)
+
+snmpViewTable = ajaxentrytable.AjaxEntryTable('snmpView',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpViews'),
+    titleText='Views',
+    headerSpec=('', 'View Name', 'Includes', 'Excludes'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'view_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('includesPreview'),
+ AjaxEntryTable.tdAttr('excludesPreview')]""",
+    emptyMessage='No Views.',
+    removeName='removeViews',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New View',
+    addButtonName='addView',
+    editButtonName='editView')
+
+snmpViewTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addView_name'].html(self),
+       dialogEntries['addView_includes'].html(self),
+       dialogEntries['addView_excludes'].html(self))
+
+snmpViewTable.editDivContent = '''
+  <div class="midLevel">
+    <input type="hidden" name="editView_name" />
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['editView_includes'].html(self),
+       dialogEntries['editView_excludes'].html(self))
+
+snmpAclTable = ajaxentrytable.AjaxEntryTable('snmpAcl',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpAcls'),
+    titleText='Access Policies',
+    headerSpec=('', 'Group Name', 'Security Level', 'Read View'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'acl_'),
+ AjaxEntryTable.tdAttr('group_name'),
+ AjaxEntryTable.tdAttr('sec_level'),
+ AjaxEntryTable.tdAttr('read_view')]""",
+    emptyMessage='No Access Policies.',
+    removeName='removeAcls',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New Access Policy',
+    addButtonName='addAcl')
+
+if addAclGroupOptions and addAclReadViewOptions: {
+    snmpAclTable.addDivContent = '''
+      <div class="midLevel">
+        <table>
+          %s
+          %s
+          %s
+        </table>
+      </div>
+    ''' % (dialogEntries['addAcl_group'].html(self),
+           dialogEntries['addAcl_auth'].html(self),
+           dialogEntries['addAcl_readView'].html(self))
+}
+else: {
+    snmpAclTable.addButtonName = None
+    snmpAclTable.addDivContent = '''
+      <div class="midLevel">
+        A group and a view must be created before an access policy can
+        be added.
+      </div>
+    '''
+}
+%>
+
+<% self.beginPagelet() %>
+
+<div>
+<p>
+Perform Authentication and Access Control.
+</p>
+</div>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div class="topLevel">
+    <div>
+      <p>
+        Create Security Names.
+      </p>
+    </div>
+    <%= snmpSecurityNameTable.html(self) %>
+    <input type="hidden" name="_action_" value="snmpAction" />
+  </div>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="snmpGroupForm">
+  <div class="topLevel">
+    <div>
+      <p>
+        A group is one or more entries of the form
+        security-model:security-name.
+      </p>
+    </div>
+    <%= snmpGroupTable.html(self) %>
+    <input type="hidden" name="_action_" value="snmpAction" />
+  </div>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="viewTableForm">
+  <div class="topLevel">
+    <div>
+      <p>
+        Add OIDs that should be included or excluded from this view
+      </p>
+    </div>
+    <%= snmpViewTable.html(self) %>
+    <input type="hidden" name="_action_" value="snmpAction" />
+  </div>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="accessPoliciesForm">
+  <div class="topLevel">
+    <div>
+      <p>
+      <i>Access Policies</i> are rules for the agent to decide how to
+      process a request.
+      </p>
+    </div>
+    <%= snmpAclTable.html(self) %>
+    <input type="hidden" name="_action_" value="snmpAction" />
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+// To populate a selectElement with the given options.
+// To do: Move to utils.js and call populateSelectElement from
+// populateSelect.
+function populateSelectElement(selectEl, options) {
+    while (selectEl.options.length) {
+        selectEl.remove(0);
+    }
+    for (var i = 0; i < options.length; ++i) {
+        if (typeof options[i] == typeof '') {
+            selectEl.options[i] = new Option(options[i], options[i]);
+        } else {
+            selectEl.options[i] = new Option(options[i][1], options[i][0]);
+        }
+    }
+}
+
+function validateOIDList(val) {
+    var oidPattern = /^(\.|\w|\d|-|_)+$/;
+    var oids = val.split('\n');
+    for (var i = 0; i < oids.length ; ++i) {
+        oids[i] = oids[i].trim();
+        // The reason we have this complicated set of conditions is because
+        // including them in the regex slows the browser down for longer OIDs.
+        if (oids[i] != '' && (oids[i].indexOf('..') != -1 || oids[i][oids[i].length-1] == '.' || !oids[i].match(oidPattern))) {
+            throw 'An invalid OID is in this list.';
+        }
+    }
+}
+
+function rowClick(el) {
+    var clickRow = getParentOfType(el, 'TR');
+    if ('addGroup_table' == getParentOfType(clickRow, 'TABLE').id) {
+        if ('+' == el.value) {
+            clickRow.parentNode.insertBefore(newRow(false), clickRow);
+        } else {
+            clickRow.parentNode.removeChild(clickRow);
+        }
+        renumberFields('addGroup_table');
+    }
+}
+
+<%
+if mode: { %>
+    var isCmcPolicyPage = true;
+<% }
+else: {%>
+    var isCmcPolicyPage = false;
+<% } %>
+
+var groupSecurityNameOptionsV1 = <%= str(nameOptionsV1) %>;
+
+// make a new row
+function newRow(editMode) {
+    var namePre = (editMode) ? 'edit' : 'add';
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    var sel = document.createElement('select');
+    sel.name = namePre + 'SnmpGroup_secModel_0';
+    sel.onchange = new Function('groupModelChange(this)');
+    sel.options[0] = new Option('v1', 'v1');
+    sel.options[1] = new Option('v2c', 'v2c');
+    sel.options[2] = new Option('usm', 'usm');
+    td.appendChild(sel);
+    tr.appendChild(td);
+    td = document.createElement('td');
+    sel = document.createElement('select');
+    sel.name = namePre + 'SnmpGroup_secName_0';
+    populateSelectElement(sel, groupSecurityNameOptionsV1);
+    td.appendChild(sel);
+    if (isCmcPolicyPage) {
+        input = document.createElement('input');
+        input.name = namePre + 'SnmpGroupUsm_secName_0';
+        input.className = 'hidden'
+        td.appendChild(input);
+    }
+    tr.appendChild(td);
+    var td = document.createElement('td');
+    var button = document.createElement('input');
+    button.type = 'button';
+    button.value = '-';
+    button.className = 'simpleAddSubButton';
+    button.onclick = Function('rowClick(this)');
+    td.appendChild(button);
+    tr.appendChild(td);
+    return tr;
+}
+
+function renumberFields(tableName) {
+    var rows = $(tableName).rows;
+    for (var r = 0; r < rows.length; r++) {
+        var items = rows.item(r).getElementsByTagName('select');
+        for (var i = 0; i < items.length; i++) {
+            var item = items.item(i);
+            var pos = item.name.lastIndexOf('_');
+            if (-1 < pos) {
+                item.name = item.name.substr(0, pos + 1) + r;
+            }
+        }
+
+        if (isCmcPolicyPage) {
+            var items = rows.item(r).getElementsByTagName('input');
+            for (var i = 0; i < items.length; i++) {
+                var item = items.item(i);
+                var pos = item.name.lastIndexOf('_');
+                if (-1 < pos) {
+                    item.name = item.name.substr(0, pos + 1) + r;
+                }
+            }
+        }
+    }
+}
+
+var groupSecurityNameOptionsUsm = <%= str(nameOptionsUsm) %>;
+// The group model selection determines the corresponding user selection.
+// v1 and v2 get one set of users, and usm gets the others.
+// When the model is usm:
+// - On a SH, one should choose from a list of users for the
+// user name.
+// - On the CMC, one can type in the user name (since the user name
+// may be specified in a different policy than the one the group is
+// being defined on)
+function groupModelChange(el) {
+    var userSelectName = el.name.replace('_secModel_', '_secName_');
+    var userSelectNameUsm = el.name.replace('_secModel_', 'Usm_secName_');
+
+    if (arrayContains(['v1', 'v2c'], el.value)) {
+        if (!arrayContains(['v1', 'v2c'], el.saveVal)) {
+            populateSelect(el.form, userSelectName, groupSecurityNameOptionsV1);
+            enableElements(getFormElement('snmpGroupForm', userSelectNameUsm), 'hide')
+            enableElements(getFormElement('snmpGroupForm', userSelectName), true)
+            setFormValue(el.form, userSelectName, '');
+        }
+    } else if ('usm' == el.value) {
+        if ('usm' != el.saveVal) {
+            if (isCmcPolicyPage) {
+                enableElements(getFormElement('snmpGroupForm', userSelectNameUsm), true)
+                enableElements(getFormElement('snmpGroupForm', userSelectName), 'hide')
+            }
+            else {
+                populateSelect(el.form, userSelectName, groupSecurityNameOptionsUsm)
+            }
+            setFormValue(el.form, userSelectNameUsm, '');
+        }
+    }
+    el.saveVal = el.value;
+}
+
+snmpViewTable.editEntry = function(editName) {
+    var form = $('viewTableForm');
+    var el = this.getEntryElement('name', editName);
+    form.editView_name.value = editName;
+    var replPattern = new RegExp('\\\\;', 'g');
+    form.editView_includes.value = el.getAttribute('includes').replace(replPattern, '\n');
+    form.editView_excludes.value = el.getAttribute('excludes').replace(replPattern, '\n');
+}
+
+// -->
+</script>
+

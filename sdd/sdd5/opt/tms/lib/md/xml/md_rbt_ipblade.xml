@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_ipblade                                             -->
+<!--   Module Root: /rbt/sport/ip_blade                                     -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_ipblade.c        -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/ipblade/config/myconfig</name>                 -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_ipblade">
+        <config>
+                <name>/rbt/sport/ip_blade/config/enable</name>
+                <description>Status of ipblade feature</description>
+                <value type="bool">false</value>
+                <commit-descriptor>
+                     <check-func>mr_ipb_enable_commit_check</check-func>
+                </commit-descriptor>
+        </config>
+        <config>
+                <name>/rbt/sport/ip_blade/config/pass_on_err</name>
+                <description>Passthrough on error at intercept</description>
+                <value type="bool">false</value>
+        </config>
+        <config>
+                <name>/rbt/sport/ip_blade/config/evict_timeout</name>
+                <description>Eviction timeout</description>
+                <value type="uint16">120</value>
+        </config>
+        <config>
+                <name>/rbt/sport/ip_blade/config/per_tunnel_stats</name>
+                <description>Per tunnel stats</description>
+                <value type="bool">false</value>
+        </config>
+        <config>
+                <name>/rbt/sport/ip_blade/config/codec_flow_ctrl</name>
+                <description>IP blade codec flow control</description>
+                <value type="bool">true</value>
+        </config>
+        <config>
+            <name>/rbt/sport/ip_blade/config/max_burst_size</name>
+            <description>IP blade maximum allowed burst size</description>
+            <value type="uint32">524288</value>
+        </config>
+
+        <config>
+            <name>/rbt/sport/ip_blade/config/max_flows_per_channel</name>
+            <description>Maximum flows allowed per channel</description>
+            <value type="uint32" min="1" max="20">6</value>
+        </config>
+
+        <config>
+            <name>/rbt/sport/ip_blade/config/rx_ring/num_per_cpu</name>
+            <description>Number of rings per node</description>
+            <value type="uint32" min="1" max="6">2</value>
+        </config>
+
+        <config>
+            <name>/rbt/sport/ip_blade/config/rx_ring/alloc_mode</name>
+            <description>Ring allocation mode</description>
+            <value type="string">auto</value>
+        </config>
+
+        <config>
+                <name>/rbt/sport/ip_blade/config/ipblade_paused_drop</name>
+                <description>Drop all packets while ipblade is paused</description>
+                <value type="bool">false</value>
+                <sysctl-key-association>
+                     <sysctl-key>nbt.ipblade_paused_drop</sysctl-key>
+                </sysctl-key-association>
+        </config>
+        <passthrough>
+                <name>/rbt/sport/ip_blade/action/channel/*</name>
+                <description>IP blade IP channels' action</description>
+                <value type="string"/>
+                <role-primitive permission="read-only">/role_primitive/reports/appliance/current_connections</role-primitive>
+                <passthrough-provider>sport</passthrough-provider>
+        </passthrough>
+        <passthrough>
+          <name>/rbt/sport/ip_blade/action/flows/*</name>
+          <description>Flow data action</description>
+          <value type="string"/>
+          <role-primitive permission="read-only">/role_primitive/reports/appliance/current_connections</role-primitive>
+        <passthrough-provider>sport</passthrough-provider>
+        </passthrough>
+        <external-state>
+                <name>/rbt/sport/ip_blade/state/total_reduction</name>
+                <description>Get Total Reduction for IP Blade Traffic</description>
+                <value type="uint8"/>
+                <state-provider>sport</state-provider>
+        </external-state>
+</node-list>

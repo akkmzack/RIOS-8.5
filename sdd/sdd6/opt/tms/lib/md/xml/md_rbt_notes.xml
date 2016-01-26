@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_notes                                               -->
+<!--   Module Root: /rbt/sport/notes                                        -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_notes.c          -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/notes/config/myconfig</name>                   -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_notes">
+     <config>
+        <name>/rbt/sport/notes/config/encrypt/anonymous/enable</name>
+        <description>Enable anonymous connection through encrypted notes blade
+        </description>
+        <value type="bool">false</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/preack_limit</name>
+        <description>Notes preack limit
+        </description>
+        <value type="uint32">0</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/encrypt/bypass_on_error/enable</name>
+        <description>Put connection in Notes Bypass table when certain encryption errors occur.
+        </description>
+        <value type="bool">false</value>
+     </config>
+
+     <!--  Nodes for version 2 Lotus Notes Encryption Optimization   -->
+     <config>
+        <name>/rbt/sport/notes/config/encrypt_v2/enable</name>
+        <description>Enable Lotus Notes v2 Optimization</description>
+        <value type="bool">false</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/encrypt_v2/server_port</name>
+        <description>Notes Alternative Server Port Number</description>
+        <value type="uint16">1352</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/encrypt_v2/blacklist_timeout</name>
+        <description>Configure blacklist timeout</description>
+        <value type="uint32">0</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/encrypt_v2/pending_conn_timeout</name>
+        <description>Configure pending timeout</description>
+        <value type="uint32">120</value>
+     </config>
+     <config>
+        <name>/rbt/sport/notes/config/encrypt_v2/recent_conn_timeout</name>
+        <description>Configure recent connection timeout</description>
+        <value type="uint32">10</value>
+     </config>
+    <action>
+        <name>/rbt/sport/notes/action/bulk_export</name>
+        <description>Bulk Export Notes Directory Contents</description>
+        <action-func>md_rbt_export_notes_config</action-func>
+        <parameter type="bool">local</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/notes/action/encrypt_v2/import_binary_file</name>
+        <description>Download and Decrypt server-id file</description>
+        <action-func>md_rbt_import_notes_binary_data</action-func>
+        <parameter type="binary">binary_data</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/notes/action/encrypt_v2/import</name>
+        <description>Download and Decrypt server-id file</description>
+        <action-func>md_rbt_import_serverid_file</action-func>
+        <parameter type="string">password</parameter>
+        <parameter type="string">filename</parameter>
+        <parameter type="bool">debug</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/notes/action/encrypt_v2/clear</name>
+        <description>Delete a decrypted server-id file</description>
+        <action-func>md_rbt_clear_serverid_file</action-func>
+        <parameter type="bool">remove_all</parameter>
+        <parameter type="string">filename</parameter>
+    </action>
+    <state>
+        <name>/rbt/sport/notes/state/server_certs/fingerprint</name>
+        <description>Returns md5 hash of server certs directory</description>
+        <value type="string"/>
+        <get-func>mrn_get_server_certs_fingerprint</get-func>
+        <get-func-arg>name</get-func-arg>
+    </state>
+    <state-wildcard>
+        <name>/rbt/sport/notes/state/server_id/*</name>
+        <description>Server-Id info of Notes server</description>
+        <value type="string"/>
+        <get-func>mrn_get_server_id</get-func>
+        <iterate-func>mrn_iterate_server_ids</iterate-func>
+    </state-wildcard>
+    <state>
+        <name>/rbt/sport/notes/state/server_id/*/name</name>
+        <description>Server Name</description>
+        <value type="string"/>
+        <get-func>mrn_get_server_id</get-func>
+        <get-func-arg>name</get-func-arg>
+    </state>
+    <external-state-wildcard>
+         <name>/rbt/sport/notes/state/blacklist/*</name>
+         <description>List of blocked connections in Notes Encryption black list</description>
+         <value type="uint32"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+    <external-state>
+         <name>/rbt/sport/notes/state/blacklist/*/ip_addr</name>
+         <description>IP address of blocked connection in Notes Encryption black list</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/notes/state/blacklist/*/reason</name>
+         <description>Reason the connection is in the black list</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+</node-list>

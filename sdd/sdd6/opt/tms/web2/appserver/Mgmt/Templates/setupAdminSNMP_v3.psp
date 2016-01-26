@@ -1,0 +1,289 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdminSNMP_v3.psp
+## SNMP Server Administrative Settings for v3
+##
+## Engine ID, User Table
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+#snmpUserTable_main {
+  width: 100%;
+}
+'''
+</psp:method>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'snmpUsers': NodeEntry(
+            path='/snmp/usm/users/*'
+        )
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addSnmpUser_name': NodeEntry(
+            name='addSnmpUser_name',
+            label='User Name',
+            labelClass='label-fixed-small',
+            validate='nonempty'),
+        'addSnmpUser_mode': NodeEntry(
+            name='addSnmpUser_mode',
+            selectOptions=(('password', 'Supply a Password'),
+                           ('key', 'Supply a Key')),
+            value='password',
+            label='Authentication',
+            action='setAuthPrivacyText()'),
+        'addSnmpUser_keyMD5': NodeEntry(
+            name='addSnmpUser_key',
+            label='MD5 Key',
+            hint='(MD5 Key, 32 hex digits)',
+            validate='validateMD5',
+            widgetClass='wide3'),
+        'addSnmpUser_keySHA': NodeEntry(
+            name='addSnmpUser_key',
+            label='SHA Key',
+            hint='(SHA Key, 40 hex digits)',
+            validate='validateSHA',
+            widgetClass='wide3'),
+        'addSnmpUser_password': NodeEntry(
+            name='addSnmpUser_password',
+            widget='password',
+            label='Password',
+            validate=('password', '[8]'),
+            hint='(at least 8 characters)'),
+        'addSnmpUser_passwordConfirm': NodeEntry(
+            name='addSnmpUser_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[8]')),
+        'addSnmpUser_protocol': NodeEntry(
+            name='addSnmpUser_protocol',
+            selectOptions=('MD5', 'SHA'),
+            value='MD5',
+            label='Authentication Protocol',
+            action='updateUpdateables("addNewUserForm")'),
+        'addSnmpUser_privacyOption': NodeEntry(
+            name='addSnmpUser_privacyOption',
+            type='bool',
+            widget='checkboxLeft',
+            value='false',
+            label='Use Privacy Option',
+            enableDiv='div_privacySection'),
+         'addSnmpUser_privacyPassword': NodeEntry(
+            name='addSnmpUser_privacyPassword',
+            widget='password',
+            label='Privacy Password',
+            validate=('password', '[8]'),
+            hint='(at least 8 characters)'),
+        'addSnmpUser_privacyPasswordConfirm': NodeEntry(
+            name='addSnmpUser_privacyPasswordConfirm',
+            widget='password',
+            label='Privacy Password Confirm',
+            validate=('password', '[8]')),
+        'addSnmpUser_privacyKeyMD5': NodeEntry(
+            name='addSnmpUser_privacyKey',
+            label='Privacy MD5 Key',
+            hint='(MD5 Key, 32 hex digits)',
+            validate='validateMD5',
+            widgetClass='wide3'),
+        'addSnmpUser_privacyKeySHA': NodeEntry(
+            name='addSnmpUser_privacyKey',
+            label='Privacy SHA Key',
+            hint='(SHA Key, 40 hex digits)',
+            validate='validateSHA',
+            widgetClass='wide3'),
+        'addSnmpUser_privacyProtocol': NodeEntry(
+            name='addSnmpUser_privacyProtocol',
+            widget='select',      
+            selectOptions=('AES','DES'),      
+            label='Privacy Protocol'),
+        'addSnmpUser_privacyMode': NodeEntry(
+            name='addSnmpUser_privacyMode',
+            widget='select',      
+            selectOptions=(('authPrivacy','Same as Authentication Password'),
+                           ('password', 'Supply a Password'),
+                           ('key', 'Supply a Key')), 
+            label='Privacy',
+            value='authPrivacy',
+            action='updateUpdateables("addNewUserForm")'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+name, pathPrefix, mode = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+snmpUserTable = ajaxentrytable.AjaxEntryTable('snmpUser',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpUsers'),
+    titleText='Users',
+    headerSpec=('', 'User Name', 'Protocol', 'Authentication Key', 'Privacy', 'Privacy Key'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'snmpUser_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('protocol'),
+ AjaxEntryTable.tdAttr('key'),
+ AjaxEntryTable.tdAttr('privacy'),
+ AjaxEntryTable.tdAttr('privacyKey')]""",
+    emptyMessage='No SNMP users.',
+    removeName='removeSnmpUsers',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New User',
+    addButtonName='addSnmpUser')
+
+snmpUserTable.addDivContent = """
+  <div class="midLevel">
+    <div>
+      <p>
+        Users can be authenticated with either a password or a key.
+      </p>
+    </div>
+    <table>
+      <tbody>
+        %(name)s
+        %(protocol)s
+        %(mode)s
+      </tbody>
+      <tbody id="addSnmpUser_passwordSection">
+        %(password)s
+        %(passwordConfirm)s
+      </tbody>
+      <tbody id="addSnmpUser_md5Section">
+        %(MD5Key)s
+      </tbody>
+      <tbody id="addSnmpUser_shaSection">
+        %(SHAKey)s
+      </tbody>
+    </table>
+    %(privacyOption)s
+    <div class="indent">
+      <table>
+        <tbody id="div_privacySection">
+          %(privacyProtocol)s
+          %(privacyMode)s
+        </tbody>
+        <tbody id="addSnmpUser_privacyPasswordSection">
+          %(privacyPassword)s
+          %(privacyPasswordConfirm)s
+        </tbody>
+        <tbody id="addSnmpUser_privacyMD5Section">
+          %(privacyMD5Key)s
+        </tbody>
+        <tbody id="addSnmpUser_privacySHASection">
+          %(privacySHAKey)s
+        </tbody>
+      </table> 
+    </div>   
+  </div>
+""" % { 'name': dialogEntries['addSnmpUser_name'].html(self),
+        'protocol': dialogEntries['addSnmpUser_protocol'].html(self),
+        'mode': dialogEntries['addSnmpUser_mode'].html(self),
+        'password': dialogEntries['addSnmpUser_password'].html(self),
+        'passwordConfirm': dialogEntries['addSnmpUser_passwordConfirm'].html(self),
+        'MD5Key': dialogEntries['addSnmpUser_keyMD5'].html(self),
+        'SHAKey': dialogEntries['addSnmpUser_keySHA'].html(self),
+        'privacyOption': dialogEntries['addSnmpUser_privacyOption'].html(self),
+        'privacyProtocol': dialogEntries['addSnmpUser_privacyProtocol'].html(self),
+        'privacyMode': dialogEntries['addSnmpUser_privacyMode'].html(self),
+        'privacyPassword': dialogEntries['addSnmpUser_privacyPassword'].html(self),
+        'privacyPasswordConfirm': dialogEntries['addSnmpUser_privacyPasswordConfirm'].html(self),
+        'privacyMD5Key': dialogEntries['addSnmpUser_privacyKeyMD5'].html(self),
+        'privacySHAKey': dialogEntries['addSnmpUser_privacyKeySHA'].html(self)}
+
+%>
+
+<% self.beginPagelet() %>
+
+<% if Nodes.present(mgmt, '/pm/monitor/process/snmpd/state') != 'running': { %>
+<p class="warning">
+  Note: Cannot generate the authentication key for a new User because the SNMP
+  subsystem is not running.
+</p>
+<% } %>
+
+<script type="text/javascript">
+<!--
+
+function setAuthPrivacyText() {
+    var form = $('addNewUserForm');
+    var mode = form.addSnmpUser_mode.value;
+    if (mode == 'password')
+        form.addSnmpUser_privacyMode.options[0].text = 'Same as Authentication Password';
+    else 
+        form.addSnmpUser_privacyMode.options[0].text = 'Same as Authentication Key';
+    updateUpdateables("receiverTableForm");
+}
+
+// Use a DisplayControl object to control the visibility of the key & password DIVs.
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    var form = $('addNewUserForm');
+    var protocol = form.addSnmpUser_protocol.value;
+    var privacyMode = form.addSnmpUser_privacyMode.value;
+    var mode = form.addSnmpUser_mode.value;
+    var privacyCheck = form.addSnmpUser_privacyOption.checked;
+    switch (div) {
+        case 'addSnmpUser_privacyMD5Section':
+            return (privacyCheck == true) && (privacyMode == 'key') && (protocol == 'MD5');
+        case 'addSnmpUser_md5Section':
+            return (mode == 'key') && (protocol == 'MD5');
+        case 'addSnmpUser_privacySHASection':
+            return (privacyCheck == true) && (privacyMode == 'key') && (protocol == 'SHA');
+        case 'addSnmpUser_shaSection':
+            return (mode == 'key') && (protocol == 'SHA');
+        case 'addSnmpUser_privacyPasswordSection':
+            return (privacyCheck == true) && (privacyMode == 'password');
+        case 'addSnmpUser_passwordSection': 
+            return mode == 'password';
+    }
+}
+
+addUpdateable('display', displayControl, 'addSnmpUser_passwordSection');
+addUpdateable('display', displayControl, 'addSnmpUser_md5Section');
+addUpdateable('display', displayControl, 'addSnmpUser_shaSection');
+addUpdateable('display', displayControl, 'addSnmpUser_privacyPasswordSection');
+addUpdateable('display', displayControl, 'addSnmpUser_privacyMD5Section');
+addUpdateable('display', displayControl, 'addSnmpUser_privacySHASection');
+
+// Validation function to make sure the MD5 field is 32 hex digits.
+function validateMD5(val) {
+    if (!val.match(/^[A-Fa-f0-9]{32}$/)) {
+        throw 'MD5 key must be 32 hexadecimal digits.';
+    }
+}
+
+// Validation function to make sure the SHA field is 40 hex digits.
+function validateSHA(val) {
+    if (!val.match(/^[A-Fa-f0-9]{40}$/)) {
+        throw 'SHA key must be 40 hexadecimal digits.';
+    }
+}
+//-->
+</script>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>" id="addNewUserForm">
+  <div class="topLevel">
+    <div>
+      <p>
+        Create USM users.
+      </p>
+    </div>
+    <%= snmpUserTable.html(self) %>
+    <input type="hidden" name="_action_" value="snmpAction" />
+  </div>
+</form>
+
+<% self.endPagelet() %>

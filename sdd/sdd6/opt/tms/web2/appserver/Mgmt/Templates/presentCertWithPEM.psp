@@ -1,0 +1,139 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## presentCert.psp
+##
+## This is an include file to display a cert in a pretty way.
+##
+## To use this, place an object in the transaction named 'cert', and
+## that object has the cert fields set to string values
+## ('subject_common_name', etc.). the transaction optionally can
+## contain 'skip_key' object, which, if False, will also show the key
+## type and size (default is True, ie, key is skipped). The transaction
+## can also contain color_info, which by default is false. If set
+## to true, it will display color list information for peer certs
+%>
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes" %>
+
+<psp:method name="pageIsReadable">
+    return True
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+cert = getattr(self.transaction(), 'cert', {})
+
+topLines = [('IP',          'IP'),
+            ('Name',        'hostname'),
+            ('Model',       'model'),
+            ('Version',     'version'),
+            ('Source:Port', 'src'),
+            ('Dest:Port',   'dst'),
+            ('Reason',      'reason')]
+
+lines = [('Issued To',           None),
+         ('Common Name',       'subject_common_name'),
+         ('Email',             'subject_email'),
+         ('Domain Component',  'subject_domain_component'),
+         ('Organization',      'subject_org'),
+         ('Organization Unit', 'subject_org_unit'),
+         ('Locality',          'subject_locality'),
+         ('State',             'subject_state'),
+         ('Country',           'subject_country'),
+         ('Serial Number',     'serial_number'),
+
+         ('Issued By', None),
+         ('Common Name',       'issuer_common_name'),
+         ('Email',             'issuer_email'),
+         ('Domain Component',  'issuer_domain_component'),
+         ('Organization',      'issuer_org'),
+         ('Organization Unit', 'issuer_org_unit'),
+         ('Locality',          'issuer_locality'),
+         ('State',             'issuer_state'),
+         ('Country',           'issuer_country'),
+
+         ('Validity',          None),
+         ('Issued On',         'issued_date'),
+         ('Expires On',        'expiry_date'),
+
+         ('Fingerprint',       None),
+         ('SHA1',              'sha1_fingerprint')]
+
+if not getattr(self.transaction(), 'skip_key', True): {
+    lines += ([('Key',    None),
+               ('Type',   'key_type'),
+               ('Size',   'key_size')])
+}
+
+topHtml = ''
+if getattr(self.transaction(), 'color_info', None): {
+    topRows = []
+    for label, key in topLines: {
+        value = cert.get(key)
+        if value: {
+            topRows.append('  <tr><td>&nbsp;</td><td>%s:</td><td>%s</td></tr>\n' % (label, value))
+        }
+    }
+    topHtml = '<table class="sslCertificate">\n%s<table>' % ''.join(topRows)
+}
+
+rows = []
+for label, key in lines: {
+    # if there's only the label, then it's the section header
+    if not key: {
+        rows.append('  <tr><td colspan="3" class="certSection"><b>%s</b></td></tr>\n' % label)
+    } else: {
+        value = cert.get(key)
+        if value: {
+            rows.append('  <tr><td>&nbsp;</td><td>%s:</td><td>%s</td></tr>\n' % (label, value))
+        }
+    }
+}
+%>
+
+<%= topHtml %>
+
+<form action="" id="modeSwitcher">
+  <div>
+    <strong>View: </strong>
+    <input type="radio" name="displayMode" value="details" onclick="switchMode(this);" id="radioDetails" checked="checked" /> 
+    <label for="radioDetails">Certificate Details</label>
+    &emsp;
+    <input type="radio" name="displayMode" value="pem" onclick="switchMode(this);" id="radioPem" /> 
+    <label for="radioPem">Certificate PEM</label>
+  </div>
+</form>
+
+<!-- Details Pane -->
+<div id="detailsMode" class="panel">
+  <table class="sslCertificate">
+    <tr><th colspan="3">Certificate Details</th></tr>
+  <%= ''.join(rows) %>
+  </table>
+</div>
+
+<!-- PEM Pane -->
+<div id="pemMode" class="panel hidden">
+  <pre class="cert_pem"><%= cert.get('raw', '--') %></pre>
+</div>
+
+<script type="text/javascript">
+<!--
+
+// Maps mode values (displayMode radio button values) to panel ids.
+var modeMap = {'details': 'detailsMode',
+               'pem': 'pemMode'};
+
+// Toggles the visibility of the divs based on the selected mode
+var switchMode = function(radioEl) {
+    var selectedMode = radioEl.value;
+    for (var mode in modeMap) {
+        var panel = document.getElementById(modeMap[mode]);
+        panel.style.display = (mode == selectedMode) ? "block" : "none";
+    }
+}
+
+// -->
+</script>

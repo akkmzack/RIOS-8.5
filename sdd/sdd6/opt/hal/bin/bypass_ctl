@@ -1,0 +1,93 @@
+#!/bin/bash
+
+usage()
+{
+    echo "usage: `basename $0` [-w wanS_P] cmd"
+}
+
+mode_to_code()
+{
+	if [ "$1" == "normal" ]; then
+		return 0
+	elif [ "$1" == "bypass" ]; then
+		return 2
+	elif [ "$1" == "disconnect" ]; then
+		return 3
+	else
+		return 1
+	fi
+}
+
+wan=""
+dev=""
+while [ $# -ne 0 ]; do
+    if [ -n "$1" ]; then
+	if [ $1 == "-w" -a $# -gt 1 ]; then
+	    wan=$2
+	    shift
+        elif [ $1 == "-d" -a $# -gt 1 ]; then
+	    dev=$2
+	    shift
+	elif [ $# -eq 1 ]; then
+	    cmd=$1
+	else
+	    usage
+	fi
+    fi
+    shift
+done
+
+#
+# we need a wan...
+#
+if [ -z "$wan" ]; then
+    usage
+fi 
+
+#
+# find the ifindex for this interface
+#
+if [ -f /sys/class/net/$wan/ifindex ]; then
+    ifindex=`cat /sys/class/net/$wan/ifindex`
+else
+    echo "`basename $0`: interface $wan does not exist"
+    exit 1
+fi
+
+#
+# find the sysfs node
+#
+if [ -d /sys/class/bypass/${ifindex}-*/ ]; then
+    node=`lessecho /sys/class/bypass/${ifindex}-*/`
+elif [ -d /sys/class/bypass/*-${ifindex}/ ]; then
+    node=`lessecho /sys/class/bypass/*-${ifindex}/`
+else
+    echo "`basename $0`: interface $wan does not have a sysfs node"
+    exit 1
+fi
+
+if [ "$cmd" == "bypass_status" ]; then
+    status=`cat ${node}/current_state`
+    exit `mode_to_code $status`
+elif [ "$cmd" == get_dis_bypass ]; then
+    status=`cat ${node}/default_state`
+    exit `mode_to_code $status`
+elif [ "$cmd" == get_wd_exp_mode ]; then
+    status=`cat ${node}/default_state`
+    exit `mode_to_code $status`
+elif [ "$cmd" == disable_bypass ]; then
+    echo disconnect > ${node}/default_state
+elif [ "$cmd" == enable_bypass ]; then
+    echo bypass > ${node}/default_state
+elif [ "$cmd" == bypass ]; then
+    echo bypass > ${node}/current_state
+elif [ "$cmd" == disc_on ]; then
+    echo disconnect > ${node}/current_state
+elif [ "$cmd" == nobypass ]; then
+    echo normal > ${node}/current_state
+elif [ "$cmd" == wdt_disable ]; then
+    echo 0 > ${node}/watchdog_timeout
+else
+    echo "`basename $0`: invalid cmd '$cmd'"
+    exit 1
+fi

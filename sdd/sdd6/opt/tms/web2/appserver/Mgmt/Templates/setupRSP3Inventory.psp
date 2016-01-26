@@ -1,0 +1,274 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# This page governs RSP3 OVAs
+# Author: Robin Schaufler, Andrew Hao, Kyle Getz, Warren Gee
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, rsp3" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupRSP3Slots',)
+%>
+
+<psp:method name="css">
+    return '''
+select[name="datastoreLun"] {
+  margin-right: 20px;
+}
+#packageTable_main {
+  width: 100%;
+}
+td.packageDetail {
+  padding-left: 25px;
+}
+th.fileSizeTh {
+  text-align: center;
+  width: 80px;
+}
+td.fileSizeTd {
+  padding-right: 20px !important;
+  text-align: right;
+}
+h3.vmreq {
+  padding-bottom: 12px;
+}
+span.diskSpace {
+  margin-right: 10px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning.
+    return ['/rbt/rsp3/config/rbm',
+            '/file/transfer/download',
+            '/file/delete',
+            '/file/move']
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        # Package Table NodeEntries
+        'packageName': FormUtils.NodeEntry(
+            name='packageName',
+            label='Name',
+            validate='restrictedPathElement',
+            inputOptional=True,
+            widgetClass='wide2'),
+        'packageSource': FormUtils.NodeEntry(
+            name='packageSource',
+            widget='radio',
+            value='url',
+            label={'url': 'From URL:', 'file': 'From Local File:'},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>https://host/path/to/file</li>
+                        <li>ftp://user:password@host/relative/path/to/file</li>
+                        <li>ftp://user:password@host//absolute/path/to/file</li>
+                        <li>scp://user:password@host/absolute/path/to/file</li>
+                      </ul>
+                    </p>''',
+                'file': '''
+                    Files greater than 2GB in size cannot be uploaded via the
+                    browser. Instead, the <code>scp</code> utility can be used to
+                    copy files directly into the <code>%s</code> directory.
+                    ''' % rsp3.rsp_packagedir,
+            },
+            enableDiv={'url': 'packageSourceUrl', 'file': 'packageSourceFile'}),
+        'packageUrl': FormUtils.NodeEntry(
+            name='packageUrl',
+            widgetClass='wide4',
+            validate='checkUrl'),
+        'packageFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('rspTmpPackageDirectory', 'rspPackageFile'),
+            widget='file',
+            validate='file'),
+    }
+</psp:method>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// This routine is not used right now but it's being left in until we
+// decide how to best handle the issue of overwriting existing files
+//
+// Validate only if the file basename (final path component) does NOT match
+// an OVA already on the system.
+//
+// Throw an exception for invalid.
+function checkExisting(val, el) {
+    val = val.trim();
+    el = Y.Node.getDOMNode(el);
+    if (!val.length) {
+        throw 'A value is required';
+    }
+    // The following RE strips off everything up to the last '/'.
+    var basename = /[^\\/]+$/.exec(val);
+    if (!basename) {
+        throw 'Enter the name of a file, not a directory';
+    }
+    basename = basename[0];
+
+    // The packageName field can override the original file name.
+    var nameField = el.form.elements['packageName'].value;
+    if (nameField) {
+        basename = nameField;
+    }
+    if (!packageTable || !packageTable.docElement) {
+        return;
+    }
+    var entryEl = packageTable.getEntryElement('name', basename);
+    if (entryEl) {
+        throw 'An OVA by that name already exists.';
+    }
+}
+
+// A url for an OVA to fetch is valid if its syntax is valid for a URL
+// AND its basename (final URL component) does NOT match an OVA already
+// on the system.
+function checkUrl(val, el) {
+    RBT.Validator.Syntax.url(val, el);
+//    checkExisting(val, el);
+}
+
+// ]]>
+</script>
+
+<% self.beginPagelet() %>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+# OVA fetch meter
+packageMeter = FormUtils.Meter(self, 'rspPackageFetch',
+                               buttonText='Add OVA',
+                               formId='packagesForm',
+                               pollUrl='/mgmt/xmldata?p=rsp3PackageFetchStatus',
+                               unloadWarningMsg='There is a file transfer in progress.')
+
+packageTable = ajaxentrytable.AjaxEntryTable('package',
+    url='/mgmt/xmldata?p=rsp3Packages',
+    headerSpec=['', 'Filename', ('File Size', 'fileSizeTh'), 'VM Name', 'Version', 'Description'],
+    rowSpec= """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedPackage_'),
+ AjaxEntryTable.td([pkgEditOrError()]),
+ AjaxEntryTable.tdAttr('fileSize', 'fileSizeTd'),
+ AjaxEntryTable.tdAttr('vendorName'),
+ AjaxEntryTable.tdAttr('version'),
+ AjaxEntryTable.tdAttr('description')]
+""",
+    emptyMessage='No OVAs.',
+    addButtonText='Add an OVA',
+    removeName='remove',
+    removeButtonText='Remove Selected OVAs')
+
+packageTable.addDivContent = '''
+    <div class="midLevel">
+      %s
+    </div>
+    <div class="midLevel">
+      %s
+      <div id="packageSourceUrl" class="indent">
+        %s
+      </div>
+      %s
+      <div id="packageSourceFile" class="indent">
+        %s
+      </div>
+    </div>
+    %s
+''' % (dialogEntries['packageName'].html(self, format='block'),
+       dialogEntries['packageSource'].html(self, value='url', format='block'),
+       dialogEntries['packageUrl'].html(self, format='block'),
+       dialogEntries['packageSource'].html(self, value='file', format='block'),
+       dialogEntries['packageFile'].html(self, format='block'),
+       packageMeter.buttonHtml())
+
+packageTable.editDivContent = '''
+     <div class="midLevel">
+         <h3 class="vmreq">VM Requirements:</h3>
+         <table>
+           <tr>
+             <td>Disk:</td>
+             <td class="packageDetail"><span id="packageInstalledSize">&nbsp;</span></td>
+           </tr>
+           <tr>
+             <td>Memory:</td>
+             <td class="packageDetail"><span id="packageMemory">&nbsp;</span></td>
+           </tr>
+           <tr>
+             <td>Number of CPUs:</td>
+             <td class="packageDetail"><span id="packageCPUs">&nbsp;</span></td>
+           </tr>
+         </table>
+     </div>
+'''
+
+# Disk space info.
+diskTotal = int(Nodes.present(mgmt, '/rbt/rsp3/state/datastore/local/capacity'))
+diskFree = int(Nodes.present(mgmt, '/rbt/rsp3/state/datastore/local/free_space'))
+diskUsed = diskTotal - diskFree
+%>
+
+<div class="rsp3Info">
+  <span class="diskSpace">Local datastore:</span>
+  <span><%= rsp3.stringifyUsedFreeTotal(diskUsed, diskFree, diskTotal) %></span>
+</div>
+
+<form id="packagesForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= packageTable.html(self, 'midLevel') %>
+    <input type="hidden" name="_action_" value="setupRsp3Packages" />
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// An AET callback that determines if a row in the inventory table should
+// contain a link (to open the row) or just text (for an invalid/corrupt OVA).
+function pkgEditOrError() {
+    var validPkgEdit = AjaxEntryTable.edit('name', 'name');
+
+    return function(entryTable, parent, element) {
+        if (element.getAttribute('valid') == 'false') {
+            var fileName = element.getAttribute('name');
+            var tooltip = element.getAttribute('errorMsg');
+            AjaxEntryTable.populateInvalidEntryTd(parent, fileName, tooltip);
+        } else {
+            validPkgEdit(entryTable, parent, element);
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+packageTable.editEntry = function(editName) {
+    var form = document.getElementById('packagesForm');
+    var el = this.getEntryElement('name', editName);
+
+    setElementText('packageInstalledSize', el.getAttribute('vmInstalledSize'));
+    setElementText('packageMemory', el.getAttribute('vmMemory'));
+    setElementText('packageCPUs', el.getAttribute('vmCPUs'));
+}
+
+// ]]>
+</script>

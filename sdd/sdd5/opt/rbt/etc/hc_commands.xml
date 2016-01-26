@@ -1,0 +1,117 @@
+
+<!-- List of commands periodically run by the health checker. 
+
+     -->
+  
+<commands>
+  <command name="uptime"
+           exec="uptime"
+           ok_if_sport_running="True"
+           ok_if_high_load="True" />
+  <command name="procs"
+           exec="ps axwf"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+
+  <!-- Gleaned from Robs health check -->
+  
+  <command name="sensors"
+           exec="sensors"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="messages_grep"
+           exec="egrep '\.ERR|\.WARN|\.CRIT|kernel' /var/log/messages"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="dmesg"
+           exec="dmesg -c"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="meminfo"
+           exec="cat /proc/meminfo"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="sel"
+           exec="ipmitool sel list"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="sdr"
+           exec="ipmitool sdr list"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="fans"
+           exec="/opt/hal/bin/hal get_fan_status"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="motherboard"
+           exec="hwtool -q motherboard"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="disks"
+           exec="hwtool -q disk=map"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="licenses"
+           exec="hwtool -q licensed"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="edac"
+           ok_if_sport_running="True" ok_if_high_load="True">
+    <exec>cat FILE</exec>
+    <files>
+        ls -1 /sys/devices/system/edac/mc/mc[01]/*/{*_count,*_label,size_mb}
+    </files>
+  </command>
+  <command name="mdstat"
+           exec="cat /proc/mdstat"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="raid"
+           exec="/opt/hal/bin/raid/rrdm_tool.py -s /disk"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="proc_scsi"
+           exec="cat /proc/scsi/scsi"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="smartctl"
+           ok_if_sport_running="True" ok_if_high_load="True">
+    <exec>smartctl -iA FILE | egrep -v '^Local Time is'</exec>
+    <files>
+        hwtool -q disk=map | grep disk | grep online | awk '{print "/dev/"$3}'
+     </files>
+  </command>
+  <command name="record_io"
+           ok_if_sport_running="True" ok_if_high_load="True">
+    <exec>cat FILE | egrep -v '^Current time:'</exec>
+    <files>
+        hwtool -q disk=map | grep disk | grep online | awk '{print "ls -1 /sys/block/"$3"/device/record_io_*"}' | sh | grep -v help
+    </files>
+  </command>
+
+  <!-- Gleaned from Autosupport/Sysdump -->
+  
+  <command name="df" exec="df -Pka"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="swapon" exec="swapon -s"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="free" exec="free"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="lsmod" exec="lsmod"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="ifconfig" exec="ifconfig -a"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="lspci" exec="lspci"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="route" exec="route -n"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="netstat" exec="netstat -a --numeric-hosts"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="arp" exec="arp -na"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="ps" exec="ps -Aww -o user,pid,ppid,pcpu,pri,nice,vsize,rss,majflt,tty,stat,wchan,start,bsdtime,command"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="opt_dir" level="verbose" exec="find /var/opt \( -name .running -prune \) -o -type f -ls"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="log_dir" level="verbose" exec="find /var/log -type f -ls"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="config_dir" level="verbose" exec="find /config -type f -ls"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="messages_tail" exec="tail -50 /var/log/messages"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="ip_rule" exec="ip rule list"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="ip_route" exec="ip route list table proxytable0_0"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="netstatistics" exec="/bin/netstat -s"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+  <command name="system" exec="hwtool -q system"
+           ok_if_sport_running="True" ok_if_high_load="True" />
+
+</commands>

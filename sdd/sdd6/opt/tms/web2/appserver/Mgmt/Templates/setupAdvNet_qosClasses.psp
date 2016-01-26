@@ -1,0 +1,1376 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_qosClasses.psp
+##
+## Advanced Networking QoS Classes
+##
+## This includes the QoS settings, the QoS Classes Table and the QoS
+## Rules Table.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, qos, Nodes, FormUtils, OSUtils, ajaxentrytable, PagePresentation:Pagelet, urllib, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupPortLabels',
+        'reportQoSStatsSent',
+        'reportQoSStatsDropped',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+/* Default AET widths can be too small for wide tables. */
+#qosClassesTable_main {
+    width: 100%;
+}
+#qosRulesTable_main {
+    width: 100%;
+}
+/* Don't allow 'from Class' to bunch up. */
+.dscpCell {
+    white-space: pre;
+}
+/* Numeric fields and their headers */
+.linkShareWeightHeader,
+.linkShareWeightCell,
+.minBWHeader,
+.minBWCell,
+.maxBWHeader,
+.maxBWCell,
+.connectionLimitHeader,
+.connectionLimitCell,
+.orderHeader,
+.orderCell {
+    text-align: right;
+}
+/* Indent an unhidden section rightward and down */
+.indentedSection {
+    margin-left: 2em;
+    margin-top: 1em;
+}
+/* The headers in the Add and Edit divs */
+.addEditHeaderFirstRow,
+.addEditHeader {
+    font-weight: bold;
+    padding-bottom: 0.5em;
+    vertical-align: bottom;
+}
+/* A header that's the first thing in the div doesn't need extra headroom... */
+.addEditHeaderFirstRow {
+    height: 1.5em;
+}
+/* ...but other headers do. */
+.addEditHeader {
+    height: 3em;
+}
+/* Spacings for the ICA "pop-down" table */
+div.l7ica > table > tbody > tr > th {
+    padding-bottom: 0.25em;
+}
+div.l7ica > table > tbody > tr > td {
+    padding-right: 10px;
+}
+/* This is the long hint at the bottom of the ICA table */
+.icaHint {
+    margin: 0.5em 0 1em 0;
+    white-space: normal;
+    width: 380px;
+}
+/* When nodes are created with the "block" option, they appear
+   in divs rather than tds.  We use the block option here, but
+   want them to look like regular tds, so we use the same margins
+   for nodes in divs as we to for tds. */
+div.nodeEntry {
+    margin: 2px 0 2px 0;
+}
+/* These two rules also provide hooks for changing the text of
+   the ICA hint. */
+#qosRulesForm .l7OptionWrapper {
+    clear: both;
+}
+#qosRulesForm .l7OptionWrapper .hint {
+    white-space: normal;
+    max-width: 445px;
+}
+/* Separate the L4 and L7 protocol params */
+.level4ParamsSeparator {
+    height: 12px;
+}
+'''
+</psp:method>
+
+<psp:method name="interfaces">
+    # Return a list of interface, nodeentry, nodeentry triples:
+    #   [('wan0_0', wan0_0_enable, wan0_0_rate), ('wan0_1', wan0_1_enable, wan0_1_rate), ...]
+
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    if policyType:
+        # CMC case
+        ifaces = ['primary']
+        for i in Nodes.allInterfaceIndices:
+            ifaces.append('wan%s' % i)
+    else:
+        # SH case
+        mgmt = self.session().value('mgmt')
+        ifaces = Nodes.getMgmtLocalChildrenNames(
+            mgmt, '/rbt/hfsc/config/global/interface')
+        ifaces = FormUtils.sortInterfacesByName(ifaces)
+    result = []
+    for iface in ifaces:
+        enable = FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/interface/%s/enable' % iface,
+            name='enableIface_%s' % iface,
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS on <b>%s</b> ' % iface)
+        rate = FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/interface/%s/link_rate' % iface,
+            name='linkrate_%s' % iface,
+            type='uint32',
+            widgetClass='medium',
+            inputOptional=True,
+            validate=('intInRange', '[1, 4294967295]'),
+            filter=lambda x: (x and int(x) != 0) and x or '',
+            label='with WAN Bandwidth',
+            units='kbps')
+        result.append((iface, enable, rate))
+    return result
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'shaping_enable': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/enable',
+            name='globalQosShapingEnable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS Shaping and Enforcement'),
+        'marking_enable': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/mark_enable',
+            name='globalQosMarkingEnable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS Marking'),
+        'hierarchyMode': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/hier_mode/enable',
+            name='hierarchyMode',
+            type='bool',
+            widget='radio',
+            label={'true': 'Hierarchical', 'false': 'Flat'}),
+    }
+
+    for iface, enable, rate in self.interfaces():
+        entries[iface + '_enable'] = enable
+        entries[iface + '_rate'] = rate
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    classDscpSpecialOptions = [('255', 'Reflect')]
+    ruleDscpSpecialOptions =  [('254', 'Inherit from Service Class')] + classDscpSpecialOptions
+    return {
+    'className':FormUtils.NodeEntry(
+        name='className',
+        label='Name',
+        validate='qosName'),
+    'classPriority': FormUtils.NodeEntry(
+        name='priority',
+        selectOptions=qos.DEFAULT_CLASSES,
+        label='Latency Priority'),
+    'classGBW':FormUtils.NodeEntry(
+        name='gbw',
+        widgetClass='small',
+        label='Minimum Bandwidth',
+        value='0',
+        validate=('floatInRange', '[0, 100]'),
+        units='%'),
+    'classMxtcpBW':FormUtils.NodeEntry(
+        name='mxtcpbw',
+        widgetClass='small',
+        label='Bandwidth',
+        validate=('floatInRange', '[0, 100]'),
+        units='%'),
+    'classLSW':FormUtils.NodeEntry(
+        name='lspct',
+        validate=('floatInRange', '[1, 100]'),
+        widgetClass='small',
+        value='100',
+        label='Link Share Weight',
+        hint='(1 - 100)'),
+    'classUBW':FormUtils.NodeEntry(
+        name='ubw', value='100',
+        widgetClass='small',
+        label='Maximum Bandwidth',
+        validate=('floatInRange', '[0.01, 100]'),
+        units='%'),
+    'classConnLimit':FormUtils.NodeEntry(
+        name='connlimit',
+        validate=('intInRange', '[1, 4294967295]'),
+        widgetClass='small connLimit',
+        label='Connection Limit',
+        inputOptional=True),
+    'classQueue':FormUtils.NodeEntry(
+        name='queue',
+        # Note: editEntry JavaScript depends on this!
+        selectOptions=('sfq', ('pfifo', 'fifo'), ('rrtcp', 'mxtcp'), 'packet-order'),
+        value='sfq',
+        label='Queue',
+        action='updateUpdateables()'),
+    'classParent':FormUtils.NodeEntry(
+        name='parent',
+        widget='select',
+        label='Class Parent'),
+    'class_dscp_menu': FormUtils.NodeEntry(
+        name='out_dscp',
+        label='DSCP',
+        widget='select',
+        selectOptions=RVBDUtils.makeDSCPSelectOptions(classDscpSpecialOptions, True)),
+    'ruleSiteRadio': FormUtils.NodeEntry(
+        name='ruleSite',
+        widget='radio',
+        widgetClass='ruleSite',
+        label={'site': 'Site',
+               'rule': 'Rule'},
+        labelClass='labelPaddedLeft labelPaddedRight',
+        value='rule',
+        action='updateUpdateables()'),
+    'siteName': FormUtils.NodeEntry(
+        name='siteName',
+        label='Name',
+        validate='qosName'),
+    'siteSubnet': FormUtils.NodeEntry(
+        name='siteSubnet',
+        label='Subnets',
+        validate=('ipv4prefix_list', '["\n", 5]'),
+        widget='textarea'),
+    'siteDefaultClass':FormUtils.NodeEntry(
+        name='siteDefaultClass',
+        widget='select',
+        label='Service Class'),
+    'siteDefaultDscp': FormUtils.NodeEntry(
+        name='siteDefaultDscp',
+        label='DSCP',
+        widget='select',
+        tooltip='Required if QoS Marking is enabled.',
+        selectOptions=RVBDUtils.makeDSCPSelectOptions(ruleDscpSpecialOptions, True)),
+    'ruleName': FormUtils.NodeEntry(
+        name='ruleName',
+        label='Name',
+        inputOptional=True,
+        validate='qosName'),
+    'ruleDesc': FormUtils.NodeEntry(
+        name='desc',
+        widgetClass='wide',
+        label='Description'),
+    'ruleAt':FormUtils.NodeEntry(
+        name='at',
+        widget='select',
+        label='Insert Rule At'),
+    'ruleSite': FormUtils.NodeEntry(
+        name='siteId',
+        widget='select',
+        label='Parent Site',
+        action='updateInsertRuleAtOptions()'),
+    'ruleClass':FormUtils.NodeEntry(
+        name='class',
+        widget='select',
+        widgetClass='qosClass',
+        hint='&nbsp;', # invisible hint to be populated w/ JS
+        label='Service Class',
+        action='updateRuleClassField(this)'),
+    'ruleSrcSubnet':FormUtils.NodeEntry(
+        name='srcsubnet',
+        type='ipv4prefix',
+        value='0.0.0.0/0',
+        widgetClass='ipaddrm',
+        label='Local Subnet',
+        validate=''),
+    'ruleSrcPort':FormUtils.NodeEntry(
+        name='srcport',
+        value='all',
+        widgetClass='port',
+        label='Port',
+        validate='portPortLabel'),
+    'ruleDstSubnet':FormUtils.NodeEntry(
+        name='dstsubnet',
+        type='ipv4prefix',
+        value='0.0.0.0/0',
+        widgetClass='ipaddrm',
+        label='Remote Subnet',
+        validate=''),
+    'ruleDstPort':FormUtils.NodeEntry(
+        name='dstport',
+        value='all',
+        widgetClass='port',
+        label='Port',
+        validate='portPortLabel'),
+    'ruleProtocol':FormUtils.NodeEntry(
+        name='protocol',
+        selectOptions=qos.PROTOCOL_OPTIONS,
+        label='Protocol'),
+    'ruleTraffic':FormUtils.NodeEntry(
+        name='traffic',
+        selectOptions=(('all', 'All'),
+                       ('optimized', 'Optimized'),
+                       ('passthrough', 'Passthrough')),
+        label='Traffic Type'),
+    'rule_dscp':FormUtils.NodeEntry(
+        name='dscp',
+        label='DSCP',
+        value='-1',
+        widget='select',
+        selectOptions=RVBDUtils.makeDSCPSelectOptions([('-1', 'All')], False)),
+    'rule_dscp_menu': FormUtils.NodeEntry(
+        name='out_dscp',
+        label='DSCP',
+        widget='select',
+        tooltip='Required if QoS Marking is enabled.',
+        selectOptions=RVBDUtils.makeDSCPSelectOptions(ruleDscpSpecialOptions, True)),
+    'ruleVlan':FormUtils.NodeEntry(
+        name='vlan',
+        label='VLAN Tag ID',
+        widgetClass='small',
+        value='all',
+        validate='vlan'),
+
+    # L7 PROTOCOL NODE ENTRIES:
+    'ruleHttpDomain': FormUtils.NodeEntry(
+        label='Domain Name',
+        name='l7Protocol_httpDomainName',
+        hint='Use * to indicate wildcards.',
+        inputOptional=True,
+        validate='validateMaxWildcard'),
+    'ruleHttpPath': FormUtils.NodeEntry(
+        label='Relative Path',
+        name='l7Protocol_httpRelativePath',
+        hint='Use * to indicate wildcards.',
+        inputOptional=True,
+        validate='validateMaxWildcard'),
+    'ruleAddL7Proto':FormUtils.NodeEntry(
+        name='l7protocol',
+        value='none',
+        label='Application',
+        widget='select',
+        widgetClass='l7protocol',
+        action='updateApplicationField(this)'),
+    'ruleEditL7Proto':FormUtils.NodeEntry(
+        name='l7protocol',
+        value='none',
+        label='Application',
+        widget='select',
+        widgetClass='l7protocol',
+        action='updateApplicationField(this);')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+literalAdd   = 'add'
+literalEdit  = 'edit'
+literalClass = 'Class'
+literalRule  = 'Rule'
+literalSite  = 'Site'
+
+def _makeIdPrefix(op, obj): {
+    return op + 'QoS' + obj + '_'
+}
+
+addQoSClass =  _makeIdPrefix(literalAdd,  literalClass) # == 'addQoSClass_'
+editQoSClass = _makeIdPrefix(literalEdit, literalClass) # == 'editQoSClass_'
+addQoSRule =   _makeIdPrefix(literalAdd,  literalRule)  # == 'addQoSRule_'
+editQoSRule =  _makeIdPrefix(literalEdit, literalRule)  # == 'editQoSRule_'
+addQoSSite =   _makeIdPrefix(literalAdd,  literalSite)  # == 'addQoSSite_'
+editQoSSite =  _makeIdPrefix(literalEdit, literalSite)  # == 'editQoSSite_'
+
+# Order the L7 protocols for the "Application" select list.
+fields = self.request().fields()
+layer7ProtoNames = qos.layer7ProtocolNames(mgmt, fields, flip=True).items()
+layer7ProtoNames.sort(lambda a, b: FormUtils.alphanumericCompare(a[0], b[0]))
+dialogEntries['ruleAddL7Proto'].selectOptions = [('', '--')] + layer7ProtoNames
+dialogEntries['ruleEditL7Proto'].selectOptions = [('', '--')] + layer7ProtoNames
+
+isBasicQos = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/easy_qos_mode') == 'true'
+
+if isBasicQos: {
+    # When previewing the Basic QoS policy config in Advanced mode, we don't
+    # have to populate the select widgets for all leaf and packet order
+    # classes (Also, note that while we can get the information needed to
+    # populate the select widgets on a Steelhead, we can't get it on a CMC
+    # - the back-end nodes required to get this information don't exist on
+    # a CMC). So, for the sake of simplicity, the select options for the
+    # select widgets for the leaf classes, and for the packet-order
+    # classes will not be set in this mode. These widgets are only used
+    # when the user clicks on a rule in the sites and rule AET, and the
+    # wigets are brought up as read-only. So it is sufficient to
+    # fill these select widgets with just one option (the one applicable
+    # to the rule) at that time.
+    packetOrderClasses = []
+}
+else: {
+    # Collect the qos classes.
+    qosClasses = Nodes.getMgmtSetEntriesDeep(mgmt,
+                                             pathPrefix + '/rbt/hfsc/config/class')
+
+    # The add class parents are those, minus 'default', plus 'root'.
+    classParents = qosClasses.keys()
+    if 'default' in classParents: {
+        classParents.remove('default')
+    }
+    classParents.sort(FormUtils.alphanumericCompare)
+    classParents.insert(0, 'root')
+    dialogEntries['classParent'].selectOptions = classParents
+
+    # site & rule classes cannot have children, that's the law.
+    leafClasses = qosClasses.keys()
+    for name in qosClasses.iterkeys(): {
+        parentName = qosClasses[name].get('params/parent')
+        if parentName in leafClasses: {
+            leafClasses.remove(parentName)
+        }
+    }
+    leafClasses.sort(FormUtils.alphanumericCompare)
+    dialogEntries['ruleClass'].selectOptions = leafClasses
+    dialogEntries['siteDefaultClass'].selectOptions = leafClasses
+
+    # populate the ICA priority select lists with only packet-order
+    # classes (and are not parent classes.)
+    packetOrderClasses = [className
+                          for className in leafClasses
+                          if qosClasses[className]['params/queue_type'] == 'packet-order']
+    packetOrderClasses.sort(FormUtils.alphanumericCompare)
+}
+hierarchyMode = 'true' == Nodes.present(mgmt,
+                                        pathPrefix + '/rbt/hfsc/config/global/hier_mode/enable')
+
+# Rule positions.
+numberOfRulesInSiteId = [-1] # -1 value is a filler so that the list index
+                             # matches the Site IDs, which start at 1.
+siteIndexes = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/site')
+siteIndexes.sort(FormUtils.alphanumericCompare)
+for siteId in siteIndexes: {
+    numberOfRulesInSiteId.append(
+        len(Nodes.getMgmtLocalChildrenNames(
+        mgmt, pathPrefix + '/rbt/hfsc/config/site/%s/filter' % (siteId))))
+}
+
+# Populate the "Parent Class" select list for the Add Rule div.
+allSites = Nodes.getMgmtSetEntriesDeep(mgmt,
+                                       pathPrefix + '/rbt/hfsc/config/site')
+allSites = [(i, site.get('site_name')) for i, site in allSites.iteritems()]
+dialogEntries['ruleSite'].selectOptions = allSites
+
+isWanBandwidthSet = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/interface/primary/link_rate') == '0' and 'false' or 'true'
+%>
+
+<script type="text/javascript">
+<!--
+
+var numberOfRulesInSiteIdJS = <%= str(numberOfRulesInSiteId) %>;
+
+function validateMaxWildcard(val) {
+    if (val.split('*').length-1 > 5) {
+        throw 'No more than 5 wildcards are allowed.';
+    }
+    return;
+}
+/**
+ * Handles side effects of selecting the class queue field.
+ *
+ * @param queueField - QoS Class "Queue" field element
+ */
+function updateClassQueueField(queueField) {
+    var wrapper = Y.one(queueField).ancestor('.midLevel');
+    var connLimitField = Y.Node.getDOMNode(wrapper.one('input.connLimit'));
+    // When 'packet-order' is selected, disable the connection limit field
+    enableFormElements(connLimitField, (queueField.value != 'packet-order'))
+}
+
+
+/**
+ * Show a message corresponding to a certain hint.
+ * This is called on elements residing in the QoS Rules table.
+ *
+ * @param {HTMLElement | String | Y.Node} srcElt
+ *    Reference to DOM node that calls this method.
+ * @param {String} hintType
+ *    - 'application': "Application" fieldset hint.
+ *    - 'ruleclass': "Class Name" hint.
+ * @param {String} message
+ *    Text string to display.
+ */
+function displayHint(srcElt, hintType, message) {
+    // Wrapper gives us reference to the add OR edit div.
+    // Use wrapper as frame of reference to find hint element.
+    // This ensures the correct hint element (add/edit) is updated.
+    var wrapper = Y.one(srcElt).ancestor('.midLevel');
+    var hint;
+    if ('application' == hintType) {
+        hint = wrapper.one('.l7OptionWrapper').one('.hint');
+    } else if ('ruleclass' == hintType) {
+        hint = wrapper.one('.qosClass').ancestor().one('.hint');
+    } else {
+        return;
+    }
+    setElementText(hint, message);
+}
+
+/**
+ * Side effect of selecting a parent class in the Add Rule div, is that the
+ * "Insert Rule At" options change to reflect the selected site.
+ */
+function updateInsertRuleAtOptions() {
+    var form = $('qosRulesForm');
+    var siteId = form.elements['addQoSRule_siteId'].value;
+    var ruleAtOpts = [['1', 'Start']];
+    for (var i = 1; i <= numberOfRulesInSiteIdJS[siteId] + 1; i++) {
+        ruleAtOpts.push([i, i]);
+    }
+    <% # We add a space to the end of the "End" option, see bug 70309 for details %>
+    ruleAtOpts.push([(i-1).toString() + ' ', 'End']);
+    populateSelect(form, 'addQoSRule_at', ruleAtOpts);
+    setFormValue(form, 'addQoSRule_at', (i-1).toString() + ' ');
+}
+
+/**
+ * Side effects of selecting rule class (filtering, error message display)
+ * This is a stopgap alternative until we can implement a semantic validator.
+ *
+ * @param selectElt - The rule class <select> element
+ */
+function updateRuleClassField(selectElt) {
+    var packetOrderClasses = <%= str([cgi.escape(x) for x in packetOrderClasses]) %>;
+
+    var parent = Y.one(selectElt).ancestor('.midLevel');
+    var form = Y.Node.getDOMNode(Y.one(selectElt).ancestor('form'));
+    var protocolField = parent.one('select.l7protocol');
+    var container = Y.one(selectElt).ancestor('.ajaxEntryTable_addDiv, .ajaxEntryTable_editDiv');
+
+
+    // If the selected rule class is a packet ordered class, then change the ICA priority options to be packet-ordered classes
+    if (arrayContains(packetOrderClasses, selectElt.value)) {
+        for (var i = 0; i < 4; i++) {
+            populateSelect(form, 'addQoSRule_l7Protocol_icaPriority' + i, packetOrderClasses);
+            populateSelect(form, 'editQoSRule_l7Protocol_icaPriority' + i, packetOrderClasses);
+
+            enableElements(container.one('#addPOhint'), true);
+            enableElements(container.one('#editPOhint'), true);
+            enableElements(container.one('#addNonPOhint'), 'hide');
+            enableElements(container.one('#editNonPOhint'), 'hide');
+        }
+    }
+
+    // Otherwise set the ICA priority options to only the rule class (this is the only valid option)
+    else {
+        for (var i = 0; i < 4; i++) {
+            populateSelect(form, 'addQoSRule_l7Protocol_icaPriority' + i, [selectElt.value]);
+            populateSelect(form, 'editQoSRule_l7Protocol_icaPriority' + i, [selectElt.value]);
+
+            enableElements(container.one('#addPOhint'), 'hide');
+            enableElements(container.one('#editPOhint'), 'hide');
+            enableElements(container.one('#addNonPOhint'), true);
+            enableElements(container.one('#editNonPOhint'), true);
+        }
+    }
+}
+
+function updateApplicationField(selEl) {
+  var form = document.forms['qosRulesForm'];
+  var container = Y.one(selEl).ancestor('.ajaxEntryTable_addDiv, .ajaxEntryTable_editDiv');
+  var selEl = container.one('select.l7protocol');
+  var isHttp = selEl.get('value') == 'http';
+  var isIca = selEl.get('value') == 'ica';
+  enableElements(container.one('.l7http.indentedSection'), isHttp ? true : 'hide');
+  enableElements(container.one('.l7ica.indentedSection'), isIca ? true : 'hide');
+  displayHint(form.elements['addQoSRule_class'], 'ruleclass', isIca ? '(for non-prioritized traffic)' : '');
+  displayHint(form.elements['editQoSRule_class'], 'ruleclass', isIca ? '(for non-prioritized traffic)' : '');
+}
+
+/**
+ * Disables the appropriate option fields in a select element according
+ * to method shouldDisableFn, which takes an option and returns true if
+ * it is to be disabled, false if not.
+ *
+ * Probably could be generalized as well.
+ */
+function disableOptionFields(selectElt, shouldDisableFn) {
+    var optionsArray = $(selectElt).options;
+    for (var i = 0; i < optionsArray.length; i++) {
+        var theOption = optionsArray[i];
+        theOption.disabled = shouldDisableFn(theOption);
+    }
+}
+
+<% # JavaScript code is needed to generate a list like ['1_default', '2_default', ...]
+   # for the omitsFrom parameter in the Sites and Rules table. This is because all the
+   # default rules need to have the checkbox removed, but they each have different
+   # names (1_default, 2_default, etc.). %>
+var omitFromSites = [];
+for (var i = 1; i <= <%= len(siteIndexes) %>; i++) {
+    omitFromSites.push(i + '_default');
+}
+
+// -->
+</script>
+
+<% self.beginPagelet() %>
+
+<%
+if isBasicQos: {
+    if policyType: {
+        fields = self.request().fields()
+        if 'editPolicy' in fields: {
+            # Policy page is being edited
+            basicQosLink = '/mgmt/gui?p=setupAdvNet_qosEasy&amp;editPolicy=%s' % (urllib.quote_plus(fields['editPolicy']))
+        }
+        else: {
+            # The appliance configuration is being viewed
+            assert 'appConfig' in fields
+            basicQosLink = '/mgmt/gui?p=setupAdvNet_qosEasy&amp;appConfig=%s' % (urllib.quote_plus(fields['appConfig']))
+        }
+    }
+%>
+
+<form method="post"
+      action="<% self.thisPageletRequest() %>"
+      id="gatekeeperForm">
+  <fieldset id="modeSwitchPane">
+    <h2>You have a Basic Outbound QoS configuration, and are previewing the Advanced Outbound QoS page.</h2>
+    <p>
+      This is a preview of what the Advanced Outbound QoS page will look like once you migrate. You cannot make changes using the Advanced Outbound QoS page while you have a Basic Outbound QoS configuration.
+    </p>
+    <!-- Migrate option -->
+    <fieldset class="option">
+      <legend>Migrate to Advanced Outbound QoS Mode.</legend>
+      <p>Your Basic Outbound QoS settings will be migrated to Advanced Outbound QoS, which provides a greater degree of configurability.</p>
+      <p class="warning">
+<% if policyType: { %>
+      Once migration has completed, you cannot revert your QoS settings in this policy back to Basic Outbound QoS Mode. You are encouraged to <a href="/mgmt/gui?p=setupPolicies">create a copy of this policy</a> should you migrate to Advanced Outbound QoS and wish to undo the operation.
+<% } else: { %>
+      Once migration has completed, you cannot revert your existing QoS settings back to Basic Outbound QoS Mode. The only way to revert this migration is through a complete system configuration restore. You are encouraged to <a href="/mgmt/gui?p=setupConfig">back up your system configuration</a> should you migrate to Advanced Outbound QoS and wish to undo the operation.
+<% } %>
+      </p>
+      <input type="submit" name="migrateToAdvanced" onclick="return confirm('Are you sure you wish to migrate to Advanced Outbound QoS?');" value="Migrate" />
+    </fieldset>
+<% if policyType: { %>
+    <p><a href="<%=basicQosLink%>">&#8592; Return to the Basic Outbound QoS page</a>.</p>
+<% } else: { %>
+    <p><a href="/mgmt/gui?p=setupAdvNet_qosEasy">&#8592; Return to the Basic Outbound QoS page</a>.</p>
+<% } %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_advGatekeeper" />
+  </fieldset>
+</form>
+
+<% } %>
+
+<%
+if RVBDUtils.isCMC(): {
+    if RVBDUtils.isEditingCmcPolicy(mgmt, fields): {
+        # Editing the policy %>
+<div>
+This policy might not be pushed to Steelhead versions 6.5.0. or lower.
+</div>
+<% } # end of RVBDUtils.isEditingCmcPolicy
+    else: {
+        # User is viewing the appliance configuration
+        # policyName is of the form app_sn
+        # DPI rules defined on this page only supported for appliances running a
+        # version higher than 6.5.0.
+        # QoS Marking defined on this page are only supported for appliances
+        # running version 7.0.0 or higher.
+        # Get the appliance version and display a warning if the appliance does not
+        # support DPI rules or QoS Marking defined on this page.
+
+        app, app_prod, app_sn = Nodes.parseApplianceParam(policyName)
+        versionBytePath = '/cmc/state/appliance/%s/%s/version_num' % (app_prod, app_sn)
+        versionByte = Nodes.present(mgmt, versionBytePath)
+        major, minor, micro, eng = RVBDUtils.cmcAppBytesToVersion(versionByte)
+        versionString = str(major) + '.' + str(minor) + '.' + str(micro)
+
+        # DPI is supported for appliances running a version higher than 6.5.0
+        isDPISupported = FormUtils.alphanumericCompare(versionString, '6.5.0') == 1
+
+        # QoS Markings defined on this page are supported for appliances running a version 7.0.0 or higher
+        isQoSMarkingSupported = major >= 7
+
+        if not isDPISupported: { %>
+            <div class="warning">
+              This Steelhead is running version <%= versionString %>. <br />
+              <label>
+                <span class="popupTitle" title="
+                  <p>
+                    When a Steelhead is running a version lower than 7.0.0, any QoS
+                    Marking values defined on this page will be dropped when pushed
+                    to it. Use the QoS Marking (Legacy) page to configure QoS Marking
+                    for such Steelheads.
+                  </p>
+                  <p>
+                    When a Steelhead is running version 6.5.0 or lower, the policy
+                    will not be pushed to it under certain conditions. See the Help
+                    for more information on these conditions.
+                  </p>
+                  ">
+                  Some or all of this policy may not be pushed to it.
+                </span>
+              </label>
+            </div>
+    <% }
+        elif not isQoSMarkingSupported: { %>
+            <div class="warning">
+              This Steelhead is running version <%= versionString %>. <br />
+              <label>
+                <span class="popupTitle" title="
+                  <p>
+                    When a Steelhead is running a version lower than 7.0.0, any QoS
+                    Marking values defined on this page will be dropped when pushed
+                    to it. Use the QoS Marking (Legacy) page to configure QoS Marking
+                    for such Steelheads.
+                  </p>
+                  ">
+                  Some or all of this policy may not be pushed to it.
+                </span>
+              </label>
+            </div>
+    <% }
+    }
+}
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="qosGeneralSettings">
+  <div id="qosGeneralSettingsDiv">
+    <fieldset class="topLevel">
+      <input type="hidden" name="_action_" value="setupQoSClassSettings" />
+      <legend>WAN Link</legend>
+      <div class="midLevel">
+        <%= nodeEntries['shaping_enable'].html(self) %>
+      </div>
+      <div class="indent">
+        <div class="midLevel">
+          <div class="nodeEntry">
+            Mode (changing modes while QoS is enabled can cause momentary network disruptions):
+          </div>
+          <div class="indent">
+            <%= nodeEntries['hierarchyMode'].html(self, value='false', format="inline") %>
+            &emsp;
+            <%= nodeEntries['hierarchyMode'].html(self, value='true', format="inline") %>
+          </div>
+        </div>
+        <div class="midLevel">
+          <div class="nodeEntry">
+            Network Interfaces:
+          </div>
+          <div class="indent">
+<% for iface, enable, rate in self.interfaces(): { %>
+            <div class="nodeEntry">
+              <%= enable.html(self, format='inline') + rate.html(self, format='inline') %>
+            </div>
+<% } %>
+          </div>
+        </div>
+      </div>
+      <div class="midLevel">
+        <%= nodeEntries['marking_enable'].html(self) %>
+      </div>
+    </fieldset>
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+
+<%
+#########################################
+#             QoS Classes               #
+#########################################
+
+## The QoS Classes Table needs to be configured in two different ways,
+## depending on the hierarchy mode.
+## Hierarchy mode has a parent, non-hierarchy mode has link share weight.
+
+qosClassesTable = ajaxentrytable.AjaxEntryTable('qosClasses',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=qosClasses'),
+    titleText='QoS Classes',
+    emptyMessage='No current QoS Classes.',
+    addButtonText='Add a New Class',
+    addButtonName='addQoSClass',
+    removeName='removeQoSClasses',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedClass_',
+    editButtonName='editQoSClass')
+
+# Header spec and row spec change with hierarchy mode.
+if hierarchyMode: {
+    qosClassesTable.headerSpec = ('', 'Name', ('Latency Priority', 'latencyPriorityHeader'), ('Min BW&nbsp;%', 'minBWHeader'), ('Max BW&nbsp;%', 'maxBWHeader'), ('Conn Limit', 'connectionLimitHeader'), ('Queue', 'queueHeader'), ('DSCP', 'dscpHeader'))
+    qosClassesTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedClass_'),
+ AjaxEntryTable.tdTree([AjaxEntryTable.edit('name', 'name')]),
+ AjaxEntryTable.tdAttr('priority'),
+ AjaxEntryTable.tdAttr('gbwPretty', 'minBWCell'),
+ AjaxEntryTable.tdAttr('ubwPretty', 'maxBWCell'),
+ AjaxEntryTable.tdAttr('connlimit', 'connectionLimitCell'),
+ AjaxEntryTable.tdAttr('queue-pretty'),
+ AjaxEntryTable.tdAttr('out_dscp_pretty', 'dscpCell')]"""
+} else: {
+    qosClassesTable.headerSpec = ('', 'Name', ('Latency Priority', 'latencyPriorityHeader'), ('Min BW&nbsp;%', 'minBWHeader'), ('Link Share Weight', 'linkShareWeightHeader'), ('Max BW&nbsp;%', 'maxBWHeader'), ('Conn Limit', 'connectionLimitHeader'), ('Queue', 'queueHeader'), ('DSCP', 'dscpHeader'))
+    qosClassesTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedClass_'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('name', 'name')]),
+ AjaxEntryTable.tdAttr('priority'),
+ AjaxEntryTable.tdAttr('gbwPretty', 'minBWCell'),
+ AjaxEntryTable.tdAttr('lsbwPretty', 'linkShareWeightCell'),
+ AjaxEntryTable.tdAttr('ubwPretty', 'maxBWCell'),
+ AjaxEntryTable.tdAttr('connlimit', 'connectionLimitCell'),
+ AjaxEntryTable.tdAttr('queue-pretty'),
+ AjaxEntryTable.tdAttr('out_dscp_pretty', 'dscpCell')]"""
+}
+
+def classGenerateAddOrEditDiv(isAdd): {
+    pfx = isAdd and addQoSClass or editQoSClass
+    hiddenInputs = not isAdd and '''<input type="hidden" name="editQoSClass_className" />
+        <input type="hidden" name="editQoSClass_parent" />''' or ''
+    # The items displayed in the add and edit divs depend on the hierarchy mode.
+    addEditFields = hierarchyMode and \
+        ('classPriority', 'classConnLimit') or \
+        ('classPriority', 'classLSW', 'classConnLimit')
+    return """
+<div class="midLevel">
+  <table>
+    <tbody>
+      %(name)s
+      <tr><td class="%(header)s">Shaping Parameters:</td></tr>
+      %(parent)s
+      %(classQueue)s
+    </tbody>
+    <tbody id="%(prefix)sNonMxtcp">
+      %(classGBW)s
+      %(classUBW)s
+    </tbody>
+    <tbody id="%(prefix)sMxtcp">
+      %(classBW)s
+    </tbody>
+    <tbody>
+      %(shaping)s
+      <tr><td class="addEditHeader">Marking Parameters:</td></tr>
+      %(marking)s
+    </tbody>
+  </table>
+  %(hiddenInputs)s
+</div>
+""" % { 'header': isAdd and 'addEditHeader' or 'addEditHeaderFirstRow',
+        'name': isAdd and dialogEntries['className'].html(self, namePrefix=pfx) or '',
+        'parent': (hierarchyMode and isAdd) and dialogEntries['classParent'].html(self, namePrefix=pfx) or '',
+        'classQueue': dialogEntries['classQueue'].html(self, namePrefix=pfx),
+        'classGBW': dialogEntries['classGBW'].html(self, namePrefix=pfx),
+        'classUBW': dialogEntries['classUBW'].html(self, namePrefix=pfx),
+        'classBW': dialogEntries['classMxtcpBW'].html(self, namePrefix=pfx),
+        'shaping': '\n'.join([dialogEntries[f].html(self, namePrefix=pfx) for f in addEditFields]),
+        'marking': dialogEntries['class_dscp_menu'].html(self, namePrefix=pfx),
+        'prefix': pfx,
+        'hiddenInputs': hiddenInputs }
+}
+
+qosClassesTable.addDivContent = classGenerateAddOrEditDiv(True)
+qosClassesTable.editDivContent = classGenerateAddOrEditDiv(False)
+
+#########################################
+#         QoS Sites and Rules           #
+#########################################
+
+# determine the index of the default site so that its checkbox can be
+# omitted
+sites = Nodes.getMgmtSetEntries(mgmt, pathPrefix + '/rbt/hfsc/config/site')
+# Give defaultSiteIndex some default value. On the CMC, you can view the
+# appliance configuration, Advanced QoS page when no QoS pages are enabled
+# for that SH. In this scenario, the nodes for sites (or any other QoS info)
+# are not present in the back-end database. So the code will not enter the
+# for-loop and defaultSiteIndex will be undefined. When this happens, the
+# rowSpec for qosRulesTable cannot be set (since it references
+# ['%(defaultSiteIndex)d']). To avoid this situation, defaultSiteIndex is
+# given a default value.
+defaultSiteIndex = -1
+for idx, attribs in sites.iteritems(): {
+    if attribs['site_name'] == qos.DEFAULT_SITE_NAME: {
+        defaultSiteIndex = int(idx)
+        break
+    }
+}
+
+def generateIcaTable(aePrefix): {
+
+    namePrefix = _makeIdPrefix(aePrefix, literalRule) # == 'addQoSRule_' or 'editQoSRule_'
+
+    result = """
+        <table>
+          <tr>
+            <th></th>
+            <th>Service Class</th>
+            <th>DSCP</th>
+          </tr>"""
+    for idx in range(4): {
+        sidx = str(idx)
+        label = "ICA Priority %s:" % sidx
+        priority = FormUtils.NodeEntry(
+            name='l7Protocol_icaPriority%s' % sidx,
+            widget='select')
+        dscp = FormUtils.NodeEntry(
+            name='l7Protocol_icaOutDscp%s' % sidx,
+            widget='select',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([
+                                                ('254', 'Inherit from Service Class'),
+                                                ('255', 'Reflect')], True))
+        result += """
+          <tr>
+            <td>%(label)s</td>
+            <td>%(priority)s</td>
+            <td>%(dscp)s</td>
+            </tr>""" % {
+                'label': label,
+                'priority': priority.html(self, namePrefix=namePrefix, format='block'),
+                'dscp': dscp.html(self, namePrefix=namePrefix, format='block') }
+    }
+    result += """
+      <tr><td colspan="3">
+        <div class="icaHint hint" id="%(aePfx)sPOhint">
+            When the main Service Class has a packet-order queue type,
+            the ICA Priority Service Classes can be any packet-order class.
+        </div>
+        <div class="icaHint hint" id="%(aePfx)sNonPOhint">
+            The ICA Priority Service Classes cannot differ from the main Service Class
+            when the latter has a non-packet-order queue type.
+        </div>
+      </td></tr>
+      """ % { 'aePfx': aePrefix }
+
+    result += """</table>"""
+
+    return result
+}
+
+# QoS Sites and Rules Table
+qosRulesTable = ajaxentrytable.AjaxEntryTable('qosRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=qosSitesRules'),
+    titleText='QoS Sites and Rules',
+    headerSpec=('', ('Order', 'orderHeader'), 'Name', 'Service Class', ('DSCP', 'dscpHeader'), ('Application', 'applicationHeader')),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('id', 'moveFromQoSSite_', 'moveToQoSSite_', ['%(defaultSiteIndex)d']),
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdAttrTreeEdit('id', 'name'),
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdBlank()]""" % locals(),
+    rowESpec="""
+['rule',
+ AjaxEntryTable.tdReorderCheckbox('fullId', 'moveFromQoSRule_', 'moveToQoSRule_', omitFromSites),
+ AjaxEntryTable.tdAttr('id', 'orderCell'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('fullId', 'ruleName')]),
+ AjaxEntryTable.tdAttr('class_name'),
+ AjaxEntryTable.tdAttr('out_dscp_pretty', 'dscpCell'),
+ AjaxEntryTable.tdLines('l7ProtocolPretty')
+]""",
+    rowDescSpec=('desc', 'AjaxEntryTable.cellFillDesc("desc")', 1),
+    emptyMessage='No current QoS Sites or Rules.',
+    removeName='removeQosSitesRules',
+    removeButtonText='Remove Sites or Rules',
+    moveName='moveQosRules',
+    moveButtonText='Move...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add a Site or Rule',
+    addButtonName='addQoSSiteRule')
+
+siteRuleRadioButtons = '''
+  <div>
+    <span class="label">Add a:</span> %(siteRadioButton)s %(ruleRadioButton)s<hr />
+  </div>
+''' % {'siteRadioButton': dialogEntries['ruleSiteRadio'].html(self, value='site', format='inline'),
+       'ruleRadioButton': dialogEntries['ruleSiteRadio'].html(self, value='rule', format='inline') }
+
+siteRuleEditSubmitButton =  FormUtils.formSubmitButtons(self, {
+    'name': 'editQoSSiteRule',
+    'value': 'Apply',
+    'filter': 'ruleSiteEditFilter' })
+
+sitesHiddenInputs = {
+    literalAdd:  """<input type="hidden" name="add_QoS_Site" />""",
+    literalEdit: """<input type="hidden" name="edit_QoS_Site" />
+                    <input type="hidden" name="editQoSSite_id" />
+                    <input type="hidden" name="editQoSSite_name" />""",
+}
+rulesHiddenInputs = {
+    literalAdd:  """<input type="hidden" name="add_QoS_Rule" />""",
+    literalEdit: """<input type="hidden" name="edit_QoS_Rule" />
+                    <input type="hidden" name="editQoSRule_ruleId" />
+                    <input type="hidden" name="editQoSRule_siteId" />"""
+}
+
+def sitesRulesGenerateAddOrEditDiv(isAdd): {
+    isEdit = not isAdd
+    aePfx = isAdd and literalAdd or literalEdit
+    sitePfx = _makeIdPrefix(aePfx, literalSite) # == 'addQoSSite_' or 'editQoSSite_'
+    rulePfx = _makeIdPrefix(aePfx, literalRule) # == 'addQoSRule_' or 'editQoSRule_'
+    return '''
+<div class="midLevel">
+  %(radioButtons)s
+  <div id="%(aePfx)sSite" class="site midLevel">
+    <table id="%(aePfx)sSiteConfigContainer">
+      %(siteName)s
+      %(siteSubnet)s
+      %(siteDefaultRuleHeader)s
+      %(siteDefaultClass)s
+      %(siteDefaultDscp)s
+    </table>
+    %(siteHiddenInputs)s
+  </div>
+  <div id="%(aePfx)sRule" class="rule midLevel">
+    <table>
+      <tbody id="%(aePfx)sNonDefaultRuleContainer">
+        %(ruleName)s
+        %(ruleDesc)s
+        %(ruleSite)s
+        %(ruleAt)s
+        <tr><td colspan="3" class="addEditHeader">For Traffic with the Following Characteristics:</td></tr>
+        %(ruleSrcSubnet)s
+        %(ruleDstSubnet)s
+        %(ruleProtocol)s
+        %(ruleVlan)s
+        %(ruleDscp)s
+        <tr><td class="level4ParamsSeparator"></td></tr>
+        %(ruleTraffic)s
+        %(app)s
+        <tr><td colspan="3">
+          <div class="l7http indentedSection">
+            <table>
+              %(httpDomain)s
+              %(httpPath)s
+            </table>
+          </div>
+        </td></tr>
+      </tbody>
+      <tbody>
+        <tr><td colspan="3" id="%(aePfx)sAppliedSettingsHeader" class="addEditHeader">Apply these QoS Settings:</td></tr>
+        %(ruleClass)s
+        %(ruleDscpOut)s
+        <tr><td colspan="3">
+          <div class="l7ica indentedSection">
+            %(icaTable)s
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+    %(ruleHiddenInputs)s
+  </div>
+  %(submitButton)s
+</div>
+''' % {'aePfx': aePfx,
+       'hideIfEdit': not isAdd and 'hidden' or '',
+       'radioButtons': isAdd and siteRuleRadioButtons or '',
+       'siteHiddenInputs': sitesHiddenInputs[aePfx],
+       'siteName': isAdd and dialogEntries['siteName'].html(self, namePrefix=sitePfx) or '',
+       'siteSubnet': dialogEntries['siteSubnet'].html(self, namePrefix=sitePfx),
+       'siteDefaultRuleHeader': isAdd and '''<tr><td class="addEditHeader">Default Rule Settings:</td></tr>''' or '',
+       'siteDefaultClass': isAdd and dialogEntries['siteDefaultClass'].html(self, namePrefix=sitePfx) or '',
+       'siteDefaultDscp': isAdd and dialogEntries['siteDefaultDscp'].html(self, namePrefix=sitePfx) or '',
+       'ruleHiddenInputs': rulesHiddenInputs[aePfx],
+       'ruleName': dialogEntries['ruleName'].html(self, namePrefix=rulePfx),
+       'ruleDesc': dialogEntries['ruleDesc'].html(self, namePrefix=rulePfx),
+       'ruleSite': isAdd and dialogEntries['ruleSite'].html(self, namePrefix=rulePfx) or '',
+       'ruleAt': isAdd and dialogEntries['ruleAt'].html(self, namePrefix=rulePfx) or '',
+       'ruleClass': dialogEntries['ruleClass'].html(self, namePrefix=rulePfx),
+       'ruleSrcSubnet': dialogEntries['ruleSrcSubnet'].html(self, namePrefix=rulePfx,
+           more=(dialogEntries['ruleSrcPort'],)),
+       'ruleDstSubnet': dialogEntries['ruleDstSubnet'].html(self, namePrefix=rulePfx,
+           more=(dialogEntries['ruleDstPort'],)),
+       'ruleProtocol': dialogEntries['ruleProtocol'].html(self, namePrefix=rulePfx),
+       'ruleTraffic': dialogEntries['ruleTraffic'].html(self, namePrefix=rulePfx),
+       'ruleDscp': dialogEntries['rule_dscp'].html(self, namePrefix=rulePfx),
+       'ruleDscpOut': dialogEntries['rule_dscp_menu'].html(self, namePrefix=rulePfx),
+       'ruleVlan': dialogEntries['ruleVlan'].html(self, namePrefix=rulePfx),
+       'app': dialogEntries['ruleAddL7Proto'].html(self, namePrefix=rulePfx),
+       'httpDomain': dialogEntries['ruleHttpDomain'].html(self, namePrefix=rulePfx),
+       'httpPath': dialogEntries['ruleHttpPath'].html(self, namePrefix=rulePfx),
+       'icaTable': generateIcaTable(aePfx),
+       'submitButton': isEdit and siteRuleEditSubmitButton or '' }
+}
+
+qosRulesTable.addDivContent = sitesRulesGenerateAddOrEditDiv(True)
+qosRulesTable.editDivContent = sitesRulesGenerateAddOrEditDiv(False)
+
+%>
+
+<!-- qos classes -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="qosClassForm">
+  <div id="qosClassesTableDiv">
+    <input type="hidden" name="_action_" value="setupQoSClasses" />
+    <%= qosClassesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<!-- qos rules -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="qosRulesForm">
+  <div id="qosRulesTableDiv">
+    <input type="hidden" name="_action_" value="setupQoSSitesRules" />
+    <%= qosRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var isBasicQosJS = '<%= isBasicQos %>' == 'True';
+// Enable/disable the controls depending on whether Basic or
+// Advanced QoS is configured
+var qosDisplayControl = new DisplayControl();
+qosDisplayControl.display = function(divId) {
+    return !isBasicQosJS;
+}
+addUpdateable('enable', qosDisplayControl, 'qosGeneralSettingsDiv');
+addUpdateable('enable', qosDisplayControl, 'qosClassesTableDiv');
+addUpdateable('enable', qosDisplayControl, 'qosRulesTableDiv');
+
+var qosClassDisplayControl = new DisplayControl();
+qosClassDisplayControl.display = function(divId) {
+    var editQueue = document.forms['qosClassForm'].elements['editQoSClass_queue'];
+    var addQueue = document.forms['qosClassForm'].elements['addQoSClass_queue'];
+    switch(divId) {
+        case 'addQoSClass_NonMxtcp':
+            return 'rrtcp' != addQueue.value;
+        case 'editQoSClass_NonMxtcp':
+            return 'rrtcp' != editQueue.value;
+        case 'addQoSClass_Mxtcp':
+            return 'rrtcp' == addQueue.value;
+        case 'editQoSClass_Mxtcp':
+            return 'rrtcp' == editQueue.value;
+    }
+}
+addUpdateable('display', qosClassDisplayControl, 'addQoSClass_NonMxtcp');
+addUpdateable('display', qosClassDisplayControl, 'editQoSClass_NonMxtcp');
+addUpdateable('display', qosClassDisplayControl, 'addQoSClass_Mxtcp');
+addUpdateable('display', qosClassDisplayControl, 'editQoSClass_Mxtcp');
+
+// Indicates whether we're editing the default site.  This is used by
+// ruleSiteEditFilter() to determine whether to disable the Apply
+// button.
+var isEditingDefaultSite = false;
+
+// Disable the apply button if we're editing the default site because
+// it's not really editable.
+function ruleSiteEditFilter(buttonEl, isValid) {
+    return (isEditingDefaultSite) ? false : isValid;
+}
+
+// Toggles the site/rule entry form.
+var siteRuleDisplayControl = new DisplayControl();
+siteRuleDisplayControl.display = function(divId) {
+    var container = Y.one('#' + divId).ancestor('.midLevel');
+    var radioEls = container.all('input.ruleSite');
+    var checkedEl = null;
+    radioEls.each(function (el) {
+        if (el.get('checked')) {
+            checkedEl = el;
+        }
+    });
+    switch(divId) {
+        case 'addSite':
+            return 'site' == checkedEl.get('value');
+        case 'addRule':
+            return 'rule' == checkedEl.get('value');
+    }
+    return false;
+}
+addUpdateable('display', siteRuleDisplayControl, 'addSite');
+addUpdateable('display', siteRuleDisplayControl, 'addRule');
+
+// Blast the selected entry into the edit div.
+qosClassesTable.editEntry = function(editName) {
+    var form = document.getElementById('qosClassForm');
+    var el = this.getEntryElement('name', editName);
+    setElementText('editQoSClass_name', editName);
+<% if hierarchyMode: { %>
+    // Punting this UI element.  If no one cares, get rid of this code.
+    // setElementText('editQoSClass_parent', el.getAttribute('parent'));
+<% } %>
+    var els = form.elements;
+    els.editQoSClass_className.value = editName;
+    els.editQoSClass_priority.value = el.getAttribute('priority');
+    els.editQoSClass_gbw.value = el.getAttribute('gbw');
+    if (els.editQoSClass_lspct) {
+        els.editQoSClass_lspct.value = el.getAttribute('lsbw');
+    }
+    els.editQoSClass_ubw.value = el.getAttribute('ubw');
+    els.editQoSClass_connlimit.value = el.getAttribute('connlimit');
+    els.editQoSClass_mxtcpbw.value = el.getAttribute('gbw');
+    var queue = el.getAttribute('queue');
+    setFormValue(form, 'editQoSClass_queue', queue);
+    // cannot go to rrtcp from other queue values
+    els.editQoSClass_queue.options[2].disabled = ('rrtcp' != queue);
+    els.editQoSClass_out_dscp.value = el.getAttribute('out_dscp');
+}
+
+qosClassesTable.updateHook = function() {
+    var editQueue = document.forms['qosClassForm'].elements['editQoSClass_queue'];
+    var addQueue = document.forms['qosClassForm'].elements['addQoSClass_queue'];
+    // Disable the connection limit field if the new queue value is packet-order.
+    updateClassQueueField(addQueue);
+    updateClassQueueField(editQueue);
+
+    // Punting this UI element.  If no one cares, get rid of this code.
+    // var parent = document.forms['qosClassForm'].elements['editQoSClass_parent'];
+    // enableElements(Y.one(parent).ancestor('tr'), false)
+
+    if (isBasicQosJS) {
+        // Disable this table, and all the widgets in it
+        enableElements('qosClassForm', false);
+    }
+}
+
+// Initialize the add rule form. There is some custom behavior that
+// happens between the rule class field and the application field.
+qosRulesTable.addEntry = function() {
+    var form = document.forms['qosRulesForm'];
+    updateInsertRuleAtOptions();
+    updateApplicationField(form.elements['addQoSRule_l7protocol']);
+    updateRuleClassField(form.elements['addQoSRule_class']);
+}
+
+qosRulesTable.editEntry = function(editName) {
+    var form = document.getElementById('qosRulesForm');
+    var el = qosRulesTable.editXMLElement;
+    var isSiteDiv = el.tagName == 'site';
+
+    // Edit site div
+    if (isSiteDiv) {
+        setElementText('editQoS_title', el.getAttribute('name'));
+        setElementText('editQoS_type', 'Site');
+
+        // Replace semicolon from XML with newline.
+        subnetPretty = el.getAttribute('subnets').replace(/;/g, '\u000A');
+        setFormValue(form, 'editQoSSite_siteSubnet', subnetPretty);
+
+        setFormValue(form, 'editQoSSite_id', el.getAttribute('id'));
+        setFormValue(form, 'editQoSSite_name', el.getAttribute('name'));
+        setFormValue(form, 'editQoSSite_out_dscp', el.getAttribute('site_dscp_menu'));
+
+        isEditingDefaultSite = editName === '<%= defaultSiteIndex %>';
+    }
+    // Edit rule div
+    else {
+        setElementText('editQoS_title', el.getAttribute('id'));
+        setElementText('editQoS_type', 'QoS Rule');
+        var siteId = editName.split('_')[0];
+        var ruleId = editName.split('_')[1]
+        setFormValue(form, 'editQoSRule_siteId', siteId);
+        setFormValue(form, 'editQoSRule_ruleId', ruleId);
+        var ruleName = el.getAttribute('ruleName');
+        setFormValue(form, 'editQoSRule_ruleName', ruleName);
+        setFormValue(form, 'editQoSRule_desc', el.getAttribute('desc'));
+        setFormValue(form, 'editQoSRule_srcsubnet', el.getAttribute('srcSubnet'));
+        var srcPort = el.getAttribute('srcPort') == '-1' ? 'all' : el.getAttribute('srcPort')
+        setFormValue(form, 'editQoSRule_srcport', srcPort);
+        setFormValue(form, 'editQoSRule_dstsubnet', el.getAttribute('dstSubnet'));
+        var dstPort = el.getAttribute('dstPort') == '-1' ? 'all' : el.getAttribute('dstPort')
+        setFormValue(form, 'editQoSRule_dstport', dstPort);
+        setFormValue(form, 'editQoSRule_protocol', el.getAttribute('protocol'));
+        setFormValue(form, 'editQoSRule_traffic', el.getAttribute('traffic_type'));
+        setFormValue(form, 'editQoSRule_dscp', el.getAttribute('dscp'));
+        setFormValue(form, 'editQoSRule_vlan', el.getAttribute('vlan'));
+        setFormValue(form, 'editQoSRule_out_dscp', el.getAttribute('out_dscp'));
+
+        var ruleClass = el.getAttribute('class_name');
+        if (isBasicQosJS) {
+            // When previewing the Basic QoS policy config in Advanced mode,
+            // the rules select widget isn't populated with all the classes.
+            // Hence, the class needs to be added to the select widget in
+            // this case.
+            populateSelect(form, 'editQoSRule_class', [ruleClass]);
+        }
+        setFormValue(form, 'editQoSRule_class', ruleClass);
+
+        // Update with L7 option side effects (displaying hints, filtering fields, etc).
+        var appField = form.elements['editQoSRule_l7protocol'];
+        var ruleClassField = form.elements['editQoSRule_class'];
+        updateApplicationField(appField);
+        updateRuleClassField(ruleClassField);
+
+        // Set application protocol fields, then display the correct field
+        setFormValue(form, 'editQoSRule_l7protocol', el.getAttribute('l7protocol'));
+        if (el.getAttribute('l7protocol') == 'ica') {
+            for (var i = 0; i < 4; i++) {
+                setFormValue(form, 'editQoSRule_l7Protocol_icaPriority' + i,
+                             el.getAttribute('l7protocol_ica_priority' + i));
+                setFormValue(form, 'editQoSRule_l7Protocol_icaOutDscp' + i,
+                             el.getAttribute('l7protocol_ica_out_dscp' + i));
+            }
+        }
+        else if (el.getAttribute('l7protocol') == 'http') {
+            setFormValue(form, 'editQoSRule_l7Protocol_httpDomainName',
+                         el.getAttribute('l7protocol_http_domain_name'));
+            setFormValue(form, 'editQoSRule_l7Protocol_httpRelativePath',
+                         el.getAttribute('l7protocol_http_relative_path'));
+        }
+
+        isEditingDefaultSite = false;
+    }
+    updateApplicationField(form['editQoSRule_l7protocol']);
+    return true;
+}
+
+qosRulesTable.updateHook = function() {
+    if (this.editName) {
+
+        // show either the site form or rules form based on which kind
+        // of entity we're editing
+        var el = qosRulesTable.editXMLElement;
+        var isSiteDiv = el.tagName == 'site';
+        enableElements('editSite', isSiteDiv ? true : 'hide');
+        enableElements('editRule', isSiteDiv ? 'hide' : true);
+
+        // for the default site, disable the subnet textarea and hide
+        // the apply button
+        if (isSiteDiv) {
+            enableElements('editSiteConfigContainer', !isEditingDefaultSite);
+        }
+
+        // for the default rule, disable everything but the class and DSCP selectors
+        else {
+            var isDefaultRule = this.editName.substr(this.editName.length-8) === '_default';
+            $('editNonDefaultRuleContainer').className = isDefaultRule ? 'hidden' : '';
+            $('editAppliedSettingsHeader').className = isDefaultRule ? 'addEditHeaderFirstRow' : 'addEditHeader';
+        }
+    }
+
+    if (isBasicQosJS) {
+        // Disable this table, and all the widgets in it
+        enableElements('qosRulesForm', false);
+    }
+}
+
+// Bug# 81322. This involves a condition where uu() gets called before
+// the table finished loading the data and therefore never gets a chance to
+// have its <input> elements disabled correctly. This only seems to occur when
+// this.enabledDynamic is set to false after the aet data is loaded. Forcing 
+// uu() to be called again will ensure that the table's elements are always 
+// properly disabled regardless of when the data finished populating.
+
+qosClassesTable.postPopulateTableHook = function() {
+    updateUpdateables();
+}
+qosRulesTable.postPopulateTableHook = function() {
+    updateUpdateables();
+}
+// End bug 81322
+
+// ]]>
+</script>

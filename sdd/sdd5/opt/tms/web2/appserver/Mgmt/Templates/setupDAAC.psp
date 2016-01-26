@@ -1,0 +1,36 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Warren Gee
+##
+## setupDAAC.psp
+##
+## This is the template for Domain Auth Auto Config widgets. This includes
+## the Easy Config and Auto Config widgets.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, PagePresentation:Pagelet, domainHealthCheck" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return domainHealthCheck.getPageletNodes()
+</psp:method>
+
+<%
+# Secure vault.
+vaultUnlocked = Nodes.present(self.session().value('mgmt'), '/secure_vault/state/unlocked') == 'true'
+
+self.beginPagelet()
+
+# In this case, we want the display the unlock box at the top of the page.
+if not vaultUnlocked: { %>
+
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+
+<% } %>
+
+<%= domainHealthCheck.DomainHealthCheck.makeSections(self, [("easy_section", "easy_auth"),
+                                                            ("autoConfig_section", "confdeleg confrepl confdelegaddserver confdelegdelserver")]) %>
+<% self.endPagelet() %>

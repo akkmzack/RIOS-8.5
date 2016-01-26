@@ -1,0 +1,130 @@
+<%
+## Copyright 2008, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho, Kyle Getz
+##
+## reportRSP3VNIIO.psp
+## This is the template for the RSP3 VNI IO report page.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, Nodes, ProductReportContext:RSP3VNIIOPagelet, rsp3" %>
+<%@page extends="RSP3VNIIOPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+session = self.session()
+mgmt = session.value('mgmt')
+fields = self.request().fields()
+
+self.hasHelp = True
+self.relatedPages = ('setupRSP3Slots', 'setupRSP3Dataflow')
+
+# Get the list of optimization VNIs.
+optVnis = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/rsp3/state/vni/opt')
+optVnis.sort(FormUtils.alphanumericCompare)
+
+reportOpts = {
+    'controlFormId': 'rsp3VniForm',
+    'reportSpecs': {
+        'vniIO': {
+            'tableName': 'vniTable',
+            'gfxId': 'rsp3Vni',
+            'gfxDisplayId': 'rsp3VniImg',
+        },
+    }
+}
+
+vniTable = ajaxentrytable.AjaxEntryTable('vni',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about VSP VNI IO.')
+
+# Determine the current value for the VNI name and data type.
+vni = fields.get('vni', session.value('vni', optVnis[0]))
+data = fields.get('data', session.value('data', 'bytes'))
+
+# Ensure that the current VNI name corresponds to an optimization VNI.
+if vni not in optVnis: {
+    vni = optVnis[0]
+}
+
+# Create the list of select options.  Each entry includes the VNI name and type.
+vniOptions = []
+for fqVni in optVnis: {
+    if fqVni.startswith('RiOS'): {
+        vniOptions.append((fqVni, fqVni))
+    } else: {
+        slotPart, vniPart = fqVni.split(':')
+        typeStrings = rsp3.getVniTypeStrings(slotPart, vniPart)
+        assert typeStrings, 'Unable to determine the type of VNI %s' % fqVni
+        vniOptions.append((fqVni, '%s (%s)' % (fqVni, typeStrings[2])))
+    }
+}
+
+# Pass the various graph options to the reports framework.
+reportOpts['reportSpecs']['vniIO']['extraGfxParams'] = {'vni': vni,
+                                                        'data': data}
+
+dialogEntries = self.setupReport(reportOpts)
+
+# Create the widgets we need for the form.
+formSubmitAction = '$("rsp3VniForm").submit()'
+dataSelectOptions = (('bytes', 'Bytes'),
+                     ('packets', 'Packets'))
+
+dialogEntries['vni'] = FormUtils.NodeEntry(name = 'vni',
+                                           widget = 'select',
+                                           action = formSubmitAction,
+                                           selectOptions = vniOptions,
+                                           value = vni)
+dialogEntries['data'] = FormUtils.NodeEntry(name = 'data',
+                                            widget = 'select',
+                                            action = formSubmitAction,
+                                            selectOptions = dataSelectOptions,
+                                            value = data)
+%>
+
+<div id="rsp3VniGraphDiv" class="graphDiv">
+  <img id="rsp3VniImg" class="graphImg" src="" alt="VSP VNI IO Graph" />
+</div>
+
+<%= vniTable.html(self, cssClass="midLevel") %>
+
+<form id="rsp3VniForm"
+      class="graphControlForm"
+      method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="report" />
+  </div>
+  <table class="reportParameters">
+    <thead>
+      <tr>
+        <th>Period:</th>
+        <th>VNI:</th>
+        <th>Data Type:</th>
+        <th>Refresh:</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <%= GfxUtils.periodHtml(self, dialogEntries) %>
+        </td>
+        <%= dialogEntries['vni'].html(self, format='horiz') %>
+        <%= dialogEntries['data'].html(self, format='horiz') %>
+        <%= dialogEntries['refresh'].html(self, format='horiz') %>
+        <td class="go">
+          <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</form>
+
+<% self.endPagelet() %>

@@ -1,0 +1,147 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Kate Kligman
+##
+## setupServiceProtocolsSMB2.psp
+## This is the template for SMB2.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupDAAC', 'setupPrepop', 'setupServiceProtocolsCIFS') %>
+
+<psp:method name="nodeEntries">
+
+    return {
+
+        'downNegotiation': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/down_negotiate_smb2_protocol',
+            widget='radio',
+            type='bool',
+            label={
+                'false': 'None',
+                'true': 'SMB2 and SMB3 to SMB1',
+            },
+            tooltip={
+                'true': '<p>Connections that successfully down-negotiate will be optimized ' +
+                        'according to the settings on the CIFS (SMB1) page.</p>' +
+                        '<p><em>Note: Down-negotiation can fail if the client only supports ' +
+                        'SMB2 or if it bypasses negotiation because it already knows that ' +
+                        'the server supports SMB2. When down-negotiation fails, bandwidth ' +
+                        'optimization is not affected.</em></p>',
+            }),
+        'optSmb2': NodeEntry(
+            path='/rbt/sport/smb2/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SMB2 Optimizations',
+            enableDiv='smb3OptDiv'),
+        'optSmb3': NodeEntry(
+            path='/rbt/sport/smb2/config/smb3/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SMB3 Optimizations'),
+
+        'signingEnable': NodeEntry(
+            path='/rbt/sport/smb2signing/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SMB2 and SMB3 Signing',
+            enableDiv='signingDiv'),
+        'signingMode': NodeEntry(
+            path='/rbt/sport/smb2signing/config/mode_type',
+            widget='radio',
+            type='string',
+            label={
+                'transparent': 'NTLM Transparent Mode',
+                'delegation':  'NTLM Delegation Mode',
+            },
+            tooltip={
+                'transparent': 'Transparent Mode provides SMB2 signed packets with transparent authentication and may not work with all clients (Windows 7 and newer clients are not supported with this mode).',
+                'delegation': 'Delegation Mode (default) re-signs SMB2 signed packets using Kerberos delegation architecture.',
+            }),
+        'kerbAuthSupportEnable': NodeEntry(
+            path='/rbt/sport/smb2signing/config/native_krb',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Optimize signed-SMB2 connections that use Kerberos authentication.',
+            label='Enable Kerberos Authentication Support'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+if pathPrefix: {
+    windowsDomainLink = 'Windows Domain'
+    windowsDomainAuthLink = 'Windows Domain Authentication'
+}
+else: {
+    windowsDomainLink = '<a href="/mgmt/gui?p=setupServiceDomain">Windows Domain</a>'
+    windowsDomainAuthLink = '<a href="/mgmt/gui?p=setupWinDomAuth">Windows Domain Authentication</a>'
+}
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="smb2form">
+
+  <fieldset>
+    <legend>Down-Negotiation</legend>
+    <div class="midLevel">
+      <%= nodeEntries['downNegotiation'].html(self, value='false') %>
+      <%= nodeEntries['downNegotiation'].html(self, value='true') %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Optimization</legend>
+    <div class="midLevel">
+      <%= nodeEntries['optSmb2'].html(self) %>
+      <div class="indent" id="smb3OptDiv">
+        <%= nodeEntries['optSmb3'].html(self) %>
+      </div>
+    </div>
+  </fieldset>
+
+  <div id="signingContainerDiv">
+    <fieldset>
+      <legend>Signing</legend>
+      <div class="midLevel">
+        <%= nodeEntries['signingEnable'].html(self) %>
+      </div>
+
+      <div class="midLevel">
+        <div id="signingDiv" class="indent">
+          <%= nodeEntries['signingMode'].html(self, value='transparent') %>
+          <%= nodeEntries['signingMode'].html(self, value='delegation') %>
+          <%= nodeEntries['kerbAuthSupportEnable'].html(self) %>
+          <p>
+            Note: The server-side appliance must be joined to the
+            <%= windowsDomainLink %> in order to use this feature.
+            Additionally, NTLM Delegation Mode and Kerberos
+            Authentication require configuration of
+            <%= windowsDomainAuthLink %> on the server-side appliance.
+          </p>
+
+        </div>
+      </div>
+    </fieldset>
+  </div>
+
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceSmbOptimization" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+
+</form>
+
+<% self.endPagelet() %>

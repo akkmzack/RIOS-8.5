@@ -1,0 +1,180 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupPortLabels.psp
+##
+## Port Labels Template
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupAdvNet_qosClasses',
+        'setupAdvNet_qosMarking',
+        'setupServiceProtocolsICA',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+.textarea_portLabels {
+  width: 450px;
+  height: 80px;
+}
+
+/*
+ * Try to prevent the label column from wrapping.
+ */
+.table_portLabel_label { width: 160px; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+    'portlabels': NodeEntry(
+        path='/rbt/portlabel/config/*')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+    'addPortLabel_name': NodeEntry(
+        name='addPortLabel_name',
+        label='Name',
+        validate='name'),
+    'addPortLabel_ports': NodeEntry(
+        name='addPortLabel_ports',
+        label='Ports',
+        widget='textarea',
+        widgetClass='textarea_portLabels',
+        validate='validPortList'),
+    'editPortLabel_ports': NodeEntry(
+        name='editPortLabel_ports',
+        label='Ports',
+        widget='textarea',
+        widgetClass='textarea_portLabels',
+        validate='validPortList')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+# Port Label Table:
+portLabelTable = ajaxentrytable.AjaxEntryTable('portLabel',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=portLabels'),
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'),
+                ('Label', 'table_portLabel_label'),
+                'Ports'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedPortLabel_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdChildAttr('port', 'range')]""",
+    emptyMessage='No current port labels.',
+    removePrefix='selectedPortLabel_',
+    addButtonText='Add a New Port Label',
+    addButtonName='addPortLabel',
+    editDivTitle='Editing Port Label <b><span id="editPortLabel_id"></span></b>',
+    removeName='removePortLabel',
+    removeButtonText='Remove Selected')
+
+portLabelTable.addDivContent='''
+<p>
+  The ports list is a comma separated list of port numbers.&nbsp; A range
+  of ports can be specified with a hyphen.
+</p>
+<div class="midLevel">
+  <table>
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['addPortLabel_name'].html(self),
+       dialogEntries['addPortLabel_ports'].html(self))
+
+portLabelTable.editDivContent='''
+<input type="hidden" name="editPortLabel_name" />
+<div class="midLevel">
+  <table>
+    %s
+  </table>
+</div>
+<div class="submitButtons">
+  <input type="submit" name="editPortLabel" value="Apply"
+         onclick="return submitPrep(this)" />
+  <input type="submit" value="Cancel" onclick="return portLabelTable.setEditMode()" />
+</div>
+''' % dialogEntries['editPortLabel_ports'].html(self)
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id = "portLabelForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupPortLabels" />
+  </div>
+  <%= portLabelTable.html(self) %>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+function validPortList(val) {
+    function parsePort(val) {
+        if (val.trim().match(/^\d+$/)) {
+            var portInt = parseInt(val, 10);
+            if ((1 <=  portInt) && (portInt < (1 << 16))) {
+                return portInt;
+            }
+        }
+        return false;
+    }
+    var err = 'Invalid ports.';
+    var items = val.split(',');
+    for (var i = 0; i < items.length; i++) {
+        var pair = items[i].split('-');
+        if (!((1 == pair.length) || (2 == pair.length))) {
+            throw err;
+        }
+        var port1 = parsePort(pair[0]);
+        if (!port1) {
+            throw err;
+        }
+        if (2 == pair.length) {
+            var port2 = parsePort(pair[1])
+            if (!port2 || !(port1 < port2)) {
+                throw err;
+            }
+        }
+    }
+}
+
+portLabelTable.editEntry = function(editName) {
+    var form = document.getElementById('portLabelForm');
+    var el = this.getEntryElement('name', editName);
+    setElementText('editPortLabel_id', editName);
+    form.editPortLabel_name.value = editName;
+    var ports = el.getElementsByTagName('port');
+    var text = '';
+    for (var i = 0; i < ports.length; i++) {
+        if (0 < i) text += ', ';
+        text += ports.item(i).getAttribute('range');
+    }
+    form.editPortLabel_ports.value = text;
+}
+// -->
+</script>
+

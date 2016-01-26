@@ -1,0 +1,381 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc.  All rights reserverd.
+##
+## SnapMirror config page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportSnapMirror',) %>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableSnapMirror': NodeEntry(
+            path='/rbt/sport/snapmirror/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SnapMirror',
+            enableDiv='portsContainer'),
+        'snapMirrorPorts': NodeEntry(
+            name='snapMirrorPorts',
+            widgetClass='wide2',
+            label='SnapMirror Ports',
+            validate='uint16_csv'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries" params="mgmt, pathPrefix">
+    qosMode = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/easy_qos_mode') == 'true' and 'basic' or 'advanced'
+    if Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/enable') == 'true':
+        snapMirrorPriorityHint = ''
+    elif pathPrefix and Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/enable') != 'true':
+        snapMirrorPriorityHint = 'QoS is not enabled in current policy configuration.'
+    else:
+        snapMirrorPriorityHint = 'QoS is currently <a href="/mgmt/gui?p=%s">not enabled</a>.' % (qosMode == 'basic' and 'setupAdvNet_qosEasy' or 'setupAdvNet_qosClasses')
+
+    return {
+        'filerName': NodeEntry(name='filerName',
+            widgetClass='wide1',
+            label='Filer Name',
+            validate='hostname'),
+        'filerIPAddresses': NodeEntry(name='filerIPAddresses',
+            widgetClass='wide1',
+            label='IP Addresses',
+            validate=('ipv4addr_list', '["\n"]'),
+            widget='textarea'),
+        'filerDefaultOptPolicy': NodeEntry(name='filerDefaultOptPolicy',
+            selectOptions=(('sdr-default', 'SDR-Default'),
+                           ('lz-only', 'LZ-Only'),
+                           ('none', 'None')),
+            label='Filer Default Optimization Policy',
+            tooltip='Volumes/Qtrees on this filer will have this Optimization Policy if they are set to "Filer Default".'),
+        'filerDefaultPriority': NodeEntry(name='filerDefaultPriority',
+            selectOptions=(('255', 'No Setting'),
+                           ('0', 'Highest'),
+                           ('1', 'High'),
+                           ('2', 'Medium'),
+                           ('3', 'Low'),
+                           ('4', 'Lowest')),
+            label='Filer Default SnapMirror Priority',
+            hint=snapMirrorPriorityHint,
+            tooltip='SnapMirror Priorities can be mapped to QoS Service Classes'),
+        'filerDescription': NodeEntry(name='filerDescription',
+            label='Description',
+            widgetClass="wide3"),
+        'volumeFiler': NodeEntry(name='volumeFiler',
+            label='Filer',
+            action='updateAddVolumePriorityDefault(this)',
+            selectOptions=sorted(Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/snapmirror/config/filer')) or ['fakedata']),
+        'volumeName': NodeEntry(name='volumeName',
+            validate='nameWithSlashes',
+            label='Volume Name'),
+        'volumeOptPolicy': NodeEntry(name='volumeOptPolicy',
+            selectOptions=(('filer-default', 'Filer Default'),
+                           ('sdr-default', 'SDR-Default'),
+                           ('lz-only', 'LZ-Only'),
+                           ('none', 'None')),
+            label='Optimization Policy'),
+        'volumeDescription': NodeEntry(name='volumeDescription',
+            label='Description',
+            widgetClass='wide3'),
+        'volumePriority': NodeEntry(name='volumePriority',
+            # The "Filer Default (xxx)" code relies on the fact that this is
+            # the first item. Do not change without modifying that code as well.
+            selectOptions=(('254', 'Filer Default'),
+                           ('255', 'No Setting'),
+                           ('0', 'Highest'),
+                           ('1', 'High'),
+                           ('2', 'Medium'),
+                           ('3', 'Low'),
+                           ('4', 'Lowest')),
+            label='SnapMirror Priority',
+            hint=snapMirrorPriorityHint,
+            tooltip='SnapMirror Priorities can be mapped to QoS Service Classes'),
+    }
+</psp:method>
+
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(mgmt, pathPrefix)
+
+# Populate the "SnapMirror Ports" field with all the values under /rbt/sport/snapmirror/config/global/*
+nodeEntries['snapMirrorPorts'].value = Nodes.getWordList(mgmt,
+    pathPrefix + '/rbt/sport/snapmirror/config/global/port',
+    FormUtils.alphanumericCompare)
+
+# A mapping of all the filers' current SnapMirror priority settings is
+# needed for the snapMirrorFiVolTable.addEntry() function.
+optPolicyPrettyMap = {'sdr-default': 'SDR-Default',
+                      'lz-only': 'LZ-Only',
+                      'none': 'None'}
+defaultPriorityPrettyMap = {'254': 'Filer Default',
+                            '255': 'No Setting',
+                            '0': 'Highest',
+                            '1': 'High',
+                            '2': 'Medium',
+                            '3': 'Low',
+                            '4': 'Lowest'}
+filerDefaultPriorityMapping = {}
+filerDefaultOptPolicyMapping = {}
+configPath = pathPrefix + '/rbt/sport/snapmirror/config/filer'
+filers = Nodes.getMgmtSetEntries(mgmt, configPath)
+for filer in filers.keys(): {
+    filerDefaultOptPolicyMapping[filer] = optPolicyPrettyMap[filers[filer]['default_optpolicy']]
+    filerDefaultPriorityMapping[filer]  = defaultPriorityPrettyMap[filers[filer]['default_priority']]
+}
+
+# If there are no filers, then show the "cannot add volumes" message.
+if not filers: {
+    self.addPageletJavascript(' Y.one("#addVolumeHasFilersDiv").addClass("hidden"); ')
+}
+else: {
+    self.addPageletJavascript(' Y.one("#addVolumeNoFilersDiv").addClass("hidden"); ')
+}
+
+
+%>
+
+<% self.beginPagelet() %>
+
+<!-- Start of SnapMirror Settings -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>SnapMirror Settings</legend>
+    <% # setupServiceProtocolsSnap() is in support_service.py %>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSnap" />
+    <div class="midLevel">
+      <%= nodeEntries['enableSnapMirror'].html(self) %>
+      <div id="portsContainer" class="indent">
+        <%= nodeEntries['snapMirrorPorts'].html(self, format='inline') %>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<!-- End of SnapMirror Settings -->
+
+<%
+
+snapMirrorFiVolTable = ajaxentrytable.AjaxEntryTable('snapMirrorFiVol',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snapMirrorFiVol'),
+    titleText='Filers and Volumes',
+    headerSpec=('', 'Name', 'IP Addresses', 'Optimization Policy', 'SnapMirror Priority'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedFiler_'),
+ AjaxEntryTable.tdAttrTreeEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('ipaddresses'),
+ AjaxEntryTable.tdAttr('default_optpolicy_pretty'),
+ AjaxEntryTable.tdAttr('default_priority_pretty')]""",
+    rowESpec="""
+['volume',
+ AjaxEntryTable.tdSelectCheckbox('filerandvolume', 'selectedVolume_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('ipaddresses'),
+ AjaxEntryTable.tdAttr('optpolicy_pretty'),
+ AjaxEntryTable.tdAttr('priority_pretty')]""",
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage='No filers or volumes/qtrees.',
+    addButtonText='Add a New Filer or Volume/Qtree',
+    addButtonName='addFiVol',
+    removeButtonText='Remove Selected Filers and Volumes/Qtrees',
+    removeName='removeFiVol',
+    editButtonName='editFiVol')
+
+
+snapMirrorFiVolTable.addDivContent = """
+<div id="qosTabControl" class="tabControl">
+  <div class="grayBorder midLevel">
+  %(radioTabs)s
+    <div id="addFilerDiv" class="midLevel">
+      <table>
+        %(filerName)s
+        %(filerIPAddresses)s
+        %(filerDefaultOptPolicy)s
+        %(filerDefaultPriority)s
+        %(filerDescription)s
+      </table>
+    </div>
+    <div id="addVolumeDiv" class="midLevel">
+      <div id="addVolumeNoFilersDiv">
+        A filer must be added before a new volume can be added.
+      </div>
+      <div id="addVolumeHasFilersDiv">
+        <table>
+          %(volumeName)s
+          %(volumeFiler)s
+          %(volumeOptPolicy)s
+          %(volumePriority)s
+          %(volumeDescription)s
+        </table>
+      </div>
+    </div>
+  </div>
+</div>""" % {'radioTabs': FormUtils.radioTabControl(self,
+                              'snapMirrorTabs',
+                              ('filers', 'Add a Filer', 'addFilerDiv'),
+                              ('volumes', 'Add a Volume/QTree', 'addVolumeDiv')),
+             'filerName':         dialogEntries['filerName'].html(self, namePrefix='add_'),
+             'filerIPAddresses':  dialogEntries['filerIPAddresses'].html(self, namePrefix='add_'),
+             'filerDefaultOptPolicy':    dialogEntries['filerDefaultOptPolicy'].html(self, namePrefix='add_'),
+             'filerDefaultPriority':     dialogEntries['filerDefaultPriority'].html(self, namePrefix='add_'),
+             'filerDescription':  dialogEntries['filerDescription'].html(self, namePrefix='add_'),
+             'volumeName':        dialogEntries['volumeName'].html(self, namePrefix='add_'),
+             'volumeFiler':       dialogEntries['volumeFiler'].html(self, namePrefix='add_'),
+             'volumeOptPolicy':   dialogEntries['volumeOptPolicy'].html(self, namePrefix='add_'),
+             'volumePriority':    dialogEntries['volumePriority'].html(self, namePrefix='add_'),
+             'volumeDescription': dialogEntries['volumeDescription'].html(self, namePrefix='add_')}
+
+
+snapMirrorFiVolTable.editDivContent = """
+    <input type="hidden" name="editingFilerOrVolume" />
+    <div id="editFilerDiv" class="midLevel">
+      <input type="hidden" name="edit_filerName" value="" />
+      <table>
+        %(filerIPAddresses)s
+        %(filerDefaultOptPolicy)s
+        %(filerDefaultPriority)s
+        %(filerDescription)s
+      </table>
+    </div>
+    <div id="editVolumeDiv" class="midLevel">
+      <input type="hidden" name="edit_volumeFilerAndVolume" value="" />
+      <table>
+        %(volumeFiler)s
+        %(volumeOptPolicy)s
+        %(volumePriority)s
+        %(volumeDescription)s
+      </table>
+    </div>""" % {'filerName':         dialogEntries['filerName'].html(self, namePrefix='edit_'),
+                 'filerIPAddresses':  dialogEntries['filerIPAddresses'].html(self, namePrefix='edit_'),
+                 'filerDefaultOptPolicy':    dialogEntries['filerDefaultOptPolicy'].html(self, namePrefix='edit_'),
+                 'filerDefaultPriority':     dialogEntries['filerDefaultPriority'].html(self, namePrefix='edit_'),
+                 'filerDescription':  dialogEntries['filerDescription'].html(self, namePrefix='edit_'),
+                 'volumeName':        dialogEntries['volumeName'].html(self, namePrefix='edit_'),
+                 'volumeFiler':       dialogEntries['volumeFiler'].html(self, namePrefix='edit_'),
+                 'volumeOptPolicy':   dialogEntries['volumeOptPolicy'].html(self, namePrefix='edit_'),
+                 'volumePriority':    dialogEntries['volumePriority'].html(self, namePrefix='edit_'),
+                 'volumeDescription': dialogEntries['volumeDescription'].html(self, namePrefix='edit_')}
+
+%>
+
+<!-- Start of AET for SnapMirror filers and volumes -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="snapFiVolForm">
+  <div>
+    <% # setupServiceProtocolsSnap() is in support_service.py %>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSnap" />
+    <%= snapMirrorFiVolTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<!-- End of AET for SnapMirror filers and volumes -->
+
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+function uint16_csv(val) {
+    var valueList = val.split(',');
+
+    if (valueList.length == 0) {
+        throw 'Must contain at least 1 port number.';
+    }
+
+    for (var i = 0; i < valueList.length; i++) {
+        valueList[i] = valueList[i].trim();
+        if (!valueList[i].match(/^\d+$/) ||
+                (parseInt(valueList[i], 10) == 0) ||
+                !(parseInt(valueList[i], 10) < (1 << 16))) {
+            throw 'Comma separated integers between 1 and 65535 required.';
+        }
+    }
+}
+
+snapMirrorFiVolTable.updateHook = function() {
+    var el = snapMirrorFiVolTable.editXMLElement;
+
+    if (el !== null) {
+        // show either the filers form or volumes form based on which kind
+        // of entity we're editing
+        enableElements('editFilerDiv',  el.tagName == 'filer'  ? true : 'hide');
+        enableElements('editVolumeDiv', el.tagName == 'volume' ? true : 'hide');
+
+        var formEl = $('snapFiVolForm');
+        formEl.editingFilerOrVolume.value = el.tagName
+    }
+}
+
+
+var fiDefaultPriorityMapping  = <%= RVBDUtils.jsonizeAndEscapeForJs(filerDefaultPriorityMapping) %>;
+var fiDefaultOptPolicyMapping = <%= RVBDUtils.jsonizeAndEscapeForJs(filerDefaultOptPolicyMapping) %>;
+
+updateAddVolumePriorityDefault = function(filerSelect) {
+    // The "Default" option in the SnapMirror Priority select list needs to
+    // be adjusted so that it says what the filer's default value is.
+    // (This is the "Filer Default (xxx)" code.)
+    Y.one('select[name="add_volumePriority"]' ).get('options').item(0).setContent('Filer Default (' + fiDefaultPriorityMapping[filerSelect.value] + ')');
+    Y.one('select[name="edit_volumePriority"]').get('options').item(0).setContent('Filer Default (' + fiDefaultPriorityMapping[filerSelect.value] + ')');
+
+    Y.one('select[name="add_volumeOptPolicy"]' ).get('options').item(0).setContent('Filer Default (' + fiDefaultOptPolicyMapping[filerSelect.value] + ')');
+    Y.one('select[name="edit_volumeOptPolicy"]').get('options').item(0).setContent('Filer Default (' + fiDefaultOptPolicyMapping[filerSelect.value] + ')');
+}
+
+
+snapMirrorFiVolTable.addEntry = function() {
+    Y.Node.getDOMNode(Y.one('select[name="add_filerDefaultPriority"]')).value = '2';
+    Y.Node.getDOMNode(Y.one('select[name="add_filerDefaultOptPolicy"]')).value = 'sdr-default';
+    updateAddVolumePriorityDefault(Y.Node.getDOMNode(Y.one('select[name="add_volumeFiler"]')));
+}
+
+
+snapMirrorFiVolTable.editEntry = function(id) {
+    var formEl = $('snapFiVolForm');
+    var el = snapMirrorFiVolTable.editXMLElement;
+    var isFilerDiv = el.tagName == 'filer';
+    if (isFilerDiv) {
+        // Edit filer div
+        setFormValue(formEl, 'edit_filerName', el.getAttribute('name'));
+        setFormValue(formEl, 'edit_filerDefaultOptPolicy', el.getAttribute('default_optpolicy'));
+        setFormValue(formEl, 'edit_filerDefaultPriority', el.getAttribute('default_priority'));
+        setFormValue(formEl, 'edit_filerDescription', el.getAttribute('description'));
+
+        // Replace semicolon from XML with newline.
+        addressesPretty = el.getAttribute('ipaddresses').replace(/, /g, '\u000A');
+        setFormValue(formEl, 'edit_filerIPAddresses', addressesPretty);
+    }
+    else {
+        // Edit volume div
+        setFormValue(formEl, 'edit_volumeFilerAndVolume', el.getAttribute('filerandvolume'));
+        setFormValue(formEl, 'edit_volumeFiler', el.getAttribute('filer'));
+        setFormValue(formEl, 'edit_volumeOptPolicy', el.getAttribute('optpolicy'));
+        setFormValue(formEl, 'edit_volumePriority', el.getAttribute('priority'));
+        setFormValue(formEl, 'edit_volumeDescription', el.getAttribute('description'));
+
+        updateAddVolumePriorityDefault(Y.Node.getDOMNode(Y.one('select[name="edit_volumeFiler"]')));
+    }
+}
+
+/**
+ * Validates a string of alphanumeric characters, underscores, hyphens, and slashes.
+ *
+ * @method name
+ * @static
+ */
+nameWithSlashes = function(val) {
+    if (!val.match(/^[\w\-/]+$/)) {
+        throw 'A valid name is necessary (alphanumeric, underscore, hyphen, forward slash only).';
+    }
+};
+
+// ]]>
+</script>

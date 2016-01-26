@@ -1,0 +1,3423 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: MITAC CUSTOM
+#
+# Models: 1U, 3U (TK)
+#
+# Types:
+#
+#    BOOL   : string: "false" | "true"
+#    LIST   : list of strings separated by a newline (LF-ASCI10) character
+#    STRING : string
+#    TABLE  : some table format described in the description
+#    UINT32 : unsigned 32-bit integer
+#
+# Functions:
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    TABLE get_raid_status(UINT32)
+#
+#       Returns a table showing the status of each drive in the array.
+#       The format is:
+#
+#       <drive-id> <drive-status>
+#       <drive-id> <drive-status>
+#       ...
+#       <drive-id> <drive-status>
+#
+#       The drive status should be one of "online", "rebuild", "failed",
+#       or "missing".
+#
+#    VOID show_raid_diagram(VOID)
+#
+#       Display an ASCII representation of the RAID bay diagram
+#       with current status.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    STRING get_power_supply_status(VOID)
+#
+#       Returns status of redundant power supplies.
+#
+#    VOID clear_psu_redundancy_requirement(VOID)
+#
+#       Removes the setting that a power supply error will occur on
+#       certain models (1050's right now) if running on a single 
+#       power supply when a 2nd power supply has previously been seen
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    STRING get_usb_device(VOID)
+#    STRING get_usb_id(VOID)
+#
+#       These two functions return what device and ID to use when attempting
+#       to mount a USB keychain device on this appliance.
+#
+#    BOOL supports_bmc_watchdog_pretimeout
+#       Little routine to indicate whether the motherboard supports BMC 
+#       watchdog pre-timeout or not.
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    TABLE get_ecc_ram_status(VOID)
+#
+#       Returns a table of ecc ram errors.  The format is:
+#       CE <current correctable error count> <optional csv seperated dimm list>
+#       UE <current unrecoverable error count> <optional csv seperated dimm list>
+#
+#    STRING get_ecc_ram_alarm (VOID)
+#       Returns "degraded" if an unrecoverable error has occurred.
+#       Returns "critical" if correctable errors have occurred.
+#       Returns "normal" otherwise.
+#       Once any error occurs it will persist until power
+#       reboot.
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    TABLE get_fan_status
+#       Returns a table of fan status with the following format
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       ...
+#       <fan-id> <fan RPM> <fan Min RPM> <Status "ok" or "underspeed" or "error">
+#       fan-id is a value in 0.. NUM_FANS (where NUM_FANS is dependant on the
+#           mainboard)
+#       fan RPM is read from /sys file system sensor values
+#       fan MIN is read from /sys file system sensor minimum value (initialized by the driver)
+#       fan Status is computed by comparing fan RPM to fan MIN. If a fan is expected
+#           and no output is found, error is displayed.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+# 	    "true" if a boot flash disk is supported
+#	    "false" if a boot flash disk is not supported
+#	    "error" if an error occurred determining flash support.
+# 	   
+#
+#    VOID get_running_arch
+#       Returns the current architecture of the running OS "i386" or "x86_64"
+#       an exit code of 1 is returned with the string "error" if an error
+#       occurs.
+#
+#    BOOL supports_txhang_noflap
+#       Little routine to indicate whether there is an e1000 driver loaded that
+#       suppports txhang_noflap.
+#
+#    VOID get_bios_ver
+#       Little routine to find out the BIOS version
+#
+#    VOID get_ipmi_ver
+#       Little routine to find out the IPMI version and FW version
+#
+#    VOID get_controller_ver
+#       Little routine to find out the FW version of the minnow controller
+#
+#    BOOL supports_rfut
+#       Little routine to indicate whether the motherboard supports 
+#       rfut (riverbed firmware upgrading tool) or not.
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+MODPROBE=/sbin/modprobe
+RMMOD=/sbin/rmmod
+
+HAL_CACHE=/var/tmp/hal_cache/
+CACHED_MOBO=${HAL_CACHE}/motherboard
+CACHED_MODEL=${HAL_CACHE}/model
+
+RRDM_TOOL='/opt/hal/bin/raid/rrdm_tool.py'
+
+HAL_LOG_WARN="/usr/bin/logger -p user.warn -t hal"
+HAL_LOG_INFO="/usr/bin/logger -p user.info -t hal"
+
+HAL=/opt/hal/bin
+HWTOOL_PY=${HAL}/hwtool.py
+HW_CTL_PY="/opt/hal/bin/hw_ctl.py"
+LED_CTL="/opt/hal/bin/led_ctl.sh"
+IPMITOOL="/sbin/ipmitool"
+RDICTL="/opt/tms/bin/rdictl"
+REDIRECT="/opt/tms/bin/redirect10g"
+CONFIGFILEDIR="/var/etc/opt/tms/output"
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#-----------------------------------------------------------------------------
+# Helpers for setting dimm labels in ECC driver
+#-----------------------------------------------------------------------------
+set_dimm_label()
+{
+    ROW=$1
+    CHANNEL=$2
+    LABEL=$3
+    MC=$4
+
+    FPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label
+    if [ -f ${FPATH} ]; then
+        echo ${LABEL} > ${FPATH}
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Populate EDAC DIMM Labels for Sturgeon/Gar
+#------------------------------------------------------------------------------
+do_sturgeon_dimm_labels()
+{
+    EDAC_SYSFS="/sys/devices/system/edac/mc"
+
+    if [ ! -d $EDAC_SYSFS ]; then
+	echo $"Cannot find EDAC SYSFS nodes"
+	return
+    fi
+
+    # for strugeon, the dimm labels have the following format
+    # CPU[X]_DIMM[Y]
+    # X = the memory controller id
+    # Y = 7 - (i/2*2 + j) 
+    # j is channel number; i is csrow number
+    for f in $( find $EDAC_SYSFS -iname "*dimm_label" ); do
+	LABEL_PATH=`dirname $f`
+	LABEL_NAME=`basename $f`
+
+	CSROW_PATH=`dirname ${LABEL_PATH}`
+	CSROW_NAME=`basename ${LABEL_PATH}`
+
+	MC_NAME=`basename ${CSROW_PATH}`
+
+	if [ "x${MC_NAME}" = "xmc0" ]; then
+		X=0
+	else
+		X=1
+	fi
+	
+	if [ "x${LABEL_NAME}" = "xch0_dimm_label" ]; then
+		Z=0
+	else
+		Z=1
+	fi
+
+	TMP1=${CSROW_NAME#*csrow}
+	TMP2=$(((TMP1/2)*2))
+	Y=$((7-Z-TMP2))
+
+	new_label="CPU"${X}"_DIMM"${Y}
+	echo -n "$new_label" > $f
+    done
+}
+
+#
+# based on each motherboard type. set the dimm labels for each
+# MC/CSROW/CHANNEL. For more info reference the
+# bluesmoke development page at sourceforge.net
+#
+set_ecc_csrow_labels()
+{
+    MOBO=`get_motherboard`
+
+    # Only set the DIMM labels for Sturgeon and Gar.
+    #
+    case "x${MOBO}" in
+        "x400-00300-01")
+            do_sturgeon_dimm_labels
+        ;;
+        "x400-00300-10")
+            do_sturgeon_dimm_labels
+        ;;
+        *)
+            ;;
+    esac
+}
+
+################################################################################
+# uses_flash_disk
+################################################################################
+IL_FLASH_DEVICE="/dev/hda"
+FLASH_DEV="${IL_FLASH_DEVICE}"
+
+uses_flash_disk()
+{
+    MOBO=`get_motherboard`
+
+    case "${MOBO}" in
+        *)
+            echo "false"
+        ;;
+    esac
+}
+
+# XXX This assumes a 1K blocksize (which is what mke2fs assumes on the
+# cmdline unless you specify -b 4096, at which time you need to divide this
+# by 4, if that changes.
+#               
+RESERVE_BLOCKS=1024 # reserve 1024 x 1024 = 1MB at the end of ext3 partitions.
+                    
+# for new hw single disk units, we want to reserve space at
+# the end of the ext3 partitions so we could add a MD SB in the future.
+#                       
+do_calculate_blocks_w_reserve()
+{               
+    dev=$1
+    # if we've been told to reserve some space, we need to calc
+    # the number of blocks to tell ext3 to use.
+    dev1=`echo $dev | awk '{ print substr( $0, 1 , 1) }'`
+    dev2=`echo $dev | awk '{ print substr( $0, 1 , length($0)-1) }'`
+    if [ ${dev1} = "s" ]; then
+        total_sectors=`cat /sys/block/${dev2}/${dev}/size`
+    else
+        total_sectors=`cat /sys/block/${dev}/size`
+    fi
+
+    total_blocks=`expr ${total_sectors} / 2`
+                
+    if [ ${total_blocks} -le ${RESERVE_BLOCKS} ]; then
+        echo "*** Block size too small when calculating reserve blocks on $dev"
+        cleanup_exit
+    fi          
+                
+    expr ${total_blocks} - ${RESERVE_BLOCKS}
+}                       
+
+
+do_make_sw_pfs()
+{
+    PFS_DEV=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $2}'`
+    RESERVE_SPACE=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $5}'`
+    TMP_SYL_PFS_DEV=`readlink -f /dev/${PFS_DEV}`
+    SYL_PFS_DEV=`echo $TMP_SYL_PFS_DEV | awk '{ print substr( $0, 6 , length($0)) }'`
+
+    if [ "x${PFS_DEV}" != "x" ]; then
+	if [ ! -b /dev/${PFS_DEV} ]; then
+	    ${HAL_LOG_WARN} "Block device for PFS partition not found."
+	    return 1
+	fi
+        blocks=
+
+        if [ "x${RESERVE_SPACE}" = "xtrue" ]; then  
+            blocks=`do_calculate_blocks_w_reserve ${SYL_PFS_DEV}`
+        fi
+
+	${HAL_LOG_INFO} "Formatting PFS mount point with ext3"
+	/sbin/mke2fs -q -O ^resize_inode -L SMB -j /dev/${PFS_DEV} ${blocks}
+	if [ $? -ne 0 ]; then
+	    ${HAL_LOG_WARN} "Unable to make ext3 filesystem on /dev/${PFS_DEV} for PFS"
+	    return 1
+	else
+	    # set samba ready
+	    touch /var/opt/rbt/.samba_ready
+	fi
+    fi
+
+    return 0
+}
+
+#-----------------------------------------------------------------------------
+# General FS recovery routines.
+#-----------------------------------------------------------------------------
+DO_FS_RECOVERY="/sbin/do_fs_recovery.sh"
+FSCK_OPTIONS="-T -a -V"
+
+#------------------------------------------------------------------------------
+# do_check_fs
+#
+# Takes a filesystem device and a filesystem name and does the appropriate 
+# pre-mount fsck checks on it. If problems are detected, the fs_recovery
+# script is invoked to do best effort repairs of the filesystem.
+# 
+#------------------------------------------------------------------------------
+do_check_fs()
+{
+    FS_DEV="$1"
+    FS_NAME="$2"
+
+    if [ "x${FS_DEV}" != "x" -a "x${FS_NAME}" != "x" ]; then
+	${HAL_LOG_INFO} "Checking Filesystem ${FS_NAME}:${FS_DEV}"
+
+	fsck_out=/tmp/fsck_out.$$
+	/sbin/fsck ${FSCK_OPTIONS} ${FS_DEV} >$fsck_out 2>&1
+	RC=$?
+	if [ ${RC} -eq 0 -o ${RC} -eq 1 ]; then
+	    ${HAL_LOG_INFO} "${FS_DEV} Filesystem Checks Successful"
+	elif [ ${RC} -gt 1 ]; then
+	    ${HAL_LOG_WARN} -f $fsck_out
+	    # > 1 RC means bad filesystem, so call the recovery script.
+	    ${DO_FS_RECOVERY} ${FS_NAME}
+	    if [ $? -ne 0 ]; then
+		${HAL_LOG_WARN} "Unable to recover FS ${FS_NAME}:${FS_DEV}"
+		${HAL_LOG_WARN} "Filesystem will be unavailable."
+		return 1
+	    fi
+	fi
+    fi
+
+    return 0;
+}
+
+
+#------------------------------------------------------------------------------
+# do_mount_sw_pfs
+#
+# Bring up the PFS mount if we can.  Also do appropriate pre-mount FSCK checks
+# 
+#------------------------------------------------------------------------------
+do_mount_sw_pfs()
+{
+    PFS_DEV=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $2}'`
+
+    if [ "x${PFS_DEV}" != "x" ]; then
+	if [ ! -b /dev/${PFS_DEV} ]; then
+	    ${HAL_LOG_WARN} "Block device for PFS partition not found."
+	    return 1
+	fi
+
+	# check the filesystem before we mount it.
+	#
+	do_check_fs "/dev/${PFS_DEV}" "pfs"
+	if [ $? -ne 0 ]; then
+	    # we couldnt bring this filesystem up, log messages
+	    # are in the check routine.
+	    return 1
+	fi
+
+	mount | grep /proxy
+	if [ $? -ne 0 ]; then
+            PLATFORM=`get_platform`
+            case "${PLATFORM}" in
+                "SH")
+                    mount /dev/${PFS_DEV} /proxy -o defaults,acl,noauto,user_xattr
+                ;;
+                "CMC")
+                    mount /dev/${PFS_DEV} /proxy -o defaults,acl,noauto
+                ;;
+            esac
+
+	    if [ $? -ne 0 ]; then
+		${HAL_LOG_WARN} "Unable to mount PFS /dev/${PFS_DEV} /proxy partition"
+		
+		# try to recovery process.
+		#
+		${DO_FS_RECOVERY} pfs -f
+		return 1
+	    fi
+	fi
+    fi
+
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# check_if_clean_shutdown
+#
+# Check if the shutdown was a clean one
+# We cannot use the file that mgmtd uses at this point
+# cause the file lives on /var and we do not want to 
+# start the RAID array if it was an unclean shutdown
+# In order to workaround this, the superblock on each disk will
+# be updated with a reboot_time=<timestamp>:shutdown when the machine
+# rebooted and reboot_time=<timestamp>:dirty as soon as all the syncs
+# are done.
+# If the latest timestamp on all the drives says dirty
+# then the machine was uncleanly shutdown so we need
+# to do a resync on all the drives
+#
+#------------------------------------------------------------------------------
+check_if_clean_shutdown()
+{
+    # 0 indicates a clean shutdown, 1 indicates an unclean one
+    CLEAN_SHUTDOWN=1
+
+    TIMESTAMP=0
+
+    for line in `/opt/tms/bin/hwtool -q disk=map | \
+                 /bin/grep disk | /bin/grep online | \
+                 /usr/bin/awk '{print $2}'`
+    do 
+        data=`/opt/tms/bin/rvbd_super -g /dev/${line}p1 | /bin/grep reboot_time`
+        if [ $? -eq 0 ]; then
+            DISKTIME=`echo ${data} | /usr/bin/awk -F= '{print $2}' | /usr/bin/awk -F: '{print $1}'`
+            if [ $DISKTIME -gt $TIMESTAMP ]; then
+                TIMESTAMP=$DISKTIME
+                STATE=`echo ${data} | /usr/bin/awk -F= '{print $2}' | /usr/bin/awk -F: '{print $2}'`
+            fi
+        fi
+    done
+
+    if [ ${TIMESTAMP} -eq 0 ]; then
+        # This is most likely an upgrade, assuming it was 
+        # a clean upgrade and move on with mounting drives
+        return 0
+    else
+        if [ "x${STATE}" = "xshutdown" ]; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+
+#------------------------------------------------------------------------------
+# start_sync_on_volumes
+#
+# Start the RAID6 sync on md volumes if needed
+# @params: mdX name for the volume
+# @params: background, 0 = wait for sync to complete, 1 background it
+#
+#------------------------------------------------------------------------------
+start_sync_on_volumes()
+{
+    volume=$1
+    # if background set to 1 then run sync in background
+    # else do a check for sync complete in a loop
+    background=$2
+
+    MD=`/opt/hal/bin/raid/rrdm_tool.py -l | /bin/grep "${volume}" | /usr/bin/awk -F: '{print $2}'`
+
+    echo 100000 > /sys/block/${MD}/md/sync_speed_max
+
+    if [ -f /sys/block/${MD}/md/bitmap/location ]; then
+        /bin/cat /sys/block/${MD}/md/bitmap/location | grep "none" > /dev/null
+        if [ $? != 0 ]; then
+            return 0
+        fi
+    fi
+
+    echo repair > /sys/block/${MD}/md/sync_action
+
+    if [ ${background} = 1 ]; then
+        # Let the sync go on in the background
+        return 0
+    fi
+
+    # now poll for resync to be done
+    while true
+    do
+        sleep 120
+
+        echo "Resync max speed is [`cat /sys/block/${MD}/md/sync_speed_max`]"
+
+        /bin/cat /proc/mdstat | grep -C2 ${MD} 
+        
+        /bin/cat /sys/block/${MD}/md/sync_action | grep "idle" > /dev/null
+        if [ $? == 0 ]
+        then
+            echo "${MD} resync is done"
+            break
+        fi
+    done
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#
+# There is no deinit hardware phase0, since this sets up devices
+# necessary for the system to function properly in linux.
+#
+#------------------------------------------------------------------------------
+init_hardware_phase0()
+{
+
+    # check disk firmware and update if necessary
+    # this must be done before starting any raid arrays.
+    check_disk_fw_updates
+
+    # check to see if we need to act on any hardware upgrades that may 
+    # have failed.
+    if [ "x`supports_hw_upgrades`" = "xtrue" ]; then
+	check_hardware_upgrades_phase0
+    fi
+
+    
+    # get the platform name
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            check_if_clean_shutdown
+            if [ $? -ne 0 ]; then
+                echo "Unclean shutdown detected."
+                echo "Starting file sync, this may take a few hours ..."
+        
+                # on units supporting sw raid, we need to start the raid arrays and fix any that are broken
+                # first we start /var and /swap since those are needed for system boot
+                # 
+                RRDM_SUPPORTED=`${RRDM_TOOL} --supported` 
+                if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+        	    do_start_mgmt_volumes
+                    start_sync_on_volumes "var" 0
+                    start_sync_on_volumes "swap" 0
+                    do_start_specific_rios_volume "shadow"
+                    start_sync_on_volumes "shadow" 0
+                    do_start_specific_rios_volume "data"
+                    start_sync_on_volumes "data" 1
+                fi
+            else
+                do_start_mgmt_volumes
+                do_start_rios_volumes
+            fi
+
+            # Update the SB's to set a flag for data being synched
+            # On normal shutdown the flag will be cleared 
+            # 
+            for line in `/opt/tms/bin/hwtool -q disk=map | \
+                /bin/grep disk | /bin/grep online | \
+                /usr/bin/awk '{print $2}'`
+            do
+                /opt/tms/bin/rvbd_super -a "reboot_time=`date +\"%s\"`:inprogress" /dev/${line}p1
+                if [ $? -ne 0 ]; then
+                    echo "Could not update the SB to indicate MD needs sync"
+                fi
+            done
+            ;;
+        *)
+            RRDM_SUPPORTED=`${RRDM_TOOL} --supported`
+            if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+                do_start_mgmt_volumes
+                do_start_rios_volumes
+                ${RRDM_TOOL} --mount-filesystems
+            fi
+            ;;
+    esac
+    
+    # check to make sure that the BMC is set to power the machine back on
+    # when it is shut down via BMC
+
+    /sbin/ipmitool -v raw 0x34 0x40 0x00 2>&1 | grep "02 05" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then 
+	ipmitool -v raw 0x34 0x40 0x82 0x05 > /dev/null 2>&1
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# detect_mitac_loms -- find the mitac loms on a barramundi or sturgeon.
+#
+# return as a comma separated list of ifindex's..
+#------------------------------------------------------------------------------
+detect_mitac_loms()
+{
+	local n
+	local d
+	local dl
+
+	for n in /sys/class/net/*; do
+		if [ -h $n/device ]; then
+			d=$n/device
+			dl=`readlink $d`
+			dl=`basename $dl`
+			dl=`echo $dl | sed -e 's/^0000://1' -e 's/:.*//1'`
+
+			echo `cat $n/ifindex` `cat $d/vendor` `cat $d/device` `cat $d/subsystem_vendor` `cat $d/subsystem_device` $dl
+		fi
+	done | egrep '(0x8086 0x105e 0x8086 0x125e)|(0x8086 0x105e 0x10f1 0x6631)' | sort -k 6 | awk '{ print $1; }' | tr '\n' ',' | sed 's/,$//1'
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+# For BUG 34685 we add a redundant copy of the RVBD SB on partition 1.
+#
+do_check_update_rvbd_super()
+{
+    local DISK_LIST=`${HWTOOL_PY} -q disk=map | grep disk | grep online | awk '{print $2}'`
+    for DISK in ${DISK_LIST}; do
+        if [ "x${DISK}" != "x" ]; then
+            # this will perform any necessary redundancy updates to 
+            # the SB's on the disks
+            #
+            /opt/tms/bin/rvbd_super -rupdate /dev/${DISK}p1
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_NOTICE} "Unable to update SB on ${DISK}p1"
+            fi
+        fi
+    done
+}
+
+init_hardware_phase1()
+{
+    check_kernel_options
+
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    initialize_scsi
+    
+    # check each disks RVBD SB to see if we need to update it
+    #
+    do_check_update_rvbd_super
+
+    # get the platform name
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "SH"|"FG"|"IB"|"DD"|"BGL"|"CMC"|"GW"|"CB"|"EVA"|"DVA")
+            if [ "x${PLATFORM}" = "xCMC" ]; then
+                FLASH_SUP=`uses_flash_disk`
+                if [ "${FLASH_SUP}" = "true" ]; then
+                    mount_flash_disk
+                fi
+            fi
+            # get the model
+            MODEL=`get_model`
+
+            # set drive parameters.
+            case "${MODEL}" in
+                "520"|"1020"|"1520"|"8000"|"8500")
+                    /sbin/hdparm -a 16 /dev/sda > /dev/null 2>&1
+                    ;;
+                "2020")
+                    /sbin/hdparm -a 16 /dev/sda > /dev/null 2>&1
+                    /sbin/hdparm -a 16 /dev/sdb > /dev/null 2>&1
+                    ;;
+
+            esac
+
+	    # hooks for sw raided models.
+	    # set up the pfs partition
+	    # also, those routines will do the right pfs recovery as appropriate
+	    #
+            # Skip the 1050H since its a special case of an raid we're not
+            # supporting with the new tools.
+	    #
+	    RRDM_SUPPORTED=`${RRDM_TOOL} --supported`
+	    if [ "x${RRDM_SUPPORTED}" = "xTrue" -a "x${MODEL}" != "x1050H" ]; then
+    		${HAL_LOG_INFO} "Model [${MODEL}] supports sw raid, doing raid specific setup."
+
+                case "${PLATFORM}" in
+                    "FG"|"IB"|"DD"|"BGL"|"GW")
+                        ;;
+                    *)
+		        if [ ! -f /var/opt/rbt/.samba_ready ]; then
+		            echo "Initializing PFS Samba Partition"
+			    do_make_sw_pfs
+		        fi
+
+		        do_mount_sw_pfs
+                        ;;
+                esac
+            elif [ "x${MODEL}" = "x1050H" ]; then
+                    HAL_1050H_SH="/opt/hal/bin/mitac/hal_1050H.sh"
+                    if [ ! -f ${HAL_1050H_SH} ]; then 
+                        ${HAL_LOG_WARN} "HAL_1050H script missing."
+                    else
+                        # grab functions from the script.
+                        . ${HAL_1050H_SH}
+
+                        # check to see if the second system disk for 1050H is blank
+                        # and do necessary recovery steps 
+                        hal_1050H_disk_check
+
+ 		        if [ ! -f /var/opt/rbt/.samba_ready ]; then
+			    echo "Initializing PFS Samba Partition"
+                            hal_1050H_raid_prep
+
+                            touch /var/opt/rbt/.samba_ready
+	    fi
+
+                        hal_1050H_raid_start
+                    fi
+	    fi
+
+            # this is here because we shipped some DELL boxes with smart turned
+            # on so this is to make sure we turn it off
+            chkconfig --del smartd > /dev/null 2>&1
+
+            # initialize samba partition if it's not ready yet
+	    # only for old units, on Mitac units, the pfs part is formatted and 
+	    # configured above.
+	    #
+            if [ ! -f /var/opt/rbt/.samba_ready ]; then
+                case "${MODEL}" in
+                    "520"|"1020"|"1520")
+			/sbin/mke2fs -b 4096 -q -O ^resize_inode -L SMB -j /dev/sda11
+                        cat >> /etc/fstab <<EOF
+/dev/sda11	/proxy	ext3	defaults,acl,noauto,user_xattr	0	0
+EOF
+			touch /var/opt/rbt/.samba_ready
+                        ;;
+                    "2020")
+			hal_2020_raid_prep
+                        ;;
+                esac
+            fi
+
+            # prepare samba partition
+            case "${MODEL}" in
+                "520"|"1020"|"1520")
+                    /bin/mount /dev/sda11 > /dev/null 2>&1
+                    ;;
+                "2020")
+		    hal_2020_raid_start
+		    ;;
+            esac
+
+            RRDM_USES_SWRAID=`${RRDM_TOOL} --uses-sw-raid`
+            if [ "x${RRDM_USES_SWRAID}" = "xTrue" ]; then
+                /sbin/raidcheck.sh & > /dev/null 2>&1
+		# Start the mdadm --monitor daemon to monitor raid rebuilds
+		/sbin/mdadm --monitor --scan -p /sbin/raid_rebuild.sh -f
+            fi
+
+            if [ "${MODEL}" = "2020" ]; then
+                # On 2020 units there isnt enough disk space for the sysdumps
+                # so we are mounting /dev/sdb8 onto the /var/opt/tms/snapshots
+                # directory to give the sysdumps a full 6GB of space.
+                #
+                if [ ! -f /var/opt/rbt/.sdb8_ready -o ! -f /var/opt/rbt/.sdb8_ready_rerun ]; then
+                    rbt_2020_var_fix "/var/opt/tms/snapshots" "/dev/sdb8"
+                else
+                    mount /dev/sdb8 /var/opt/tms/snapshots > /dev/null 2>&1
+                fi
+            fi
+
+	    MOBO=`get_motherboard`
+	    if [ ${MOBO:0:9} = "400-00100" ]; then
+		modprobe mitac_wdt platform=1 > /dev/null 2>&1
+		modprobe bypass_mitac if_indecies=`detect_mitac_loms` > /dev/null 2>&1
+                ${LED_CTL} & 
+	    elif [ ${MOBO:0:9} = "400-00300" ]; then
+		modprobe mitac_wdt platform=3 > /dev/null 2>&1
+		modprobe bypass_mitac if_indecies=`detect_mitac_loms` > /dev/null 2>&1
+                ${LED_CTL} &
+	    fi
+
+	    ;;
+    esac
+
+    
+    if [ "x`supports_hw_upgrades`" = "xtrue" ]; then
+	check_hardware_upgrades_phase1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# get_controller_ver
+#------------------------------------------------------------------------------
+
+get_controller_ver()
+{
+    display=$1
+    echo "Unsupported on this platform."
+}
+
+###############################################################################
+# get_ipmi_ver
+# 
+# Returns key value pairs indicating the major/minor IPMI fw and
+# sdr versions.
+# also the IPMI version (2.0)
+#
+###############################################################################
+get_ipmi_ver()
+{
+    MOBO=`get_motherboard`
+
+    display=$1    
+    IPMIVER=`ipmitool mc info | grep "IPMI Version" | awk -F ": " '{print $2}'`
+    if [ $? -ne 0 ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the IPMI version"
+        else
+            echo "Could not find out the IPMI version"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "IPMI Firmware Version is [${IPMIVER}]"
+        else            
+            echo "ipmi_ver=${IPMIVER}"
+        fi
+        IPMIFW=`ipmitool mc info | grep "Firmware Revision" | awk -F ": " '{print $2}'`
+        if [ "${IPMIFW}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI Firmware revision is [${IPMIFW}]"
+            else
+                echo "ipmi_fw_min_rev=${IPMIFW}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI firmware revision."
+            else
+                echo "Could not find out the IPMI firmware revision."
+            fi
+        fi
+        IPMI_FW_MAJ=`ipmitool mc info | grep "Product ID" | awk -F ": " '{print $2}' | awk '{print $1}'`
+        if [ "${IPMI_FW_MAJ}" != "" ]; then
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_INFO} "IPMI Product ID is [${IPMI_FW_MAJ}]"
+            else
+                echo "ipmi_fw_maj_rev=${IPMI_FW_MAJ}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI Product ID."
+            else
+                echo "Could not find out the IPMI Product ID."
+            fi
+        fi
+        # IPMI FW of 0.17 means that the fw download has failed and the fw 
+        # has been corrupted .. we won't be able to get the SDR file info
+        # we'll assume a base revision, and reflash to make sure its ok.
+        if [ "x${IPMIFW}" = "x0.17" ]; then
+             echo "ipmi_sdr_maj_ver=6631"
+             echo "ipmi_sdr_min_ver=8"
+            return
+        fi
+
+        # there is a special SDR entry mcloc, which indicates the SDR
+        # version
+        IPMISDR=`ipmitool sdr list mcloc | awk '{print $1}'`
+        if [ "x${IPMISDR}" != "x" ]; then
+            if [ "x${IPMISDR}" = "xBMCSDR" ]; then
+                # the initial version of the SDR list did not   
+                # ahve the version information inside. (it was rev 08)
+                case "x${MOBO}" in
+                    x400-00100*)
+                        echo "ipmi_sdr_maj_ver=6631"
+                        echo "ipmi_sdr_min_ver=8"
+                    ;;
+                    x400-00300*)
+                        # all the sturgeon SDR files should be correct, but
+                        # since we ga'd with 08, i'll include it as the base
+                        # revision if we see a SDR file with an unset value.
+                        echo "ipmi_sdr_maj_ver=6673"
+                        echo "ipmi_sdr_min_ver=8"
+                    ;;
+                esac
+                return
+
+            else
+                # strip out the version strings.
+                IPMI_SDR_MAJ=`echo "${IPMISDR}" | awk '{print $1}' | awk -F "-" '{print $1}'`
+                IPMI_SDR_MIN=`echo "${IPMISDR}" | awk '{print $1}' | awk -F "-" '{print $2}' | tr -d "a-zA-Z"`
+                echo "ipmi_sdr_maj_ver=${IPMI_SDR_MAJ}"
+                echo "ipmi_sdr_min_ver=${IPMI_SDR_MIN}"
+            fi
+        else
+            if [ $display -eq 0 ]; then
+                ${HAL_LOG_WARN} "Could not find out the IPMI SDR version."
+            else
+                echo "Could not find out the IPMI SDR version."
+            fi
+        fi
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# get_bios_ver
+#------------------------------------------------------------------------------
+
+get_bios_ver()
+{
+    display=$1
+    BIOSVER=`dmidecode | grep -A 5 "BIOS Information" | grep "Version: " | awk -F ": " '{print $2}'`
+    BIOSVER="$(echo $BIOSVER | sed 's/ //')"
+    if [ "${BIOSVER}" != "" ]; then
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_INFO} "BIOS version is [${BIOSVER}]"
+        else
+            echo "bios_ver=${BIOSVER}"
+        fi
+    else
+        if [ $display -eq 0 ]; then
+            ${HAL_LOG_WARN} "Could not find out the BIOS version."
+        else
+            echo "Could not find out the BIOS version."
+        fi
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# reset_secure_vault_to_var
+# This function will move the secure vault encrypted files back to
+# the /var/ partition instead of /config. CMC's don't have a big enough
+# flash to support 2000 appliances worth of SSL data
+#------------------------------------------------------------------------------
+
+reset_secure_vault_to_var()
+{
+    if [ ! -f /var/opt/rbt/.moved_vault_to_var ]; then
+        # If the /var/opt/rbt/encrypted is a symlink, that means
+        # the encrypted partition is on config and we need to reset it to /var
+        # if not, but we still hit this path, it means somehow the 
+        # /var/opt/rbt/.moved_vault_to_var was removed, we should not do 
+        # anything as the secure vault was moved onto var before, its just that the 
+        # file got deleted. Touch the /var/opt/rbt/.moved_vault_to_var file 
+        # so that we don't come here
+        # again on subsequent reboots.
+        # On the other hand, if its a symlink, that means we need to
+        # move the /config/rbt/encrypted directory onto /var/opt/rbt 
+        # cause the CMC config partition isn't big enough for the 
+        # secure vault to be on there
+        if [ -L /var/opt/rbt/encrypted ]; then
+            # Remove the symlink in /var/opt/rbt/bin and make a directory
+            /bin/rm -rf /var/opt/rbt/encrypted > /dev/null 2>&1
+ 
+            # Move the files over from the /config partition
+            /bin/mv /config/rbt/encrypted /var/opt/rbt > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Could not move/config/rbt/encrypted to /var/opt/rbt/encrypted"
+                return 1
+            fi
+        fi
+
+        # set the encrypted store moved file
+        touch /var/opt/rbt/.moved_vault_to_var
+    fi
+
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    MOBO=`get_motherboard`
+
+    # set the labels in the ecc driver.
+    do_ecc_modules "load"
+    set_ecc_csrow_labels
+
+    rm -f /dev/watchdog
+
+    # on startup read disk power cycle count values from smart and
+    # put the current values and previous values into syslog
+    DISK_LIST=`/opt/hal/bin/hwtool.py -q disk=map | grep disk | grep -v missing | awk '{print $3}'`
+    collect_disk_smart_power_stats "${DISK_LIST}"
+
+    PLATFORM=`get_platform`
+    if [ "x${PLATFORM}" = "xSH" ]; then
+    case "x${MOBO}" in
+	# do PFS fixup and move the pfs config files to flash.
+	# also pfs doesnt set any files in that directory during manuf,
+	# but just in case copy the active files over to the config partition.
+	#
+	x400-00100*|x400-00300*)
+	    if [ ! -d /config/rcu/backup ]; then
+		mkdir -p -m 0755 /config/rcu/backup
+	    fi
+
+	    if [ ! -h /var/opt/rcu ]; then
+		# move rcu to config since we're not a symlink
+		    # and we don't have any configs on flash already.
+		cp -rf /var/opt/rcu/* /config/rcu
+		rm -rf /var/opt/rcu
+
+		ln -s /config/rcu /var/opt/rcu
+		if [ $? -ne 0 ]; then
+		    ${HAL_LOG_WARN} "Unable to link /var/opt/rcu to /config."
+	    fi
+            fi 
+
+	    if [ ! -h /var/samba ]; then
+		DIR_OK=1
+		if [ ! -d /config/samba ]; then
+		    mkdir /config/samba
+		    if [ $? -ne 0 ]; then
+			DIR_OK=0
+		    fi
+		fi
+
+		# if everything is ok and we're not a symlink try to move
+		# to flash.
+		
+		if [ ${DIR_OK} -eq 1 ]; then
+		    # move /var/samba to config since its not a symlink
+		    # and not already copied to flash.
+                cp -rf /var/samba/* /config/samba
+                rm -rf /var/samba
+
+		ln -s /config/samba /var/samba
+		if [ $? -ne 0 ]; then
+		    ${HAL_LOG_WARN} "Unable to link /var/samba to /config/samba."
+		fi
+	    fi
+            fi
+	;;
+	*)
+	;;
+    esac
+    fi
+
+    case "${MOBO}" in
+        400-00100*|400-00300*)
+            ${MODPROBE} ipmi_msghandler > /dev/null 2>&1
+            ${MODPROBE} ipmi_si kipmid_max_busy_us=800 > /dev/null 2>&1
+            ${MODPROBE} i2c_i801 > /dev/null 2>&1
+            ${MODPROBE} i2c_dev > /dev/null 2>&1
+            ${MODPROBE} ipmi_watchdog > /dev/null 2>&1
+
+            # Check to make sure that the nmi_watchdog is disabled
+            cat /proc/cmdline |grep "nmi_watchdog=0" > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                # Additional settings for the ipmi watchdog
+                # Currently only enabled for sturgeon and barramundi boxes
+                if [ -f /var/opt/rbt/.nmi_disable ]; then
+                    set_nmi_wdt_sysfs_nodes "disabled"
+                else
+                    set_nmi_wdt_sysfs_nodes "enabled"
+                fi
+            else
+                ${HAL_LOG_WARN} "Internal error, unable to disable NMI Watchdog, contact Riverbed support"
+            fi
+
+            [ ! -e /dev/watchdog ] && mknod /dev/watchdog c 10 130
+	    if [ $? -ne 0 -a ! -c /dev/watchdog ]; then
+		${HAL_LOG_WARN} "Unable to create watchdog device, hardware watchdog will be unavailable"
+	    fi
+
+            ${MODPROBE} ipmi_devintf > /dev/null 2>&1
+            DEVMAJOR=$(cat /proc/devices | grep ipmidev | sed 's/ipmidev//')
+            if [ -c /dev/ipmi0 ]; then
+                rm -f /dev/ipmi0
+            fi
+            [ ! -e /dev/ipmi0 ] && /bin/mknod /dev/ipmi0 c $DEVMAJOR 0
+	    if [ $? -ne 0 ]; then
+		${HAL_LOG_WARN} "Unable to create ipmi device, ipmi interface will be unavailable."
+	    fi
+
+            if [ ${MOBO:0:9} = "400-00100" ]; then
+                get_ipmi_ver 0
+                get_bios_ver 0
+            fi
+
+            /sbin/update_eeprom.py
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Problem while updating serial in EEPROM"
+            fi
+
+            if [ ! -f ${MDDBREQ} ]; then
+                ${HAL_LOG_WARN} "$MDDBREQ not installed.  Can't determine if fts machine."
+            else
+                FTS_FLAG=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/fts`
+                if [ $? != 0 ]; then
+                    ${HAL_LOG_WARN} "Failed to determine if fts machine."
+                else
+                    if [ "x${FTS_FLAG}" == "xtrue" ]; then
+                        /opt/tms/bin/hald_fts &
+                        /opt/hal/bin/raid/write_sb_data.py &
+                    fi
+                fi
+            fi
+            ;;
+        *)
+            echo "Unknown motherboard."
+            exit 1
+            ;;
+    esac
+    case "${MOBO}" in
+        400-00100*)
+	    #use intel coretemp mod on barramundisxx
+	    ${MODPROBE} coretemp > /dev/null 2>&1
+	    ;;
+	*)
+	    ;;
+    esac
+    case "${MOBO}" in
+        400-00100*|400-00300*)
+            ${MODPROBE} ipmisensors > /dev/null 2>&1
+            ;;
+    esac
+
+    if [ ! -f "/var/opt/rbt/no-temperature-logging" ]; then
+        /opt/hal/bin/sensors/start-temperature-logging.sh
+    fi
+
+    if [ "x${PLATFORM}" = "xSH" ]; then
+	init_10G_silicom
+    fi
+
+    if [ "x${PLATFORM}" = "xCMC" ]; then
+        case "${MOBO}" in
+            400-00100*)
+                touch / 2>/dev/null
+                READ_ONLY_ROOT=$?
+
+                [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,rw
+
+                reset_secure_vault_to_var
+                if [ $? -ne 0 ]; then
+                    ${HAL_LOG_WARN} "Failed to reset the secure vault back to /var partition"
+                fi
+
+                [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,ro
+                ;;
+            *)
+                ;;
+        esac
+    fi
+
+    if [ "x${PLATFORM}" = "xCB" ]; then
+        touch / 2>/dev/null
+        READ_ONLY_ROOT=$?
+        
+        [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,rw
+        
+        reset_secure_vault_to_var
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Failed to reset the secure vault back to /var partition"
+        fi
+        
+        [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,ro
+    fi
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "GW"|"CMC")
+            return
+        ;;
+        "SH"|"FG"|"IB"|"DD"|"BGL")
+            MODEL=`get_model`
+
+            # deinitialize samba
+            case "${MODEL}" in
+                "520"|"1020"|"1520")
+                    /bin/umount /dev/sda11 > /dev/null 2>&1
+                    ;;
+                "2020")
+                    /bin/umount /dev/md1 > /dev/null 2>&1
+                        /sbin/mdadm --stop /dev/md1 > /dev/null 2>&1
+                    ;;
+		"3030")
+		    /bin/umount /proxy > /dev/null 2>&1
+		    ;;
+            esac
+
+            # Disable FTS code on relevant models
+            if [ ! -f ${MDDBREQ} ]; then
+                ${HAL_LOG_WARN} "$MDDBREQ not installed.  Can't determine if fts machine."
+            else
+                FTS_FLAG=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/fts`
+                if [ $? != 0 ]; then
+                    ${HAL_LOG_WARN} "Failed to determine if fts machine."
+                else
+                    if [ "x${FTS_FLAG}" == "xtrue" ]; then
+                        killall hald_fts
+                        killall write_sb_data.py
+                    fi
+                fi
+            fi
+	    # Kill LED control script
+	    killall led_ctl.sh
+    esac    
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    MOBO=`get_motherboard`
+
+    rm -f /dev/watchdog
+    do_ecc_modules "unload"
+
+    case "${MOBO}" in
+        400-00100*|400-00300*)
+            # Some modules may not exist, but since we are redirecting error
+            # to /dev/null who cares. I don't want to change the ordering.
+            # If its a problem, I will just split the case statement
+            ${RMMOD} ipmi_devintf > /dev/null 2>&1
+            ${RMMOD} ipmi_watchdog > /dev/null 2>&1
+            ${RMMOD} w83793 > /dev/null 2>&1
+            ${RMMOD} i2c_ipmi > /dev/null 2>&1          
+            ${RMMOD} ipmisensors > /dev/null 2>&1          
+            ${RMMOD} bypass_mitac > /dev/null 2>&1
+            ${RMMOD} mitac_wdt > /dev/null 2>&1
+            ${RMMOD} mitac_ipmi > /dev/null 2>&1        # 400-00100 only
+            ${RMMOD} ipmi_si > /dev/null 2>&1
+            ${RMMOD} ipmi_msghandler > /dev/null 2>&1
+            ${RMMOD} i2c-dev > /dev/null 2>&1
+            ${RMMOD} i2c_i801 > /dev/null 2>&1
+            ${RMMOD} i2c_nforce2 > /dev/null 2>&1       # 400-00300 only
+            ${RMMOD} i2c-core > /dev/null 2>&1
+            ;;
+        *)
+            echo "Unknown motherboard."
+            exit 1
+            ;;
+    esac
+    case "${MOBO}" in
+        400-00100*)
+            ${RMMOD} coretemp > /dev/null 2>&1
+	    ;;
+	*)
+	    ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    RRDM_SUPPORTED=`${RRDM_TOOL} --uses-sw-raid`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "unable to determine if unit uses sw raid."
+	${HAL_LOG_WARN} "Raid status and alarms will be unavailable."
+    echo "0"
+	return
+    fi
+
+    if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+	# mgmt is only hooked up to support 1 raid array 
+	# so we report one, and the rrdm_tool, presents all the 
+	# different arrays as a single array of disks
+	# when asking for disk status.
+	echo "1"
+	return
+    fi
+
+    # no raid arrays.
+    echo "0"
+}
+
+#-------------------------------------------------------------------------------
+# show_raid_diagram
+#
+# draws the picture of the front drive bays.
+#-------------------------------------------------------------------------------
+
+show_raid_diagram()
+{
+	MOBO=`get_motherboard`
+	OUTPUT=`${RRDM_TOOL} -s /disk`
+	if [ $? -ne 0 -o "x${OUTPUT}" = "x" ]; then
+		${HAL_LOG_WARN} "no raid output or status returned from rrdm_tool"
+		exit 1
+	fi
+
+	case "x${MOBO}" in 
+		"x400-00100-01")
+			draw_drive_row 0 3 "${OUTPUT}"
+		;;
+		"x400-00300-01")
+			draw_drive_row 0 3 "${OUTPUT}"
+			draw_drive_row 4 7 "${OUTPUT}"
+			draw_drive_row 8 11 "${OUTPUT}"
+			draw_drive_row 12 15 "${OUTPUT}"
+		;;
+                "x400-00300-10")
+			draw_drive_row 30 31 "${OUTPUT}"
+			draw_drive_row 25 29 "${OUTPUT}"
+			draw_drive_row 20 24 "${OUTPUT}"
+			draw_drive_row 15 19 "${OUTPUT}"
+			draw_drive_row 10 14 "${OUTPUT}"
+			draw_drive_row 5 9 "${OUTPUT}"
+			draw_drive_row 0 4 "${OUTPUT}"
+                ;;
+		*)
+		 ${HAL_LOG_WARN} "show raid diagram is not supported on [${MOBO}]"
+		exit 1
+		;;
+	esac
+}
+
+HAL_PY='/opt/hal/bin/hal.py'
+
+#------------------------------------------------------------------------------
+# show_raid_config
+#------------------------------------------------------------------------------
+
+show_raid_config()
+{
+    ${HAL_PY} show_raid_config
+}
+#------------------------------------------------------------------------------
+# show_raid_info
+#------------------------------------------------------------------------------
+
+show_raid_info()
+{
+    ${HAL_PY} show_raid_info
+
+}
+
+show_raid_info_detail()
+{
+    ${HAL_PY} show_raid_info_detail
+}
+
+show_raid_config_detail()
+{
+    ${HAL_PY} show_raid_config_detail
+}
+
+#------------------------------------------------------------------------------
+# show_raid_physical
+#------------------------------------------------------------------------------
+
+show_raid_physical()
+{
+    ${HAL_PY} show_raid_physical
+}
+
+#------------------------------------------------------------------------------
+# raid_card_vendor
+#------------------------------------------------------------------------------
+
+raid_card_vendor()
+{
+    ${HAL_PY} raid_card_vendor
+}
+
+
+#------------------------------------------------------------------------------
+# get_raid_status
+#------------------------------------------------------------------------------
+
+get_raid_status()
+{
+    MODEL=`get_model`
+    RRDM_USES_RAID=`${RRDM_TOOL} --uses-sw-raid`
+    if [ "x${RRDM_USES_RAID}" = "xTrue" ]; then
+	# use rrdm tool's output to directly display disk status
+	# mgmt expects spaces and not tabs though, so use spaces.
+	${RRDM_TOOL} -s /mgmt
+	if [ $? -ne 0 ]; then
+	    ${HAL_LOG_WARN} "Unable to read disk/raid status."
+	fi
+    fi
+}
+
+#------------------------------------------------------------------------------
+# raid_card_vendor
+#------------------------------------------------------------------------------
+
+raid_card_vendor()
+{
+    echo "None"
+}
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    MOBO=`get_motherboard`
+
+    FILE=
+    case "${MOBO}" in
+        400-00100*)
+            FILE=/sys/devices/platform/ipmi_bmc.19e7.32/temp9_input
+            ;;
+
+        400-00300*)
+	    # This addresses bug #47207 - The removal of i2c_nforce2 on 3U
+	    # causes the i2c adapter number to be shifted from 4-0000 to
+	    # 0-0000. That causes a hardcoded path to 4-0000 to break. We now
+	    # loop through the directory and find the name file (exposed by
+	    # all drivers) and read it to make sure that we are dealing with
+	    # the bmc driver.
+		for f in "/sys/bus/platform/devices/*"
+		do
+			# Find if the "name" file exists
+			if [ -f $f/name ]; then
+				NAME_OUT=`cat $f/name`
+				# Check if the name is "bmc"
+				if [ "$NAME_OUT" == "bmc" ]; then
+                                        for LABELFILE in $f/temp*_label
+                                        do
+                                             LABELNAME=`cat $LABELFILE`
+                                             if [ "x${LABELNAME}" = "xCPU0 Temp" ]; then
+                                                 INDEX=`echo ${LABELFILE} | awk -F '/' '{print $7}' | tr -d "a-z_"`
+					         FILE=$f/temp${INDEX}_input
+                                             fi
+                                        done
+				fi
+			fi
+		done
+            ;;
+    esac
+
+    if [ "x${FILE}" = "x" ]; then
+        ${HAL_LOG_WARN} "HAL - unknown motherboard returned from hwtool in get_temperature"
+        echo "Unknown motherboard."
+        exit 1
+    fi
+
+    if [ ! -f ${FILE} ]; then
+        ${HAL_LOG_WARN} "HAL - no driver file for temperature output in get_temperature"
+        echo "Cannot find sensor information."
+        exit 1
+    fi
+
+    TEMPERATURE=`cat ${FILE}`
+
+    if [ "x${TEMPERATURE}" = "x" -o ${TEMPERATURE} -lt 0 -o ${TEMPERATURE} -ge 127000 ]; then
+        ${HAL_LOG_WARN} "HAL - invalid temperature value read (${TEMPERATURE}) in get_temperature"
+        echo "Bad temperature read."
+        exit 1
+    fi
+
+    echo `expr ${TEMPERATURE} "/" 1000`
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# get_power_supply_status
+#------------------------------------------------------------------------------
+
+get_power_supply_status()
+{
+    MOBO=`get_motherboard`
+    status=`ipmitool raw 0x6 0x52 0x7 0x3E 0x1 0x0`
+    case "${MOBO}" in
+        400-00100*)
+            case "$status" in
+                " 1c"|" 13")
+		    # single power supply
+                    single_power_supply_status
+                    ;;
+                " 18"|" 12")
+		    # one power supply offline
+                    echo "redundant failed"
+                    save_dual_power_supply
+                    ;;
+                " 10")
+		    # two power supplies
+                    echo "redundant online"
+                    save_dual_power_supply
+                    ;;
+                *)
+                    echo "power supply status error"
+                    ;;
+            esac
+            ;;
+        400-00300*)
+            case "$status" in
+                " 3c"|" 33")
+                    echo "redundant offline"
+                    ;;
+                " 38"|" 32")
+                    echo "redundant failed"
+                    ;;
+                " 30")
+                    echo "redundant online"
+                    ;;
+                *)
+                    echo "power supply status error"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# single_power_supply_status 
+#------------------------------------------------------------------------------
+
+single_power_supply_status()
+{
+    # determine if running on a single power supply is ok or to be reported
+    # as a power supply redundancy failure.  2050's always report a single
+    # power supply as a failure, while 1050's only will if a 2nd power supply
+    # has ever been installed in the past.
+    MODEL=`get_model`
+    case "$MODEL" in
+        "1050L"|"1050M"|"1050H"|"1050_LR"|"1050_MR"|"1050_HR")
+	    REQUIRES_REDUNDANCY=`check_dual_power_supply`
+            ;;
+        "2050L"|"2050M"|"2050H")
+            REQUIRES_REDUNDANCY="true"
+            ;;
+        *)
+	    REQUIRES_REDUNDANCY="false"
+            ;;
+    esac
+    if [ $REQUIRES_REDUNDANCY = "true" ]; then
+        echo "redundant failed"
+    else
+        echo "redundant offline"
+    fi
+}
+
+PSU_REDUNDANT="/var/opt/rbt/.psu_redundant"
+
+#------------------------------------------------------------------------------
+# check_dual_power_supply
+#------------------------------------------------------------------------------
+
+check_dual_power_supply()
+{
+    # used for 1050's where running on a single power supply should only 
+    # alarm if this specific 1050 has had a 2nd power supply installed
+    # in the past
+    #
+    # echo true if redundant power supplies, echo false if single is fine
+    if [ -f ${PSU_REDUNDANT} ]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# save_dual_power_supply
+#------------------------------------------------------------------------------
+
+save_dual_power_supply()
+{
+    # save the fact we have seen 2 power supplies for future reference
+    if [ ! -f ${PSU_REDUNDANT} ]; then
+        touch ${PSU_REDUNDANT}
+    fi
+}
+
+#------------------------------------------------------------------------------
+# clear_psu_redundancy_requirement
+#------------------------------------------------------------------------------
+
+clear_psu_redundancy_requirement()
+{
+    if [ -f ${PSU_REDUNDANT} ]; then
+        rm -f ${PSU_REDUNDANT}
+    fi
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# get_usb_device
+#------------------------------------------------------------------------------
+
+get_usb_device()
+{
+    MODEL=`get_model`
+    case "${MODEL}" in
+	#FIXME this is more complicated, since the flash is on USB
+	*)
+            echo ""
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_usb_id
+#------------------------------------------------------------------------------
+
+get_usb_id()
+{
+    MODEL=`get_model`
+    case "${MODEL}" in
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# ECC Support HAL routines
+# Needed for figuring out which errors come from what chips
+# on what mainboards
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+get_ecc_ram_support()
+{
+
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#
+# Params0 - Type (ce/ue)
+# Params1 - row
+# Params2 - channel
+#
+get_ecc_csrow_error()
+{
+    TYPE=$1;
+    ROW=$2;
+    CHANNEL=$3;
+    MC=$4
+
+    if [ ${TYPE} = "ce" ]; then
+
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_${TYPE}_count;
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    else
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ue_count
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    fi
+
+    cat ${EPATH}
+}
+
+#
+# given a type/row/channel/mc get the label
+# for ue errors we don't know channel info so report both channels
+#
+get_ecc_csrow_label()
+{
+    TYPE=$1
+    ROW=$2
+    CHANNEL=$3
+    MC=$4
+
+    if [ ! -e /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label ]; then
+		echo ""
+        return;
+    fi
+
+    RESULT=`cat /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label`
+    if [ ${#RESULT} ]; then 
+        echo " ${RESULT}"
+    else
+        echo " NO_LABEL"
+    fi
+}
+
+
+# Returns a list of available ECC memory controllers
+get_ecc_mc_list()
+{
+    for mc in "/sys/devices/system/edac/mc/mc?"
+    do
+        echo -n ${mc} | sed 's/\/sys\/devices\/system\/edac\/mc\/mc\([0-9]\)/\1/g'
+    done
+}
+
+
+# Returns a csv seperated list of errors for the particular error
+# type and mc/csrow/channel
+#
+# Param0 type (ce/ue)
+#
+get_ecc_error_list()
+{
+    TYPE=$1;
+    CHANNEL_LIST="0 1"
+    MC_LIST=`get_ecc_mc_list`
+
+    for MC in ${MC_LIST}; do
+        for ROW in "0" "1" "2" "3" "4" "5" "6" "7"; do
+            for CHANNEL in ${CHANNEL_LIST}; do
+                ERRCNT=`get_ecc_csrow_error $TYPE $ROW $CHANNEL ${MC}`
+                if [ $ERRCNT = "Unsupported" ]; then
+                    continue
+                fi
+                if [ $ERRCNT -gt 0 ]; then
+                    get_ecc_csrow_label $TYPE $ROW $CHANNEL ${MC}
+                fi
+            done
+        done
+    done
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_status
+#------------------------------------------------------------------------------
+get_ecc_ram_status()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        CE_COUNT=`get_ecc_ram_count "ce"`;
+
+        if [ ${CE_COUNT} -gt 0 ]; then
+            CECHIPLIST=`get_ecc_error_list "ce" | sort -b -u | tr "\n" ","`
+            CELEN=${#CECHIPLIST}
+            if [ $CELEN -le 1 ]; then
+                   CELEN=2
+            fi
+            echo "CE ${CE_COUNT} ${CECHIPLIST:1:$[$CELEN-2]}"
+        else
+            echo "CE 0 NONE"
+        fi
+
+        if [ ${UE_COUNT} -gt 0 ]; then
+            UECHIPLIST=`get_ecc_error_list "ue" | sort -b -u | tr "\n" ","`
+            UELEN=${#UECHIPLIST}
+            if [ $UELEN -le 1 ]; then
+                    UELEN=2
+            fi
+            echo "UE ${UE_COUNT} ${UECHIPLIST:1:$[$UELEN-2]}"
+        else
+            echo "UE 0 NONE"
+        fi
+
+    else
+        echo "Hardware does not support ECC."
+    fi
+}
+
+#-----------------------------------------------------------------------------
+#  get_ecc_ram_count
+#-----------------------------------------------------------------------------
+get_ecc_ram_count()
+{
+    TYPE=$1
+    MC_LIST=`get_ecc_mc_list`
+
+    ERR_COUNT=0;
+
+    for MC in ${MC_LIST}; do
+       ERR_COUNT=$[${ERR_COUNT}+`cat /sys/devices/system/edac/mc/mc${MC}/${TYPE}_count`];
+    done
+
+    echo ${ERR_COUNT}
+}
+
+CE_ERR_FILE=/var/tmp/ce_info
+
+create_ce_info_file()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" -a "${PLATFORM}" != "CMC" -a "${PLATFORM}" != "GW" ]; then
+        echo "Not implemented"
+        return
+    fi
+
+    echo "CE_DATE=$1" > ${CE_ERR_FILE}
+    echo "CE_COUNT=$2" >> ${CE_ERR_FILE}
+    echo "PENDING_CE=$3" >> ${CE_ERR_FILE}
+    echo "CURRENT_CE=$4" >> ${CE_ERR_FILE}
+}
+
+check_ce_info()
+{
+	CUR_COUNT="$1"
+	DATE=`date +%s`
+
+	if [ ! -f ${CE_ERR_FILE} ]; then
+		create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+	fi
+
+	CUR_ALARM=`cat ${CE_ERR_FILE} | grep CURRENT_CE= | sed 's/CURRENT_CE=//'`
+	LAST_UPDATED=`cat ${CE_ERR_FILE} | grep CE_DATE= | sed 's/CE_DATE=//'`
+	PENDING_ALARM=`cat ${CE_ERR_FILE} | grep PENDING_CE= | sed 's/PENDING_CE=//'`
+	LAST_COUNT=`cat ${CE_ERR_FILE} | grep CE_COUNT= | sed 's/CE_COUNT=//'`
+
+
+	if [ "${CUR_ALARM}" = "" -o "${LAST_UPDATED}" = "" -o "${PENDING_ALARM}" = "" -o "${LAST_COUNT}" = "" ]; then
+		# internal error . history is corrupt reset to defaults
+		create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+		LAST_COUNT=0
+		PENDING_ALARM=0
+		CUR_ALARM=0
+	fi
+
+	TIME_INT=$[ ${DATE} - ${LAST_UPDATED} ];
+	if [ ${TIME_INT} -le 90 ]; then
+		# return the current alarm state
+		return ${CUR_ALARM};
+	fi
+
+	COUNT_DELTA=$[ ${CUR_COUNT} - ${LAST_COUNT} ];
+
+	STATE="$PENDING_ALARM$CUR_ALARM"
+
+	if [ ${COUNT_DELTA} -gt 3 ]; then
+		case "$STATE" in
+			"00")
+				create_ce_info_file "$DATE" "$CUR_COUNT" "1" "0"
+				return 0;
+			;;
+			"01"|"10"|"11")
+				create_ce_info_file "$DATE" "$CUR_COUNT" "1" "1"
+				return 1;
+			;;
+		esac
+	else
+                case "$STATE" in
+                        "00"|"01"|"10")
+				create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "0"
+				return 0;
+                        ;;
+                        "11")
+				create_ce_info_file "${DATE}" "${CUR_COUNT}" "0" "1"
+				return 1
+				
+                        ;;
+                esac
+
+	fi
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_alarm
+#------------------------------------------------------------------------------
+get_ecc_ram_alarm()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        if [ ${UE_COUNT} -gt 0 ]; then
+            # file generated when user issues the command:
+            # ---CLI> clear hardware edac-ue-alarm
+            ACK_FILE="/tmp/edac_ue_alarm_ack"
+            if [ -e ${ACK_FILE} ]; then
+                # if file is empty, it means user 
+                # recently acked the alarm. in that case, we 
+                # store alarm count, and report OK state
+                if [ ! -s ${ACK_FILE} ]; then
+                    echo "${UE_COUNT}" > ${ACK_FILE} # store alarm count
+                    echo "normal"
+                    return;
+                else
+                    # if file is nonempty, it means user 
+                    # already acked alarm. however, check if 
+                    # a new alarm was raised since
+                    UE_ALARM_COUNT=`cat ${ACK_FILE}`
+                    if [ ${UE_COUNT} -le ${UE_ALARM_COUNT} ]; then
+                        echo "normal"
+                        return; 
+                    else
+                        /bin/rm -f ${ACK_FILE}
+                        echo "critical"
+                        return;
+                    fi
+                fi
+            else
+                echo "critical" # houston, we have a problem
+            fi 
+            return
+        else
+            CE_COUNT=`get_ecc_ram_count "ce"`;
+            check_ce_info "${CE_COUNT}"
+            if [ $? -ne 0 ]; then
+                echo "degraded"
+                return;
+            fi
+        fi
+        echo "normal"
+    else
+        echo "normal"
+    fi
+}
+
+load_module()
+{
+    MODULE="$1"
+    ${MODPROBE} ${MODULE} >> /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "Unable to load kmod : ${MODULE}"
+    fi
+}
+
+unload_module()
+{
+    MODULE="$1"
+    rmmod ${MODULE} >> /dev/null 2>&1
+}
+
+#------------------------------------------------------------------------------
+# do_ecc_modules
+#------------------------------------------------------------------------------
+do_ecc_modules()
+{
+    MOBO=`get_motherboard`
+
+    if [ "x${1}" = "xload" ]; then
+        OP="load"
+        ${OP}_module "edac_core"
+    else
+        OP="unload"
+    fi
+    case "x${MOBO}" in
+        "xCMP-00109")
+            ${OP}_module "k8_edac"
+        ;;
+        "xCMP-00136"|"xCMP-00087"|"xCMP-00088")
+            ${OP}_module "e7230_edac"
+        ;;
+        "xCMP-00013"|"xCMP-00072")
+            ${OP}_module "e7xxx_edac"
+        ;;
+        "xCMP-00031")
+            ${OP}_module "i82875p_edac"
+        ;;
+        "xCMP-00097")
+            # no edac on this mobo
+        ;;
+        *)
+            # shouldnt get here unless for some reason hwtool can't
+            # identify the MOBO
+        ;;
+
+    esac
+    if [ "${OP}" = "unload" ]; then
+        ${OP}_module "edac_core"
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+
+#
+# CMP-00013 Tyan MOBO has problems reporting fan output.
+# disabled for now
+uses_fan_status()
+{
+    MOBO=`get_motherboard`
+
+    case "${MOBO}" in
+        400-00100*)
+            echo "true"
+        ;;
+        400-00300*)
+            echo "true"
+        ;;
+        *)
+            echo "false"
+        ;;
+    esac
+}
+
+# status messages for the fans
+#
+FAN_OK_MSG="ok"
+FAN_UNDERSPEED_MSG="underspeed"
+FAN_ERROR_MSG="error"
+FAN_LOG_DIR="/var/tmp"
+FAN_HISTORY_SEC=91
+
+# used to indicate that this fan had a non zero value
+# at one point in time.
+#
+create_fan_nz()
+{
+    FAN_ID=$1
+
+    echo "${FAN_ID}" > ${FAN_LOG_DIR}/${FAN_ID}_nz
+}
+
+check_fan_nz()
+{
+    FAN_ID=$1
+    if [ -f ${FAN_LOG_DIR}/${FAN_ID}_nz ]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+update_fan_log()
+{
+    FAN_ID=$1
+    FAN_RPM=$2
+    FAN_MIN=$3
+    FAN_MSG=$4
+
+    # if there has been no good reading before, put
+    # the current reading in the file.
+    #
+    echo "DATE `date +%s`" > ${FAN_LOG_DIR}/fan${FAN_ID}
+    echo "INFO ${FAN_RPM} ${FAN_MIN} ${FAN_MSG}" >> ${FAN_LOG_DIR}/fan${FAN_ID}
+}
+
+# we know the current sample is a failure if we get
+# this far. now we just want to see if there was a last good
+# sample within the last TIME_PERIOD_SEC interval.  If so
+# we return that, otherwise we return the current sample
+#
+display_last_good_sample()
+{
+    FAN_NO=$1
+    FAN_RPM=$2
+    FAN_MIN=$3
+    FAN_MSG=$4
+
+    if [ -f "${FAN_LOG_DIR}/fan${FAN_NO}" ]; then
+        LOG_DATE=`awk '/^DATE/ { print $2 }' ${FAN_LOG_DIR}/fan${FAN_NO}`
+        LOG_MSG=`awk '/^INFO/ { print $2 " " $3 " " $4 }' ${FAN_LOG_DIR}/fan${FAN_NO}`
+    else
+        # no last sample, means we never had a good reading so return the
+        # current sample
+        display_fan_status ${FAN_NO} ${FAN_RPM} ${FAN_MIN} ${FAN_MSG}
+        return
+    fi
+
+    CUR_DATE=`date +%s`
+    NEW_DATE=$[${CUR_DATE}-${FAN_HISTORY_SEC}];
+    if [ ${NEW_DATE} -le ${LOG_DATE} ]; then
+
+        # return the sample from the file.
+        #
+        display_fan_status ${FAN_NO} ${LOG_MSG}
+        return
+    else
+        # our history is too old.  return the current sample
+        #
+        display_fan_status ${FAN_NO} ${FAN_RPM} ${FAN_MIN} ${FAN_MSG}
+        return
+    fi
+}
+
+display_fan_status()
+{
+    case "$4" in
+        "underspeed")
+            ${HAL_LOG_WARN} "HAL - fan $1 underspeed error.  RPM:$2 MIN:$3 in display_fan_status"
+        ;;
+        "error")
+            ${HAL_LOG_WARN} "HAL - fan $1 encountered a processing error"
+        ;;
+        *)
+        ;;
+    esac
+    echo "$1 $2 $3 $4"
+}
+
+
+# Display fan info in the format <fanid> <rpm> <min rpm> <status msg>
+#
+get_fan_info()
+{
+    MOBO=`get_motherboard`
+    declare -a FAN_LIST
+    declare -a FAN_DISP_LIST
+
+    case "${MOBO}" in
+        400-00100*)
+            # for 1U DTABA, require all fans on corsica boxes. 
+            if [ "x${PLAT}" = "xFG" ]; then
+                FAN_LIST=(${TYAN_1U_FG_FAN_SEQ[@]})
+                FAN_DISP_LIST=(${TYAN_1U_FG_FAN_SEQ[@]})
+            else
+                FAN_LIST=(${TYAN_1U_FAN_SEQ[@]})
+                FAN_DISP_LIST=(${TYAN_1U_FAN_DISP_SEQ[@]})
+            fi
+        ;;
+        400-00300*)
+            FAN_LIST=(${TYAN_3U_FAN_SEQ[@]})
+            FAN_DISP_LIST=(${TYAN_3U_FAN_DISP_SEQ[@]})
+        ;;
+        *)
+            echo ""
+        ;;
+    esac
+
+    SENSORS_DIR=
+    for f in `/bin/ls -d /sys/bus/platform/devices/*`
+    do
+	# Find if the "name" file exists
+	if [ -f $f/name ]; then
+	    NAME_OUT=`cat $f/name`
+	    # Check if the name is "bmc"
+	    if [ "$NAME_OUT" == "bmc" ]; then
+		# found the BMC
+		SENSORS_DIR=$f
+	    fi
+	fi
+    done
+
+    for i in ${!FAN_LIST[*]}; do
+	FAN_NO="${FAN_LIST[$i]}"
+	FAN_DISP="${FAN_DISP_LIST[$i]}"
+
+	FAN_MIN=`cat ${SENSORS_DIR}/fan${FAN_NO}_min`
+	if [ $? -ne 0 ]; then
+	    display_fan_status ${FAN_DISP} "0" "0" ${FAN_ERROR_MSG}
+	    return
+	fi
+
+	FAN_RPM=`cat ${SENSORS_DIR}/fan${FAN_NO}_input`
+	if [ $? -ne 0 ]; then
+	    display_fan_status ${FAN_DISP} "0" "0" ${FAN_ERROR_MSG}
+	    return
+	fi
+
+	case ${MOBO} in
+	    "CMP-00109"|"CMP-00087")
+	    ;;
+	    *)
+	    if [ ${FAN_RPM} -ne 0 ]; then
+		# non zero sample output. indicate that we have at some point
+		# in time gotten a non zero reading.
+		create_fan_nz "fan${FAN_NO}"
+	    else
+		# if we have a zero rpm, then we need to check to see if we
+		# ever had a nonzero rpm.
+		#
+		OLD_FAN=`check_fan_nz "fan${FAN_NO}"`
+		if [ "${OLD_FAN}" = "true" ]; then
+		    # the fan may have died .. we need to check the history
+		    # and return a failure only if we havent had a good reading
+		    # in the last time period
+		    display_last_good_sample ${FAN_DISP} ${FAN_RPM} ${FAN_MIN} ${FAN_UNDERSPEED_MSG}
+		    return
+		else
+		    display_fan_status ${FAN_DISP} "0" "0" ${FAN_OK_MSG}
+		    return
+		fi
+	    fi
+	    ;;
+	esac
+
+	# we had a non zero fan reading so now we can check/update the history
+	#
+	if [ ${FAN_RPM} -gt ${FAN_MIN} ]; then
+	    # good reading store it in the log return it
+	    update_fan_log ${FAN_DISP} ${FAN_RPM} ${FAN_MIN} ${FAN_OK_MSG}
+	    display_fan_status ${FAN_DISP} ${FAN_RPM} ${FAN_MIN} ${FAN_OK_MSG}
+	else
+	    # possibly failed reading .. return the last good sample.
+	    display_last_good_sample ${FAN_DISP} ${FAN_RPM} ${FAN_MIN} ${FAN_UNDERSPEED_MSG}
+	fi
+    done
+
+}
+
+# Each motherboard has its own set of fan ranges.
+#
+# For Barramundi SH's we don't require the front 2 fans.
+# for corsica boxes, we do require the front 2 fans.
+TYAN_1U_FAN_SEQ=(14 13 12 10 8)
+TYAN_1U_FAN_DISP_SEQ=(1 2 3 5 7)
+
+TYAN_1U_FG_FAN_SEQ=(1 2 3 4 5 6 7)
+
+TYAN_3U_FAN_SEQ=(5 6 7 8 9 10)
+TYAN_3U_FAN_DISP_SEQ=(1 2 3 4 5 6)
+
+USES_FAN_DELTA="no"
+
+##################################################################################
+# get_fan_status
+##################################################################################
+get_fan_status()
+{
+    get_fan_info
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_present
+#------------------------------------------------------------------------------
+ssl_card_present()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    CRYPTONODE=`cat /proc/devices | grep cryptonet`
+
+    if [ $? = 0 ]; then
+        echo "true"
+    else
+        echo "false"
+    fi 
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_support
+#------------------------------------------------------------------------------
+ssl_card_support()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    MODEL=`get_model`
+    
+    case "$MODEL" in
+        "3010"|"3500"|"5010"|"3020"|"3520"|"5520"|"6020")
+            echo "true"
+            ;;
+        *)
+            echo "false"
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_bdf
+#------------------------------------------------------------------------------
+ssl_card_bdf()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    MODEL=`get_model`
+
+    case "$MODEL" in
+        "3010"|"3500"|"5010")
+            echo "0000:05:01.0"
+            ;;
+
+        "3020"|"3520"|"5520"|"6020")
+            echo "0000:03:01.0"
+            ;;
+
+        *)
+            echo "notsupport"
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_vendor
+#------------------------------------------------------------------------------
+ssl_card_vendor()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    BDF=`ssl_card_bdf`
+
+    if [ $BDF != "notsupport" -a -f /sys/bus/pci/devices/$BDF/vendor ]; then
+        VID=`cat /sys/bus/pci/devices/$BDF/vendor | sed 's/0x//'`
+        if [ $? = 0 ]; then
+            case "$VID" in
+                "14e4")
+                    echo "broadcom"
+                    ;;
+                *)
+                    echo "unknown"
+                    ;;
+            esac
+        fi
+    else
+        echo "unknown"
+    fi 
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_did
+#    Return: 5825 (current SSL card device ID) 
+#------------------------------------------------------------------------------
+ssl_card_did()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    BDF=`ssl_card_bdf`
+
+    if [ $BDF != "notsupport" -a -f /sys/bus/pci/devices/$BDF/device ]; then
+        DID=`cat /sys/bus/pci/devices/$BDF/device | sed 's/0x//'`
+        if [ $? = 0 ]; then
+            echo $DID
+        else
+            echo "unknown"
+        fi
+    else
+        echo "unknown"
+    fi 
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_name
+#------------------------------------------------------------------------------
+ssl_card_vid()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    VID=`ssl_card_vendor`    
+    DID=`ssl_card_did`
+
+    if [ $VID = "broadcom" -a $DID = "5825" ]; then
+        echo "ubsec" 
+    else
+        echo "unknown"
+    fi 
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_health_check
+#------------------------------------------------------------------------------
+ssl_card_health_check()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    VID=`ssl_card_vendor`    
+    DID=`ssl_card_did`
+
+    if [ $VID = "broadcom" -a $DID = "5825" ]; then
+        STATUS=`/opt/rbt/bin/b58diag -s 1 | grep selftest | 
+                sed -e 's/.*selftest \([a-z]*\)./\1/'`
+
+        case "$STATUS" in 
+            "passed")
+                echo "ok"
+                ;;
+            "failed")
+                echo "error"
+                ;;
+            *)
+                echo "unknown"
+                ;;
+        esac    
+    else
+        echo "No health check tool"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_error
+#------------------------------------------------------------------------------
+ssl_card_error()
+{
+    # get the platform name
+    PLATFORM=`get_platform`
+    if [ "${PLATFORM}" != "SH" -a "${PLATFORM}" != "FG" -a "${PLATFORM}" != "IB" ]; then
+        echo "Not implemented"
+        return
+    fi
+    CARDNAME=`ssl_card_vid`
+
+    if [ $CARDNAME = "ubsec" ]; then
+        STATUS=`/opt/rbt/bin/b58diag -s 1 | grep 'Ubsec error status' | 
+                sed -e 's/Ubsec error status: \([a-z]*\)/\1/'`
+
+        case "$STATUS" in 
+            "DeviceFailed")
+                echo "device failed"
+                ;;
+            "DeviceBusy")
+                echo "device busy"
+                ;;
+            "NoDevice")
+                echo "no device"
+                ;;
+            "Timeout")
+                echo "timeout"
+                ;;
+            "NoResource")
+                echo "no resource"
+                ;;
+            "Cancelled")
+                echo "cancelled"
+                ;;
+            "TestFlag")
+                echo "test flag"
+                ;;
+            "DMAAllocFailed")
+                echo "DMA alloc failed"
+                ;;
+            "CritialSectionFailed")
+                echo "CS failed"
+                ;;
+            *)
+                echo "unknown"
+                ;;
+        esac    
+    else
+        echo "Not support"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# get_running_arch
+#------------------------------------------------------------------------------
+get_running_arch()
+{
+    ARCH=`uname -i`
+    case "x$ARCH" in
+        "xi386"|"xx86_64")
+            echo $ARCH
+            exit 0
+        ;;
+        *)
+            echo "error"
+            exit 1
+        ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_if_type
+#------------------------------------------------------------------------------
+get_if_type()
+{
+
+    verify_nic_arg $1
+
+    #the interface has format of wan0_0, lan1_0, etc.
+    slot_port=`echo $1 | tr -d '[a-z][A-Z]'`
+    slot=`echo $slot_port | cut -c 1`
+    wan_lan=`echo $1 | cut -c 1-3`
+    iftype=`${HWTOOL_PY} -q if_type=${slot}`
+    if [ "x${iftype}" != "x" ]; then
+	echo "${iftype}"
+    else 
+	${HAL_LOG_WARN} "unable to determine type of interface for card in slot [${slot}]"
+	exit 1
+    fi 
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# get_if_block_cap
+#------------------------------------------------------------------------------
+get_if_block_cap()
+{
+    verify_nic_arg $1
+
+    #the interface has format of wan0_0, lan1_0, etc.
+    slot_port=`echo $1 | tr -d '[a-z][A-Z]'`
+    slot=`echo $slot_port | cut -c 1`
+    BLOCK_CAP=`${HWTOOL_PY} -q if_block=${slot}`
+
+    if [ "x${BLOCK_CAP}" = "xtrue" ]; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Disk LED Interfaces
+#------------------------------------------------------------------------------
+get_led_status()
+{
+    ${HW_CTL_PY} -r hdd ${1} fault_led_on | grep True > /dev/null
+    if [ $? -ne 0 ]; then
+	echo "Off"
+    else 
+	echo "On"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+uses_disk_led()
+{
+    # all Mitac boxes use disk LED's
+    echo "True"
+}
+
+#------------------------------------------------------------------------------
+# get_disk_led_status
+#------------------------------------------------------------------------------
+get_disk_led_status()
+{
+    MOBO=`get_motherboard`
+    case "x${MOBO}" in
+	"x400-00100-01")
+	    EXPECTED_LED=`seq 0 3`
+	;;
+	"x400-00300-01")
+	    EXPECTED_LED=`seq 0 15`
+	;;
+        "x400-00300-10")
+	    EXPECTED_LED=`seq 0 31`
+        ;;
+	*)
+	    ${HAL_LOG_INFO} "Disk LED's are not supported on this motherboard"
+	    return 0
+	;;
+    esac
+
+    for led in ${EXPECTED_LED}; do
+	STATUS=`get_led_status ${led}`
+	echo "${led} ${STATUS}"
+    done
+    
+}
+
+get_disk_power_state()
+{
+    ${HW_CTL_PY} -r hdd ${1} power_on | grep True > /dev/null
+    if [ $? -ne 0 ]; then
+	echo "Off"
+    else 
+	echo "On"
+    fi
+}
+
+
+uses_disk_power()
+{
+    echo "True"
+}
+
+get_disk_power_status()
+{
+    MOBO=`get_motherboard`
+    case "x${MOBO}" in
+        "x400-00100-01")
+            EXPECTED_DISKS=`seq 0 3`
+        ;;
+        "x400-00300-01")
+            EXPECTED_DISKS=`seq 0 15`
+        ;;
+        "x400-00300-10")
+            EXPECTED_DISKS=`seq 0 31`
+        ;;
+        *)
+            ${HAL_LOG_INFO} "Disk power controls are not supported on this motherboard"
+            return 0
+        ;;
+    esac
+
+    for disk in ${EXPECTED_DISKS}; do
+        STATUS=`get_disk_power_state ${disk}`
+        echo "${disk} ${STATUS}"
+    done
+    
+}
+
+#------------------------------------------------------------------------------
+# init_10G_silicom
+#
+# Each of the card is set to inline2 mode
+# Silicom's "rdid" exe takes some time to initialize completely. This time may
+# vary between 5 to 30 seconds. So, we try to initialize every 5 seconds and 
+# give up after 30 seconds with a error message in the log 
+#------------------------------------------------------------------------------
+
+init_10G_silicom()
+{
+    #Check for broadcom switch on a Silicom 10G.
+    modprobe rdi > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        mknod /dev/linux-user-bde c 126 0
+
+        #Start the Silicom's exe
+        /usr/sbin/rdid
+        sleep 5
+
+        #Count the number of 10G cards on the machine
+        NUM=`ls /proc/net/rdi | wc -l`
+
+        DEVNUM=0
+        TRIES=0
+        #For each of the 10G card, set to inline2 mode
+        while [ $DEVNUM -ne $NUM ]
+        do
+            RET=`${RDICTL} dev $DEVNUM set_cfg 2 2>/dev/null`
+            #If setting inline2 mode fails, sleep for 5 seconds and retry. Total number
+            #of tries is 5
+            FAIL=`echo $RET | grep "Fail"`
+            if [ $? -eq 0 ]; then
+                TRIES=`expr $TRIES + 1`
+                if [ $TRIES -lt 5 ];then
+                    sleep 5
+                    continue
+                else
+                    echo "Failed to initialize 10G Silicom cards"
+                    return
+                fi
+            else
+		local exp="^[^\:]+:[^\.]+\.[0-7][[:space:]]+"
+		INFO=`cat /proc/net/rdi/dev$DEVNUM | grep -E "$exp" \
+			| sed -r "s/$exp//" | tr '\n' ' ' | sed 's/ $//'`
+                echo "Initialized $INFO to inline2 mode"
+            fi
+            DEVNUM=`expr $DEVNUM + 1`
+        done
+    fi
+}
+
+#--------------------------------------------------------------------------
+# update_motherboard
+#
+# We can replace motherboard for Gar
+# So, we will have to re-flash the primary and aux so that the licenses
+# are valid.
+#--------------------------------------------------------------------------
+
+update_motherboard()
+{
+    #Check whether the update is allowed for this platform
+    MOBO=`get_motherboard`
+    if [ "x${MOBO}" != "x400-00300-10" ]; then
+        echo "Update fail: Updating motherboard is not supported on this platform."
+        return 0
+    fi
+
+    #We need to check whether the motherboard has actually been replaced.
+    HWADDR=`ifconfig lan0_0 | grep "HWaddr"`
+    if [ $? -eq 1 ]; then
+        echo "Update fail: The motherboard does not have physical interface lan0_0."
+        return 0
+    fi
+
+    HWADDR=`echo ${HWADDR} | awk '{print $5}'`
+
+    #First make sure that ${MDDBREQ} is installed.
+    if [ ! -f ${MDDBREQ} ]; then
+        echo "Update fail: $MDDBREQ not installed.  Can't determine model number."
+        return 0
+    fi
+
+    MOBO_ID=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/motherboard_id`
+    if [ "x${MOBO_ID}" = "x" ]; then
+        echo "Update fail: Failed to determine motherboard_id."
+        return 0
+    fi
+
+    if [ "${MOBO_ID}" = "${HWADDR}" ]; then
+        echo "Update fail: Motherboard has not been replaced."
+        return 0
+    fi
+
+    #Motherboard has been replaced. Flash the primary and aux with older
+    #motherboard addresses by getting the sport Id from mfdb
+    SPORT_ID=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/id`
+    if [ "x${SPORT_ID}" = "x" ]; then
+        echo "Update fail: Failed to determine sport id."
+        return 0
+    fi
+
+    RETURN=`/sbin/flashmac.py -s ${SPORT_ID} -w`
+    if [ $? -eq 1 ]; then
+        echo "Update fail: Failed to flash primary and aux with new MAC addresses."
+        return 0
+    fi
+
+    #Update the motherboard_id
+    ${MDDBREQ} -c ${MFDB}  set modify "" /rbt/mfd/motherboard_id string "${HWADDR}"
+
+    echo "Updating motherboard successful."
+    echo "You will have to reboot the box for the changes to take effect."
+    return 0
+
+
+}
+
+#------------------------------------------------------------------------------
+# bios_install
+# This is used for a manual install of Bios by cli command:
+# "support install bios ${ARG}"
+#------------------------------------------------------------------------------
+bios_install()
+{
+        BIOS=$1
+        if [ -e /opt/rbt/lib/${BIOS} ]; then
+                RET=`/sbin/flashmac.py -wb /opt/rbt/lib/${BIOS}`
+                if [ $? -eq 1 ]; then
+                     ${HAL_LOG_WARN} "Bios install of ${BIOS} failed."
+                     echo "Bios install of ${BIOS} failed."
+                     return 0
+                fi
+
+                ${HAL_LOG_INFO} "Bios ${BIOS} installed successfully"
+                echo "Bios ${BIOS} installed successfully."
+                echo "Please reboot for the changes to take effect."
+        else
+                echo "The Bios supplied as the argument does not exist."
+        fi
+}
+
+#------------------------------------------------------------------------------
+# get_count_10G_nics
+# Get the number of 10G cards in the box
+#------------------------------------------------------------------------------
+get_count_10G_nics()
+{
+        NUM=0
+        if [ -e /proc/net/rdi ]; then
+                NUM=`ls /proc/net/rdi | wc -l`
+        fi
+        echo $NUM
+
+}
+
+#------------------------------------------------------------------------------
+# get_hardware_pass_support
+# This hal function is called by mgmt do check whether
+# the machine supports hardware passthrough for UDP.
+#------------------------------------------------------------------------------
+get_hardware_pass_support()
+{
+        NUM=`get_count_10G_nics`
+        if [ $NUM -gt 0 ]; then
+                echo "true"
+                return
+        fi
+        echo "false"
+}
+
+#------------------------------------------------------------------------------
+# set_udp_hw_passthrough
+# This hal function is called by mgmt set/unset hardware UDP passthrough rules
+#------------------------------------------------------------------------------
+set_hw_passthrough()
+{
+	RET=`cp ${CONFIGFILEDIR}/confighardwarerules.xml ${CONFIGFILEDIR}/confighardwarerules_temp.xml`
+	if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Failed to copy hardware rules xml file for 10G"
+		return 
+        fi
+
+	NUM=`get_count_10G_nics`
+
+        RET=`${REDIRECT} -n ${NUM}`
+        if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Failed to set hardware passthrough rules on all 10G NICs"
+        fi
+        return
+}
+
+#------------------------------------------------------------------------------
+# supports_bmc_watchdog_pretimeout
+# This hal function is called by mgmt to check whether
+# the machine supports bmc hardware watchdog pre-timout.
+#------------------------------------------------------------------------------
+supports_bmc_watchdog_pretimeout()
+{
+	echo "true"
+}
+
+#------------------------------------------------------------------------------
+# query_tcp_10g_rule
+# This hal function is called by CLI to get hardware rules for a rule id
+#------------------------------------------------------------------------------
+query_tcp_10g_rule()
+{
+        if [ $# -ne 2 ]; then
+            echo "Wrong parameters"
+            return
+        fi
+        RULE_ID=$1
+        INTF=$2
+
+	if [ ! -e /proc/net/rdi ]; then
+	   echo "No 10G interfaces in the machine"
+	   return
+	fi
+
+        RET=`echo ${INTF} | grep "inpath"`
+        if [ $? -eq 1 ]; then
+           echo "Interface needs to be an inpath interface of form inpathX_Y"
+           return
+        fi
+
+        LEN=`echo $RET | wc -m`
+        if [ ${LEN} -lt 8 ]; then
+           echo "Interface needs to be an inpath interface of form inpathX_Y"
+           return
+        fi
+
+        WAN_IF=`echo ${INTF} | sed -e 's/inpath/wan/'`
+
+        RET=`grep -l ${WAN_IF} /proc/net/rdi/*`
+        if [ $? -ne 0 ]; then
+           echo "The interface is not a 10G interface"
+           return
+        fi
+
+        DEV=`echo ${RET} | awk -F/ '{print $5}' | awk -Fv '{print $2}'`
+
+        if [ "$1" = "all" ] ; then
+           RULE_ID=1000
+        fi
+
+        ${REDIRECT} -n ${DEV} -q ${RULE_ID}
+        if [ $? -ne 0 ]; then
+                echo "Query failed"
+        fi
+        return
+}
+
+#------------------------------------------------------------------------------
+# display_tcp_10g_stat
+# This hal function is called by CLI to get hardware rules for a rule id
+#------------------------------------------------------------------------------
+display_tcp_10g_stat()
+{
+        if [ $# -ne 2 ]; then
+            echo "Wrong parameters"
+            return
+        fi
+        RULE_ID=$1
+        INTF=$2
+
+	if [ ! -e /proc/net/rdi ]; then
+	   echo "No 10G interfaces in the machine"
+	   return
+	fi
+
+
+        RET=`echo ${INTF} | grep "inpath"`
+        if [ $? -eq 1 ]; then
+           echo "Interface needs to be an inpath interface of form inpathX_Y"
+           return
+        fi
+
+        LEN=`echo $RET | wc -m`
+        if [ ${LEN} -lt 8 ]; then
+           echo "Interface needs to be an inpath interface of form inpathX_Y"
+           return
+        fi
+
+        WAN_IF=`echo ${INTF} | sed -e 's/inpath/wan/'`
+
+        RET=`grep -l ${WAN_IF} /proc/net/rdi/*`
+        if [ $? -ne 0 ]; then
+           echo "The interface is not a 10G interface"
+           return
+        fi
+
+        DEV=`echo ${RET} | awk -F/ '{print $5}' | awk -Fv '{print $2}'`
+
+        ${REDIRECT} -n ${DEV} -s ${RULE_ID}
+        if [ $? -ne 0 ]; then
+                echo "Query failed"
+        fi
+        return
+}
+
+
+set_nmi_wdt_sysfs_nodes ()
+{
+    ARG=$1
+    if [ "x${ARG}" = "xenabled" ]; then
+        echo "75" > /sys/module/ipmi_watchdog/parameters/timeout
+        echo "15" > /sys/module/ipmi_watchdog/parameters/pretimeout
+        echo "pre_nmi" > /sys/module/ipmi_watchdog/parameters/preaction
+        echo "preop_die_nmi" > /sys/module/ipmi_watchdog/parameters/preop
+    else
+        echo "60" > /sys/module/ipmi_watchdog/parameters/timeout
+        echo "0" > /sys/module/ipmi_watchdog/parameters/pretimeout
+        echo "pre_none" > /sys/module/ipmi_watchdog/parameters/preaction
+        echo "preop_none" > /sys/module/ipmi_watchdog/parameters/preop
+    fi
+    echo "60" > /sys/module/ipmi_watchdog/parameters/timeout_panic_adj
+}
+
+
+#------------------------------------------------------------------------------
+# get_data_partition_type
+# This just prints out the data partition type for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition_type ()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            FSTYPE=`/opt/hal/bin/raid/rrdm_tool.py -l | /bin/grep "data" | /usr/bin/awk -F : '{print $3}'`
+            if [ $? -ne 0 ]; then
+                echo "Error getting MD device"
+                return 1
+            fi
+
+            echo "${FSTYPE}"
+            ;;
+        *)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# get_data_partition
+# This just prints out the data partition for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition ()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            MDDEV=`/opt/hal/bin/raid/rrdm_tool.py -l | /bin/grep "data" | /usr/bin/awk -F : '{print $2}'`
+            if [ $? -ne 0 ]; then
+                echo "Error getting MD device"
+                return 1
+            fi
+
+            echo "/dev/${MDDEV}"
+            ;;
+	*)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# change_nmi_wdt_state
+# This hal function is called by CLI to enable/disable the NMI's generated by the 
+# pre-timeout firing on the BMC
+# It takes in a single argument [enabled|disabled]
+#------------------------------------------------------------------------------
+change_nmi_wdt_state ()
+{
+    STATE=$1
+    MOBO=`get_motherboard`
+    if [ "x${MOBO:0:9}" = "x400-00300" -o "x${MOBO:0:9}" = "x400-00100" ]; then
+        # NMI manipulation is supported only on Sturgeon, GAR and Barramundi
+        if [ "x${STATE}" = "xenabled" ]; then
+            set_nmi_wdt_sysfs_nodes "enabled"
+
+            /bin/rm -f /var/opt/rbt/.nmi_disable
+            # Touch this file for reboots
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "NMI generation via pretimeout turned on, but state not persistent"               
+            fi
+            echo "enabled"
+        elif [ "x${STATE}" = "xdisabled" ]; then
+            set_nmi_wdt_sysfs_nodes "disabled"
+
+            # Touch this file for reboots
+            /bin/touch /var/opt/rbt/.nmi_disable
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "NMI generation via pretimeout turned off, but state not persistent"               
+            fi
+            echo "disabled"
+        else
+            echo "Unknown state"
+            return 1
+        fi
+    else
+        echo "Not implemented"
+        return 128
+    fi
+
+    return 0
+}
+
+
+
+#------------------------------------------------------------------------------
+# supports_rfut
+# This hal function is called by mgmt to check whether
+# the machine supports rfut or not.
+#------------------------------------------------------------------------------
+supports_rfut()
+{
+        echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+. /opt/hal/bin/hal_common.sh
+. /opt/hal/bin/upgrade_common.sh
+
+case "${FUNCTION}" in
+
+    "init_hardware_phase0")
+        init_hardware_phase0
+	;;
+
+    "init_hardware_phase1")
+        init_hardware_phase1
+        ;;
+
+    "init_hardware_phase2")
+        init_hardware_phase2
+        ;;
+
+    "deinit_hardware_phase1")
+        deinit_hardware_phase1
+        ;;
+
+    "deinit_hardware_phase2")
+        deinit_hardware_phase2
+        ;;
+
+    "get_num_raid_arrays")
+        get_num_raid_arrays
+        ;;
+
+    "get_raid_status")
+        get_raid_status ${ARGS}
+        ;;
+
+    "show_raid_diagram")
+        show_raid_diagram ${ARGS}
+        ;;
+
+    "show_raid_config")
+        show_raid_config
+        ;;
+
+    "show_raid_info")
+        show_raid_info
+        ;;
+
+    "show_raid_info_detail")
+        show_raid_info_detail
+        ;;
+
+    "show_raid_config_detail")
+        show_raid_config_detail
+        ;;
+
+    "show_raid_physical")
+        show_raid_physical
+        ;;
+
+    "raid_card_vendor")
+        raid_card_vendor
+        ;;
+
+    "get_temperature")
+        get_temperature
+        ;;
+
+    "uses_power_supplies")
+        uses_power_supplies
+        ;;
+
+    "get_power_supply_status")
+        get_power_supply_status
+        ;;
+
+    "clear_psu_redundancy_requirement")
+        clear_psu_redundancy_requirement
+        ;;
+
+    "uses_hardware_wdt")
+        uses_hardware_wdt
+        ;;
+
+    "get_usb_device")
+        get_usb_device
+        ;;
+
+    "get_usb_id")
+        get_usb_id
+        ;;
+
+    "get_ecc_ram_status")
+        get_ecc_ram_status
+        ;;
+
+    "get_ecc_ram_support")
+        get_ecc_ram_support
+        ;;
+
+    "get_ecc_ram_alarm")
+        get_ecc_ram_alarm
+        ;;
+
+    "uses_fan_status")
+        uses_fan_status
+        ;;
+
+    "get_fan_status")
+        get_fan_status
+        ;;
+    "uses_flash_disk")
+	uses_flash_disk
+	;;   
+    "mount_flash_disk")
+	mount_flash_disk
+	;;   
+    "unmount_flash_disk")
+	unmount_flash_disk
+	;;   
+ 
+    "ssl_card_present")
+        ssl_card_present
+        ;;
+
+    "ssl_card_support")
+        ssl_card_support
+        ;;
+
+    "ssl_card_vendor")
+        ssl_card_vendor
+        ;;
+
+    "ssl_card_did")
+        ssl_card_did
+        ;;
+
+    "ssl_card_vid")
+        ssl_card_vid
+        ;;
+
+    "ssl_card_health_check")
+        ssl_card_health_check
+        ;;
+
+    "ssl_card_error")
+        ssl_card_error
+        ;;
+
+    "ssl_card_bdf")
+        ssl_card_bdf
+        ;;
+    "get_running_arch")
+        get_running_arch
+        ;;
+
+    "get_if_type")
+	get_if_type ${ARGS}
+	;;
+
+    "get_if_status")
+	get_if_status ${ARGS}
+	;;
+
+    "get_if_wdt_status")
+        get_generic_if_wdt_status ${ARGS}
+	;;
+    "set_if_wdt_block")
+	set_if_wdt_block ${ARGS}
+	;;
+
+    "set_if_wdt_bypass")
+	set_if_wdt_bypass ${ARGS}
+	;;
+
+    "set_if_bypass")
+	set_if_bypass ${ARGS}
+	;;
+    "set_if_normal")
+	set_if_normal ${ARGS}
+	;;
+    "set_if_block")
+	set_if_block ${ARGS}
+	;;
+    "get_if_block_cap")
+	get_if_block_cap ${ARGS}
+	;;
+
+    "get_hw_if_status")
+        get_hw_if_status ${ARGS}
+        ;;
+
+    "get_er_if_status")
+        get_er_if_status ${ARGS}
+        ;;
+
+    "get_er_if_wdt_status")
+        get_er_if_wdt_status ${ARGS}
+        ;;
+
+    "get_hw_if_wdt_status")
+        get_hw_if_wdt_status ${ARGS}
+        ;;
+
+   "do_start_rios_volumes")
+	do_start_rios_volumes
+	;;
+    "uses_disk_led")
+	uses_disk_led
+	;;
+    "get_disk_led_status")
+	get_disk_led_status
+	;;
+    "uses_disk_power")
+	uses_disk_power
+	;;
+    "get_disk_power_status")
+	get_disk_power_status
+	;;
+    "uses_system_led_control")
+	uses_system_led_control
+	;;
+    "set_system_led_state")
+	set_system_led_state ${ARGS}
+	;;
+    "get_system_led_state")
+	get_system_led_state
+	;;
+    "get_system_led_color")
+	get_system_led_color
+	;;
+    "supports_txhang_noflap")
+        supports_txhang_noflap
+        ;;
+    "get_ipmi_ver")
+        get_ipmi_ver 1
+        ;;
+    "get_bios_ver")
+        get_bios_ver 1
+        ;;
+    "get_controller_ver")
+        get_controller_ver 1
+        ;;
+    "supports_hw_upgrades")
+	supports_hw_upgrades
+	;;
+    "sw_supports_ether_relay")
+        sw_supports_ether_relay
+        ;;
+    "update_motherboard")
+	update_motherboard
+	;;
+    "get_avail_speed_duplex")
+	get_avail_speed_duplex ${ARGS}
+	;;
+    "get_default_speed_duplex")
+	get_default_speed_duplex ${ARGS}
+	;;
+    "set_speed_duplex")
+	set_speed_duplex ${ARGS}
+	;;
+    "init_10G_silicom")
+	init_10G_silicom
+	;;
+    "check_update_bios")
+       check_update_bios ${ARGS}
+       ;;
+    "downgrade_bios")
+	downgrade_bios
+       ;;	
+    "bios_install")
+        bios_install ${ARGS}
+       ;;
+    "get_count_10G_nics")
+        get_count_10G_nics
+        ;;
+    "get_hardware_pass_support")
+        get_hardware_pass_support
+        ;;
+    "set_hw_passthrough")
+        set_hw_passthrough
+        ;;
+    "query_tcp_10g_rule")
+        query_tcp_10g_rule ${ARGS}
+        ;;
+    "display_tcp_10g_stat")
+        display_tcp_10g_stat ${ARGS}
+        ;;
+    "get_default_ipmi_wdt_timeout")
+        get_default_ipmi_wdt_timeout
+        ;;
+    "change_nmi_wdt_state")
+        change_nmi_wdt_state ${ARGS}
+        ;;
+    "get_data_partition")
+        get_data_partition
+        ;;
+    "get_data_partition_type")
+        get_data_partition_type
+        ;;
+    "supports_bmc_watchdog_pretimeout")
+        supports_bmc_watchdog_pretimeout
+        ;;
+    "supports_rfut")
+        supports_rfut
+        ;;
+    "get_platform")
+       get_platform
+       ;;
+
+    *)
+        echo "Not implemented"
+        exit 128
+        ;;
+
+esac
+

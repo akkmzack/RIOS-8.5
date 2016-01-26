@@ -1,0 +1,595 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+##
+## setupAdvNet_inboundQos.psp
+##
+## Inbound QoS
+##
+## This includes the Inbound QoS settings, the Inbound QoS Classes Table and the
+## Inbound QoS Rules Table.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="qos, Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportQoSStatsInbound',) %>
+
+<psp:method name="css">
+    return '''
+/* Indent an unhidden section rightward and down */
+.indentedSection {
+    margin-left: 2em;
+    margin-top: 1em;
+}
+'''
+</psp:method>
+
+
+<psp:method name="interfaces">
+    # Return a list of interface, nodeentry, nodeentry triples:
+    #   [('wan0_0', wan0_0_enable, wan0_0_rate), ('wan0_1', wan0_1_enable, wan0_1_rate), ...]
+
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    if policyType:
+        # CMC case
+        ifaces = []
+        for i in Nodes.allInterfaceIndices:
+            ifaces.append('wan%s' % i)
+    else:
+        # SH case
+        mgmt = self.session().value('mgmt')
+        ifaces = Nodes.getMgmtLocalChildrenNames(
+            mgmt, '/rbt/qos/inbound/state/all/interface')
+        ifaces = FormUtils.sortInterfacesByName(ifaces)
+    result = []
+    for iface in ifaces:
+        enable = FormUtils.NodeEntry(
+            path='/rbt/qos/inbound/config/interface/%s/enable' % iface,
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS on <b>%s</b> ' % iface)
+        rate = FormUtils.NodeEntry(
+            path='/rbt/qos/inbound/config/interface/%s/link_rate' % iface,
+            type='uint32',
+            widgetClass='medium',
+            inputOptional=True,
+            validate=('intInRange', '[100, 4294967295]'),
+            filter=lambda x: (x and int(x) != 0) and x or '',
+            label='with WAN Bandwidth',
+            units='kbps')
+        result.append((iface, enable, rate))
+    return result
+</psp:method>
+
+<psp:method name="nodeEntries">
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+
+    entries = {
+        'enable': FormUtils.NodeEntry(
+            path='/rbt/qos/inbound/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Inbound QoS Shaping and Enforcement'),
+    }
+
+    for iface, enable, rate in self.interfaces():
+        entries[iface + '_enable'] = enable
+        entries[iface + '_rate'] = rate
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+    numberOfRules = len(Nodes.getMgmtLocalChildrenNames(self.session().value('mgmt'), pathPrefix + '/rbt/qos/inbound/config/filter'))
+    ruleAtOptions = [('1', 'Start')] + \
+                    [str(x) for x in range(1, numberOfRules+2)] + \
+                    [(str(numberOfRules+1) + ' ', 'End')]
+
+    # Port/Host Label doesn't have a link for CMC policy pages.
+    if policyType:
+        portLabelText = 'Port or Port Label'
+        hostLabelText = 'Subnet or Host Label'
+    else:
+        portLabelText = 'Port or <a href="/mgmt/gui?p=setupPortLabels">Port Label</a>'
+        hostLabelText = 'Subnet or <a href="/mgmt/gui?p=setupHostLabels">Host Label</a>'
+
+    return {
+    'className': FormUtils.NodeEntry(
+        name='className',
+        label='Class Name',
+        validate='qosName'),
+    'classPriority': FormUtils.NodeEntry(
+        name='classPriority',
+        selectOptions=(('realtime', 'Realtime'),
+                       ('interactive', 'Interactive'),
+                       ('business', 'Business-Critical'),
+                       ('normal', 'Normal'),
+                       ('low', 'Low-Priority'),
+                       ('best-effort', 'Best-Effort')),
+        label='Priority'),
+    'classMinBW': FormUtils.NodeEntry(
+        name='classMinBW',
+        widgetClass='small',
+        label='Minimum Bandwidth',
+        value='0',
+        validate=('floatInRange', '[0, 100]'),
+        units='%'),
+    'classMaxBW': FormUtils.NodeEntry(
+        name='classMaxBW',
+        value='100',
+        widgetClass='small',
+        label='Maximum Bandwidth',
+        validate=('floatInRange', '[0, 100]'),
+        units='%'),
+    'classLinkShareWeight': FormUtils.NodeEntry(
+        name='classLinkShareWeight',
+        widgetClass='small',
+        label='Link Share Weight',
+        value='100',
+        validate=('floatInRange', '[1, 100]')),
+    'ruleName': FormUtils.NodeEntry(
+        name='ruleName',
+        label='Name',
+        inputOptional=True),
+    'ruleAt': FormUtils.NodeEntry(
+        name='ruleAt',
+        widget='select',
+        selectOptions=ruleAtOptions,
+        value=str(numberOfRules+1) + ' ',
+        label='Insert Rule At'),
+    'ruleDesc': FormUtils.NodeEntry(
+        name='ruleDesc',
+        label='Description',
+        widgetClass='wide'),
+    'ruleClass': FormUtils.NodeEntry(
+        name='ruleClass',
+        widget='select',
+        widgetClass='qosClass',
+        value='Default',
+        label='Service Class Name'),
+    'ruleSrcSubnet': FormUtils.NodeEntry(
+        name='ruleSrcSubnet',
+        value='0.0.0.0/0',
+        widgetClass='ipaddrm',
+        label='Remote %s' % hostLabelText,
+        validate='subnetOrHostLabel'),
+    'ruleSrcPort': FormUtils.NodeEntry(
+        name='ruleSrcPort',
+        value='all',
+        widgetClass='port',
+        label=portLabelText,
+        validate='portPortLabel'),
+    'ruleDstSubnet': FormUtils.NodeEntry(
+        name='ruleDstSubnet',
+        value='0.0.0.0/0',
+        widgetClass='ipaddrm',
+        label='Local %s' % hostLabelText,
+        validate='subnetOrHostLabel'),
+    'ruleDstPort': FormUtils.NodeEntry(
+        name='ruleDstPort',
+        value='all',
+        widgetClass='port',
+        label=portLabelText,
+        validate='portPortLabel'),
+    'ruleProtocol': FormUtils.NodeEntry(
+        name='ruleProtocol',
+        selectOptions=qos.PROTOCOL_OPTIONS,
+        label='Protocol'),
+    'ruleTraffic': FormUtils.NodeEntry(
+        name='ruleTraffic',
+        selectOptions=(('all', 'All'),
+                       ('optimized', 'Optimized'),
+                       ('passthrough', 'Passthrough')),
+        label='Traffic Type'),
+    'ruleDscp': FormUtils.NodeEntry(
+        name='ruleDscp',
+        label='DSCP',
+        value='all',
+        widgetClass='small',
+        validate='validateDscp'),
+    'ruleVlan': FormUtils.NodeEntry(
+        name='ruleVlan',
+        label='VLAN Tag ID',
+        widgetClass='small',
+        value='all',
+        validate='vlan'),
+
+    # Layer 7 Protocol Node Entries:
+    'ruleL7Proto': FormUtils.NodeEntry(
+        name='ruleL7Proto',
+        value='',
+        label='Application',
+        inputOptional=True,
+        validate='validateL7App',
+        action='updateApplicationField(this)', # This action is needed to handle when the user types in the L7 protocol.
+        widgetClass='L7AppsAutoComplete'),
+    'ruleL7Proto_HTTP_domainName': FormUtils.NodeEntry(
+        name='ruleL7Proto_HTTP_domainName',
+        label='Domain Name',
+        labelClass='labelPaddedLeft labelPaddedRight',
+        hint='Use * to indicate wildcards.',
+        inputOptional=True,
+        validate='validateMaxWildcard'),
+    'ruleL7Proto_HTTP_relativePath': FormUtils.NodeEntry(
+        name='ruleL7Proto_HTTP_relativePath',
+        label='Relative Path',
+        labelClass='labelPaddedLeft labelPaddedRight',
+        hint='Use * to indicate wildcards.',
+        inputOptional=True,
+        validate='validateMaxWildcard')
+    }
+</psp:method>
+
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# Create the JavaScript code needed for the autocomplete widgets.
+layer7ProtoNamesDesc = qos.layer7ProtocolNamesAndDesc(mgmt, fields, flip=True).values()
+layer7ProtoNamesDesc.sort(lambda a, b: FormUtils.alphanumericCompare(a[0], b[0]))
+layer7ProtoNamesDesc = [{'name': name, 'description': desc} for name, desc in layer7ProtoNamesDesc]
+
+qosClasses = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/qos/inbound/config/class')
+qosClasses.sort(FormUtils.alphanumericCompare)
+dialogEntries['ruleClass'].selectOptions = qosClasses
+
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Put the options in a JS variable so we don't have the huge list written out to the page's HTML twice.
+var l7protocol_autocomplete_options = <%= RVBDUtils.jsonizeAndEscapeForJs(layer7ProtoNamesDesc) %>;
+var allL7protocolNames = {}; // generate the list from l7protocol_autocomplete_options so it doesn't have to be written out.
+Y.Array.each(l7protocol_autocomplete_options, function (item) { allL7protocolNames[item.name] = null; });
+
+// Initialize the AutoComplete widget
+// Note : AutoComplete widget's "select" event is given a handler to update the application field
+//        because the input NodeEntry's "action" only handle when the user types it in.
+RBT._AutoComplete.makeAutoComplete('addQoSRule_ruleL7Proto', l7protocol_autocomplete_options,
+                                   [['select', 'after', function() { updateApplicationField(this); }]]);
+RBT._AutoComplete.makeAutoComplete('editQoSRule_ruleL7Proto', l7protocol_autocomplete_options,
+                                   [['select', 'after', function() { updateApplicationField(this); }]]);
+
+function updateApplicationField(selEl) {
+    // Display the appropriate DIV based on which Application is currently selected.
+    var form = document.forms['qosRulesForm'];
+    var container = Y.one(selEl).ancestor('.ajaxEntryTable_addDiv, .ajaxEntryTable_editDiv');
+    var selEl = container.one('input.L7AppsAutoComplete');
+    var isHttp = selEl.get('value') == 'HTTP';
+    enableElements(container.one('.l7http.indentedSection'), isHttp ? true : 'hide');
+}
+
+
+function validateDscp(val) {
+    val = val.trim().toLowerCase();
+    if (('all' == val) || (val.match(/^\d+$/) && (parseInt(val, 10) <= 63))) {
+        return;
+    }
+    throw 'For DSCP, an integer between 0 and 63, or "all", is necessary.';
+}
+
+function validateMaxWildcard(val) {
+    if (val.split('*').length-1 > 5) {
+        throw 'No more than 5 wildcards are allowed.';
+    }
+    return;
+}
+
+// Validate L7 Application Protocol
+function validateL7App(val) {
+    if (val in allL7protocolNames) {
+        return;
+    }
+    throw 'Select an application from the dropdown list.';
+}
+
+// ]]>
+</script>
+
+
+
+<% self.beginPagelet() %>
+
+
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <fieldset class="topLevel">
+      <input type="hidden" name="_action_" value="setupInboundQoSSettings" />
+      <legend>WAN Link</legend>
+      <div class="midLevel">
+        <%= nodeEntries['enable'].html(self) %>
+      </div>
+      <div class="indent midLevel">
+        <div class="nodeEntry">
+          Network Interfaces:
+        </div>
+        <div class="indent">
+<% for iface, enable, rate in self.interfaces(): { %>
+          <div class="nodeEntry">
+            <%= enable.html(self, format='inline') + rate.html(self, format='inline') %>
+          </div>
+<% } %>
+        </div>
+      </div>
+    </fieldset>
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+
+
+
+<%
+qosClassesTable = ajaxentrytable.AjaxEntryTable('qosClasses',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=inboundQoSClasses'),
+    titleText='Inbound QoS Classes',
+    emptyMessage='No Inbound QoS Classes.',
+    addButtonText='Add a Class',
+    addButtonName='addQoSClass',
+    removeName='removeQoSClasses',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedClass_',
+    editButtonName='editQoSClass')
+
+qosClassesTable.headerSpec = ('',
+                              ('Name',              '', "sortAttrib('name')"),
+                              ('Priority',          '', "sortAttrib('priority')"),
+                              ('Min BW %',      '', "sortAttrib('minbw')"),
+                              ('Max BW %',      '', "sortAttrib('maxbw')"),
+                              ('Link Share Weight', '', "sortAttrib('linkshare')"))
+qosClassesTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedClass_', 'Default'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('name', 'name')]),
+ AjaxEntryTable.tdAttr('prettyPriority'),
+ AjaxEntryTable.tdAttr('minbw'),
+ AjaxEntryTable.tdAttr('maxbw'),
+ AjaxEntryTable.tdAttr('linkshare')]"""
+
+qosClassesTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %(className)s
+    %(classPriority)s
+    %(classMinBW)s
+    %(classMaxBW)s
+    %(classLinkShareWeight)s
+  </table>
+</div>
+''' % {'className': dialogEntries['className'].html(self, namePrefix='addQoSClass_'),
+       'classPriority': dialogEntries['classPriority'].html(self, namePrefix='addQoSClass_'),
+       'classMinBW': dialogEntries['classMinBW'].html(self, namePrefix='addQoSClass_'),
+       'classMaxBW': dialogEntries['classMaxBW'].html(self, namePrefix='addQoSClass_'),
+       'classLinkShareWeight': dialogEntries['classLinkShareWeight'].html(self, namePrefix='addQoSClass_')}
+
+qosClassesTable.editDivContent = '''
+<div class="midLevel">
+  <table>
+    %(classPriority)s
+    %(classMinBW)s
+    %(classMaxBW)s
+    %(classLinkShareWeight)s
+  </table>
+  <input type="hidden" name="editClassName" value="" />
+</div>
+''' % {'classPriority': dialogEntries['classPriority'].html(self, namePrefix='editQoSClass_'),
+       'classMinBW': dialogEntries['classMinBW'].html(self, namePrefix='editQoSClass_'),
+       'classMaxBW': dialogEntries['classMaxBW'].html(self, namePrefix='editQoSClass_'),
+       'classLinkShareWeight': dialogEntries['classLinkShareWeight'].html(self, namePrefix='editQoSClass_')}
+
+
+numberOfRules = len(Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/qos/inbound/config/filter'))
+defaultRuleIdx = str(numberOfRules + 1)
+
+
+qosRulesTable = ajaxentrytable.AjaxEntryTable('qosRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=inboundQoSRules'),
+    titleText='Inbound QoS Rules',
+    headerSpec=('', 'Order', 'Name', 'Service Class', 'Application'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('order', 'moveFromQoSRule_', 'moveToQoSRule_', ['default']),
+ AjaxEntryTable.tdAttr('order'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('order', 'name', ['default'])]),
+ AjaxEntryTable.tdAttr('class'),
+ AjaxEntryTable.tdAttr('prettyl7protocol')]""",
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage='No current Inbound QoS Rules.',
+    removeName='removeQosRules',
+    removeButtonText='Remove Rules',
+    moveName='moveQosRules',
+    moveButtonText='Move...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add a Rule',
+    addButtonName='addQoSRule',
+    editButtonName='editQoSRule')
+
+qosRulesTable.addDivContent = '''
+<div class="rule midLevel">
+  <table>
+    %(ruleName)s
+    %(ruleAt)s
+    %(ruleDesc)s
+  </table>
+  <div class="midLevel"><strong>For Traffic with the Following Characteristics:</strong></div>
+  <table>
+    %(ruleSrcSubnet)s
+    %(ruleDstSubnet)s
+    %(ruleProtocol)s
+    %(ruleTraffic)s
+    %(ruleDscp)s
+    %(ruleVlan)s
+    %(app)s
+    <tr><td colspan="3">
+      <div class="l7http indentedSection">
+        <table>
+          %(httpDomain)s
+          %(httpPath)s
+        </table>
+      </div>
+    </td></tr>
+
+  </table>
+  <div class="midLevel"><strong>Apply these QoS Settings:</strong></div>
+  <table>
+    %(ruleClass)s
+  </table>
+  <input type="hidden" name="add_QoS_Rule" />
+</div>
+''' % {'ruleName': dialogEntries['ruleName'].html(self, namePrefix='addQoSRule_'),
+       'ruleAt': dialogEntries['ruleAt'].html(self, namePrefix='addQoSRule_'),
+       'ruleDesc': dialogEntries['ruleDesc'].html(self, namePrefix='addQoSRule_'),
+       'ruleClass': dialogEntries['ruleClass'].html(self, namePrefix='addQoSRule_'),
+       'ruleSrcSubnet': dialogEntries['ruleSrcSubnet'].html(self, namePrefix='addQoSRule_',
+           more=(dialogEntries['ruleSrcPort'],)),
+       'ruleDstSubnet': dialogEntries['ruleDstSubnet'].html(self, namePrefix='addQoSRule_',
+           more=(dialogEntries['ruleDstPort'],)),
+       'ruleProtocol': dialogEntries['ruleProtocol'].html(self, namePrefix='addQoSRule_'),
+       'ruleTraffic': dialogEntries['ruleTraffic'].html(self, namePrefix='addQoSRule_'),
+       'ruleDscp': dialogEntries['ruleDscp'].html(self, namePrefix='addQoSRule_'),
+       'ruleVlan': dialogEntries['ruleVlan'].html(self, namePrefix='addQoSRule_'),
+       'app': dialogEntries['ruleL7Proto'].html(self, namePrefix='addQoSRule_'),
+       'httpDomain': dialogEntries['ruleL7Proto_HTTP_domainName'].html(self, namePrefix='addQoSRule_'),
+       'httpPath': dialogEntries['ruleL7Proto_HTTP_relativePath'].html(self, namePrefix='addQoSRule_')}
+
+
+
+qosRulesTable.editDivContent = '''
+<div class="rule midLevel">
+  <table>
+    %(ruleName)s
+    %(ruleDesc)s
+  </table>
+  <div class="midLevel"><strong>For Traffic with the Following Characteristics:</strong></div>
+  <table>
+    %(ruleSrcSubnet)s
+    %(ruleDstSubnet)s
+    %(ruleProtocol)s
+    %(ruleTraffic)s
+    %(ruleDscp)s
+    %(ruleVlan)s
+    %(app)s
+    <tr><td colspan="3">
+      <div class="l7http indentedSection">
+        <table>
+          %(httpDomain)s
+          %(httpPath)s
+        </table>
+      </div>
+    </td></tr>
+  </table>
+  <div class="midLevel"><strong>Apply these QoS Settings:</strong></div>
+  <table>
+    %(ruleClass)s
+  </table>
+  <input type="hidden" name="edit_QoS_Rule" />
+  <input type="hidden" name="editRuleAt" />
+</div>
+''' % {'ruleName': dialogEntries['ruleName'].html(self, namePrefix='editQoSRule_'),
+       'ruleDesc': dialogEntries['ruleDesc'].html(self, namePrefix='editQoSRule_'),
+       'ruleClass': dialogEntries['ruleClass'].html(self, namePrefix='editQoSRule_'),
+       'ruleSrcSubnet': dialogEntries['ruleSrcSubnet'].html(self, namePrefix='editQoSRule_',
+           more=(dialogEntries['ruleSrcPort'],)),
+       'ruleDstSubnet': dialogEntries['ruleDstSubnet'].html(self, namePrefix='editQoSRule_',
+           more=(dialogEntries['ruleDstPort'],)),
+       'ruleProtocol': dialogEntries['ruleProtocol'].html(self, namePrefix='editQoSRule_'),
+       'ruleTraffic': dialogEntries['ruleTraffic'].html(self, namePrefix='editQoSRule_'),
+       'ruleDscp': dialogEntries['ruleDscp'].html(self, namePrefix='editQoSRule_'),
+       'ruleVlan': dialogEntries['ruleVlan'].html(self, namePrefix='editQoSRule_'),
+       'app': dialogEntries['ruleL7Proto'].html(self,
+                                            namePrefix='editQoSRule_'),
+       'httpDomain': dialogEntries['ruleL7Proto_HTTP_domainName'].html(self, namePrefix='editQoSRule_'),
+       'httpPath': dialogEntries['ruleL7Proto_HTTP_relativePath'].html(self, namePrefix='editQoSRule_')}
+%>
+
+
+<!-- qos classes -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="qosClassForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupInboundQoSClasses" />
+    <%= qosClassesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<!-- qos rules -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="qosRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupInboundQoSRules" />
+    <%= qosRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+updateApplicationField($('qosRulesForm').elements['addQoSRule_ruleL7Proto']);
+
+qosClassesTable.editEntry = function(editName) {
+    var form = $('qosClassForm');
+    var el = this.getEntryElement('name', editName);
+
+    setFormValue(form, 'editClassName',                     el.getAttribute('name'));
+    setFormValue(form, 'editQoSClass_classPriority',        el.getAttribute('priority'));
+    setFormValue(form, 'editQoSClass_classMinBW',           el.getAttribute('minbw'));
+    setFormValue(form, 'editQoSClass_classMaxBW',           el.getAttribute('maxbw'));
+    setFormValue(form, 'editQoSClass_classLinkShareWeight', el.getAttribute('linkshare'));
+}
+
+qosRulesTable.editEntry = function(editId) {
+    var form = $('qosRulesForm');
+    var el = this.getEntryElement('order', editId);
+
+    var srcPort = el.getAttribute('srcport') == '-1' ? 'all' : el.getAttribute('srcport')
+    var dstPort = el.getAttribute('dstport') == '-1' ? 'all' : el.getAttribute('dstport')
+
+    setFormValue(form, 'editQoSRule_ruleName',      el.getAttribute('name'));
+    setFormValue(form, 'editQoSRule_ruleDesc',      el.getAttribute('description'));
+    setFormValue(form, 'editQoSRule_ruleSrcSubnet', el.getAttribute('srcsubnet'));
+    setFormValue(form, 'editQoSRule_ruleSrcPort',   srcPort);
+    setFormValue(form, 'editQoSRule_ruleDstSubnet', el.getAttribute('dstsubnet'));
+    setFormValue(form, 'editQoSRule_ruleDstPort',   dstPort);
+    setFormValue(form, 'editQoSRule_ruleProtocol',  el.getAttribute('protocol'));
+    setFormValue(form, 'editQoSRule_ruleTraffic',   el.getAttribute('traffic'));
+    setFormValue(form, 'editQoSRule_ruleDscp',      el.getAttribute('dscp'));
+    setFormValue(form, 'editQoSRule_ruleVlan',      el.getAttribute('prettyvlan'));
+    setFormValue(form, 'editQoSRule_ruleClass',     el.getAttribute('class'));
+    setFormValue(form, 'editQoSRule_ruleL7Proto',   el.getAttribute('prettyl7protocol'));
+    setFormValue(form, 'editQoSRule_ruleL7Proto_HTTP_domainName',
+                                                    el.getAttribute('domainname'));
+    setFormValue(form, 'editQoSRule_ruleL7Proto_HTTP_relativePath',
+                                                    el.getAttribute('relativepath'));
+    setFormValue(form, 'editRuleAt',                el.getAttribute('order')); // used to id which rule is being edited
+
+    // Set application protocol fields, then display the correct field
+    if (el.getAttribute('l7protocol') == 'http') {
+        setFormValue(form, 'editQoSRule_ruleL7Proto_httpDomainName',
+                     el.getAttribute('l7protocol_http_domain_name'));
+        setFormValue(form, 'editQoSRule_ruleL7Proto_httpRelativePath',
+                     el.getAttribute('l7protocol_http_relative_path'));
+    }
+
+    // Display/hide the additional fields for the selected L7 protocol.
+    updateApplicationField(form.elements['editQoSRule_ruleL7Proto']);
+}
+
+// ]]>
+</script>

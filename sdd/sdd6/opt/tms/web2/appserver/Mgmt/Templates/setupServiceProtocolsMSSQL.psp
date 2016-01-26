@@ -1,0 +1,93 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsMSSQL.psp
+## This is the template for the MSSQL protocol settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils,Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'enable': FormUtils.NodeEntry(
+            path='/rbt/sport/tds/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable MS-SQL Optimization',
+            enableDiv='enableSubsection'),
+        'prefetch': FormUtils.NodeEntry(
+            path='/rbt/sport/tds/config/fetchnext',
+            type='bool',
+            widget='checkbox',
+            labelClass='label-fixed',
+            label='MS-SQL Prefetch Fetch-Next',
+            units='Enable'),
+        'preacks': FormUtils.NodeEntry(
+            path='/rbt/sport/tds/config/num_preack',
+            type='uint16',
+            widgetClass='small',
+            labelClass='label-fixed',
+            label='Max Number of Pre-Acknowledgements'),
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    mssqlPortsList = Nodes.getMgmtLocalChildrenNames(
+        mgmt, pathPrefix + '/rbt/sport/tds/config/port')
+    mssqlPortsList.sort(FormUtils.compareStringInts)
+    mssqlPortStr = ", ".join(mssqlPortsList)
+
+    return {
+        'ports': FormUtils.NodeEntry(
+            name='mssqlports',
+            validate='portList',
+            inputOptional=True,
+            labelClass='label-fixed',
+            widgetClass='wide2',
+            label='MS-SQL Ports',
+            value=mssqlPortStr,
+            hint='(comma separated)')
+    }
+</psp:method>
+
+<%
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<p>
+This feature requires 
+<a href="mailto:proservesql@riverbed.com">Riverbed Professional Services</a>. 
+Do not enable it yourself.
+</p>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="mssqlForm">
+  <fieldset class="topLevel">
+    <input type="hidden" name="_action_" value="setupServiceProtocolsMSSQL" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enable'].html(self) %>
+      <div id="enableSubsection" class="indent">
+        <table>
+          <%= nodeEntries['prefetch'].html(self) %>
+          <%= nodeEntries['preacks'].html(self) %>
+          <%= dialogEntries['ports'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

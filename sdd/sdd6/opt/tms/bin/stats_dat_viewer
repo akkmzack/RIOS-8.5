@@ -1,0 +1,367 @@
+#!/usr/bin/python
+
+from os.path import exists
+from optparse import OptionParser
+import sys
+import struct
+import Mgmt
+import time
+
+class StatsDatError(RuntimeError):
+   def __init__(self, arg):
+      self.args = arg
+#
+# Refer to framework/doc/design/stats-design.txt for
+# the format of stats file
+#
+class StatsDatFile:
+    "stats dat file class"
+
+    def __init__(self, filename=None):
+        self.filename = filename
+        self.fd = None
+        self.fd = open(self.filename, 'rb')
+
+        self.magic = None
+        self.format_version = -1
+        self.num_series = -1
+        self.max_instances = -1
+        self.num_instances = -1
+        self.oldest_inst_id = -1
+        self.oldest_chunk_offset = -1
+        self.newest_inst_id = -1
+        self.newest_chunk_offset = -1
+        self.max_uint32 = 4294967295L
+
+        self.previous_flushing_status = -1
+        self.sorted_time_stamps = []
+        self.series_sorted_elems = []
+        self.series_node_names = []
+        self.series_node_type = []
+        self.sd_disk_series_begin_offset = 0
+
+        #
+        # Stats file absolute byte offsets for the header.
+        #
+        self.sfao_header_begin =         0
+        self.sfao_magic =                0
+        self.sfao_format_version =       8
+        self.sfao_num_series =          12
+        self.sfao_max_instances =       16
+        self.sfao_num_instances =       20
+        self.sfao_oldest_inst_id =      24
+        self.sfao_oldest_chunk_offset = 28
+        self.sfao_newest_inst_id =      32
+        self.sfao_newest_chunk_offset = 36
+        self.sfao_inst_times =          40
+        self.st_header_fixed_len =      self.sfao_inst_times
+    
+        self.len_time_sec = 4 # uint32
+        # Series of Record related information 
+        self.st_node_name_max_len =    512
+        #
+        # Stats file relative byte offsets for the series records,
+        # relative to the beginning of the series.
+        # 
+        self.sfro_record_size =         0
+        self.sfro_elem_size =           4
+        self.sfro_node_type =           8
+        self.sfro_node_name =          12
+        self.sfro_data =               12 + self.st_node_name_max_len
+        #Flushing status of file: only exists in first serie record
+        self.sfro_flush_status =       12 + self.st_node_name_max_len - 4
+        self.st_series_header_len  =   self.sfro_data
+    
+        self.previous_flushing_status_length = 4 # This only exists the first serie of each file
+        self.flushing_status_mapping = { 0: "flushed_clean",
+                                        0x5555: "flushing_data",
+                                        0xAAAA: "flushing_header"}
+
+        self.timefmt = "%Y/%m/%d %H:%M:%S"
+        self.node_type_unpack_fmt_mapping = {"uint32":"I",
+                                             "int32":"i",
+                                             "uint64":"Q",
+                                             "int64":"q"}
+        self.node_type_unpack_byteorder_mapping = {"uint32":"=",#native
+                                             "int32":"=",#native
+                                             "uint64":"!",#network=big-endian
+                                             "int64":"!"} #network
+
+    def __del__(self):
+        if self.fd:
+            self.fd.close()
+
+    def read_file_header(self):
+        self.fd.seek(self.sfao_header_begin)
+        buf = self.fd.read(self.st_header_fixed_len)
+
+        (self.magic, # 8 char string
+         self.format_version,      # uint32 
+         self.num_series,          # uint32
+         self.max_instances,       # uint32
+         self.num_instances,       # uint32
+         self.oldest_inst_id,      # uint32
+         self.oldest_chunk_offset, # uint32
+         self.newest_inst_id,      # uint32
+         self.newest_chunk_offset  # uint32
+        ) = struct.unpack("=8sIIIIIIII", buf)
+
+        if "STATFILE" != self.magic:
+            raise StatsDatError("Stats dat file Magic error")
+        if self.max_uint32 == self.format_version:
+            self.format_version = -1
+        if self.max_uint32 == self.num_series:
+            self.num_series = -1
+        if self.max_uint32 == self.max_instances:
+            self.max_instances = -1
+        if self.max_uint32 == self.num_instances:
+            self.num_instances = -1
+        if self.max_uint32 == self.oldest_inst_id:
+            self.oldest_inst_id = -1
+        if self.max_uint32 == self.oldest_chunk_offset:
+            self.oldest_chunk_offset = -1
+        if self.max_uint32 == self.newest_inst_id:
+            self.newest_inst_id = -1
+        if self.max_uint32 == self.newest_chunk_offset:
+            self.newest_chunk_offset = -1
+
+        if self.max_instances != -1:
+            self.sd_disk_series_begin_offset = \
+                self.st_header_fixed_len +\
+                self.len_time_sec * self.max_instances
+
+        if (self.oldest_chunk_offset % self.max_instances) != \
+           (self.oldest_inst_id % self.max_instances):
+            raise StatsDatError(
+              "Oldest instance id is not aligned with oldest chunk offset")
+            
+        if (self.newest_chunk_offset % self.max_instances) != \
+           (self.newest_inst_id % self.max_instances):
+            raise StatsDatError(
+              "Newest instance id is not aligned with newest chunk offset")
+        if self.max_instances < self.num_instances:
+            raise StatsDatError(
+              "Actual instance number is greater than max limit")
+
+        if self.max_instances != -1:
+            self.sorted_time_stamps = self.get_sorted_useful_list(
+                 self.read_list_from_file(offset = self.st_header_fixed_len,
+                     record_length_to_unpack = self.len_time_sec * self.max_instances,
+                     node_type_string ="uint32",
+                     element_size = 4,
+                     element_count = self.max_instances))
+                
+
+    def dump_file_header(self):
+        print "### File %s header information" % self.filename
+        print "# Magic is %s" % self.magic
+        print "# Format version is\t%d" % self.format_version
+        print "# Number of series is\t%d" % self.num_series
+        print "# Max instances is\t%d" % self.max_instances
+        print "# Number of instances is\t%d" % self.num_instances
+        print "# Oldest instance id is\t%d" % self.oldest_inst_id
+        print "# Oldest chunk offset is\t%d" % self.oldest_chunk_offset
+        print "# Newest instance id is\t%d" % self.newest_inst_id
+        print "# Newest chunk offset is\t%d" % self.newest_chunk_offset
+
+    def dump_file_time_stamps_and_series(self, header_mapping):
+        print ""
+        print "### File %s series information" % self.filename
+        if self.num_series < 1:
+            print "# There is no series in file %s" % self.filename
+            return
+        try:
+            print "# Previous flushing status: %s "% \
+                  self.flushing_status_mapping[self.previous_flushing_status]
+        except KeyError, er:
+            print "Error Found: Unknown Previous flushing status key: %s " % er
+            raise er
+        if self.num_series == 0:
+            print "# There is no series data in this file"
+            return
+        print "# Column 0: Time stamps"
+        series_header = "#Time_stamp"
+        for i in range(0, len(self.series_node_names)):
+            if header_mapping and header_mapping.has_key(self.series_node_names[i]):
+                print "# Column %d: %s(%s) (type: %s)" % (i + 1,
+                                    header_mapping[self.series_node_names[i]],
+                                    self.series_node_names[i],
+                                    self.series_node_type[i])
+                series_header = series_header + "\t%s" % (
+                                header_mapping[self.series_node_names[i]])
+            else:
+                print "# Column %d: %s (type: %s)" % (i + 1,
+                                    self.series_node_names[i],
+                                    self.series_node_type[i])
+                series_header = series_header + "\t%s" %self.series_node_names[i]
+
+        print series_header
+        for i in range (0, len(self.sorted_time_stamps)):
+            line = time.strftime(self.timefmt,
+                                 time.localtime(self.sorted_time_stamps[i]))
+            for series_index in range (0, len(self.series_sorted_elems)):
+                line = line + ",%s" % self.series_sorted_elems[series_index][i]
+            print line
+
+    def read_file_series(self):
+        sd_disk_series_next_offset = self.sd_disk_series_begin_offset
+
+        for i in range (0, self.num_series):
+            self.fd.seek(sd_disk_series_next_offset)
+            buf = self.fd.read(self.st_series_header_len)
+            if len(buf) != self.st_series_header_len:
+                raise StatsDatError("Stats dat file format error: no expected chars left")
+            data = struct.unpack("=III512s", buf)
+            if i == 0:
+                (record_size, # uint32
+                 elem_size,   # uint32
+                 node_type,   # uint32
+                 node_name,   # 508 char string
+                 self.previous_flushing_status # uint32
+                ) = struct.unpack("=III508sI", buf)
+            else :
+                (record_size, # uint32
+                 elem_size,   # uint32
+                 node_type,   # uint32
+                 node_name    # 512 char string
+                ) = struct.unpack("=III512s", buf)
+
+            # after unpack, \x00 means null in the string, strip all of them
+            node_name_without_null = node_name.replace('\x00','')
+            element_start_offset = self.st_series_header_len + sd_disk_series_next_offset
+            elems = self.read_list_from_file(offset = element_start_offset,
+                       record_length_to_unpack = record_size - self.st_series_header_len,
+                       node_type_string = Mgmt.bn_type_to_str(node_type),
+                       element_size = elem_size,
+                       element_count = self.max_instances)
+            self.series_node_names.append(node_name_without_null.strip())
+            self.series_node_type.append(Mgmt.bn_type_to_str(node_type))
+            self.series_sorted_elems.append(self.get_sorted_useful_list(elems))
+
+            sd_disk_series_next_offset = sd_disk_series_next_offset + record_size
+            
+
+    def read_list_from_file(self,
+                            offset,
+                            record_length_to_unpack,
+                            node_type_string,
+                            element_size,
+                            element_count):
+        self.fd.seek(offset)
+        if element_size * element_count != record_length_to_unpack:
+            raise StatsDatError( \
+             "Record length(%d) is not match with element size(%d) and element count(%d)" %
+           (record_length_to_unpack, element_size, element_count))
+        buf = self.fd.read(record_length_to_unpack)
+
+        # Data(uint64) byte order in file is network order
+        # Data(uint32) byte order in file is native order
+        ret = struct.unpack("%s%d%s" % (
+                        self.node_type_unpack_byteorder_mapping[node_type_string],
+                        element_count,
+                        self.node_type_unpack_fmt_mapping[node_type_string]),
+                        buf)
+        if len(ret) != element_count:
+            raise StatsDatError( \
+             "Expect unpack %d element, but only %d got" % (element_count, len(ret)))
+        return ret
+
+    def get_sorted_useful_list(self, unsorted_full_list):
+        if len(unsorted_full_list) != self.max_instances:
+            raise StatsDatError(
+             "Unsorted Full List length is %d not %d long" % (len(unsorted_full_list),
+                                                     self.max_instances))
+        if unsorted_full_list == None:
+            return None
+        if self.num_instances == 0:
+            return ()
+        if self.num_instances < 0 or \
+           self.oldest_chunk_offset < 0 or \
+           self.oldest_inst_id < 0 or \
+           self.newest_chunk_offset < 0 or \
+           self.newest_inst_id < 0:
+            return None
+
+        start_index = self.oldest_inst_id % self.max_instances
+        end_index = self.newest_inst_id % self.max_instances
+
+        if (start_index + self.num_instances -1) < self.max_instances:
+            # There is no circular
+            if (start_index + self.num_instances -1) != end_index:
+                raise StatsDatError(
+                 "number of instances error: oldest and newest does not match the size")
+            else:
+                if end_index == self.max_instances -1:
+                    return unsorted_full_list[start_index:]
+                else:
+                    return unsorted_full_list[start_index:(end_index+1)]
+        elif start_index + self.num_instances >= self.max_instances:
+            if (start_index + self.num_instances - 1) % self.max_instances != end_index:
+                raise StatsDatError(
+                 "number of instances error: circular list oldest and newest does not match the size")
+            else:
+                return unsorted_full_list[start_index:] + \
+                       unsorted_full_list[:(end_index + 1)]
+
+def my_callback(option, opt, value, parser):
+    print "opt %s, value %s" % (opt, value)
+
+def main():
+    parser = OptionParser(
+        usage="usage: %prog [options] filename"
+    )
+
+    header_mapping = {}
+    parser.add_option("-o", "--onlyheader", dest="onlyheader",
+                      action="store_true",
+                      help="only show header information")
+
+    parser.add_option("-f", "--filename", dest="filename",
+                      help="filename to read dat, mandatory option")
+
+    parser.add_option("-c", "--columnheader", dest="columnheader",
+                      action="append", 
+                      help="Column header mapping, format "
+                           "like 'serie_name=column_header',"
+                           "we accept multiple columnheader options")
+
+    (opts, args) = parser.parse_args()
+
+    try:
+        filename = opts.filename
+        if not opts.filename:
+            raise StatsDatError("Dat filename is required, -h option for more help")
+
+        if opts.columnheader:
+            for i, opt in enumerate(opts.columnheader):
+                col_mapping = opt.split("=")
+                if len(col_mapping) != 2:
+                    raise StatsDatError("Column header format is series=header")
+                else:
+                    header_mapping[col_mapping[0].strip()] = col_mapping[1].strip()
+
+        if not exists(filename):
+            raise StatsDatError(
+                 "Dat file %s does not exist" % filename)
+
+        curfile = StatsDatFile(filename)
+
+        curfile.read_file_header()
+        curfile.read_file_series()
+        curfile.dump_file_header()
+        if not opts.onlyheader:
+            curfile.dump_file_time_stamps_and_series(header_mapping)
+
+    except IOError, ioe:
+        print "I/O error %s " % ioe
+    except ValueError:
+        print "Could not convert data to an integer."
+    except StatsDatError, sderr:
+        print "Stats Dat Error in '%s' happened: %s" % (filename, sderr.args)
+    except:
+        print "Unexpected error:", sys.exc_info()[0]
+        raise
+
+if __name__ == "__main__":
+    main()
+

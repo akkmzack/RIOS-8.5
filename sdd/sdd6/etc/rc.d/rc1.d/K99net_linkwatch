@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# chkconfig: 345 21 99
+# description: start monitoring the network interface's link state and bypass state
+#              workaround for the bug 93712
+
+case "$1" in
+    start)
+        echo -n "Starting net-linkreset.sh"
+        /sbin/net-linkreset.sh &
+	;;
+    stop)
+        echo -n "Stopping net-linkreset.sh"
+        netpid=`ps -ef|grep "/sbin/net-linkreset.sh" | awk '{print $2}'`
+        pid=`echo $netpid |awk '{print $1}'`
+        kill -9 $pid
+	;;
+    *)
+    	;;
+esac

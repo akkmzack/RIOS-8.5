@@ -1,0 +1,187 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## Optimized Throughput Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, Reports2Controls, FormUtils, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('setupAdministrationPorts',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/th_peak',
+            '/stats/actions/generate_report/th_p95',
+            '/stats/actions/generate_report/th_sum',
+            '/net/services/state/port',
+            '/rbt/sport/reports/config/bandwidth/port',
+            '/stats/state/bulk_reg_class/3/subclass']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'port': FormUtils.NodeEntry(
+            name='port',
+            label='Port',
+            widget='select',
+            userPath='sh/web/reports/traffic_port',
+            userConfigAutoSave=True,
+            selectOptions=Reports2Controls.trafficPorts(self.session().value('mgmt')),
+            action='paramChanged()',
+            enableKeyNav=False
+        ),
+        'direction': FormUtils.NodeEntry(
+            name='direction',
+            label='Direction',
+            widget='select',
+            userPath='sh/web/reports/traffic_direction',
+            userConfigAutoSave=True,
+            selectOptions=(('bi', 'Bi-directional'),
+                           ('ltw', 'LAN to WAN'),
+                           ('wtl', 'WAN to LAN')),
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['port'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['direction'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    highstockOptions.yAxis[0].title.text = 'LAN Throughput (bps)';
+    highstockOptions.yAxis[2].title.text = 'WAN Throughput (bps)';
+    highstockOptions.plotOptions.area.fillOpacity = 0.5;
+
+    highstockOptions.series = [
+        {name: 'LAN Peak',
+         type: 'area',
+         color: RBT.Reports2.GRAY_DARK,
+         dataGrouping: {approximation: 'high'}},
+        {name: 'LAN P95',
+         type: 'area',
+         color: RBT.Reports2.BLUE,
+         dataGrouping: {approximation: 'high'}},
+        {name: 'LAN Average',
+         type: 'area',
+         color: RBT.Reports2.AQUA},
+        {name: 'WAN Peak',
+         type: 'area',
+         color: RBT.Reports2.GRAY_DARK,
+         dataGrouping: {approximation: 'high'},
+         yAxis: 2},
+        {name: 'WAN P95',
+         type: 'area',
+         color: RBT.Reports2.BLUE,
+         dataGrouping: {approximation: 'high'},
+         yAxis: 2},
+        {name: 'WAN Average',
+         type: 'area',
+         color: RBT.Reports2.AQUA,
+         yAxis: 2}
+    ];
+
+    // Make the navigator shadow the fourth series (WAN Peak).
+    highstockOptions.navigator.baseSeries = 3;
+    highstockOptions.navigator.series.color = highstockOptions.series[3].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[3].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        options: highstockOptions,
+        topPaneHeightPercent: 50,
+        dataFormatterFn: dataFormatter,
+        customControlDiv: Y.one('div#reportControls'),
+        statsFn: throughputStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    // Collect user input.
+    var port = Y.one('select[name="port"]').get('value');
+    var direction = Y.one('select[name="direction"]').get('value');
+
+    // Construct the data URL.
+    var dataUrl = '<%= Reports2.constructDataUrl("reportOptimizedThroughput") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'port', port);
+    dataUrl = addQueryStringParameter(dataUrl, 'direction', direction);
+    return dataUrl;
+}
+
+function throughputStats(allSeriesData) {
+    var allStats = [];
+
+    // Calculate maximum LAN throughput.
+    var maxLANThroughput = RBT.Reports2.max(allSeriesData[0]);
+    var maxLANThroughputText = 'Peak: ' + dataFormatter(maxLANThroughput);
+    allStats.push([maxLANThroughputText]);
+
+    // Calculate maximum LAN P95 throughput.
+    var p95LANThroughput = RBT.Reports2.max(allSeriesData[1]);
+    var p95LANThroughputText = 'Peak: ' + dataFormatter(p95LANThroughput);
+    allStats.push([p95LANThroughputText]);
+
+    // Calculate average LAN throughput.
+    var avgLANThroughput = RBT.Reports2.avg(allSeriesData[2]);
+    var avgLANThroughputText = 'Average: ' + dataFormatter(avgLANThroughput);
+    allStats.push([avgLANThroughputText]);
+
+    // Calculate maximum WAN throughput.
+    var maxWANThroughput = RBT.Reports2.max(allSeriesData[3]);
+    var maxWANThroughputText = 'Peak: ' + dataFormatter(maxWANThroughput);
+    allStats.push([maxWANThroughputText]);
+
+    // Calculate maximum WAN P95 throughput.
+    var p95WANThroughput = RBT.Reports2.max(allSeriesData[4]);
+    var p95WANThroughputText = 'Peak: ' + dataFormatter(p95WANThroughput);
+    allStats.push([p95WANThroughputText]);
+
+    // Calculate average WAN throughput.
+    var avgWANThroughput = RBT.Reports2.avg(allSeriesData[5]);
+    var avgWANThroughputText = 'Average: ' + dataFormatter(avgWANThroughput);
+    allStats.push([avgWANThroughputText]);
+
+    return allStats;
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'bps');
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl()
+    });
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

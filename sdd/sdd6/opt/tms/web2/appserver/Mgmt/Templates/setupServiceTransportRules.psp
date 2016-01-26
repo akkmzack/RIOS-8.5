@@ -1,0 +1,308 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Lit Min Lee
+##
+## setupServiceSCPS.psp
+## The SCPS Configuration.
+###
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils: NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceGeneral',
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupPortLabels',
+        'reportConnections',
+        'reportConnectionHistory',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+#transportRulesTable_main { width: 640px; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'lanSendSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/lan/socket_send_buf_size',
+            type='uint32',
+            validate=('intInRange', '[4096, 4294967295]'),
+            widgetClass='medium',
+            label='LAN Send Buffer Size',
+            units='bytes'),
+        'lanReceiveSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/lan/socket_recv_buf_size',
+            type='uint32',
+            validate=('intInRange', '[4096, 4294967295]'),
+            widgetClass='medium',
+            label='LAN Receive Buffer Size',
+            units='bytes'),
+        'wanSendSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/wan/default/socket_send_buf_size',
+            type='uint32',
+            validate=('intInRange', '[16384, 4294967295]'),
+            widgetClass='medium',
+            label='WAN Default Send Buffer Size',
+            units='bytes'),
+        'wanReceiveSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/wan/default/socket_recv_buf_size',
+            type='uint32',
+            validate=('intInRange', '[16384, 4294967295]'),
+            widgetClass='medium',
+            label='WAN Default Receive Buffer Size',
+            units='bytes'),
+        'enableSEITable': FormUtils.NodeEntry(
+            path='/rbt/sport/vegas/config/sat_opt/scps/sei/enable',
+            type='bool',
+            tooltip='''Enable optimization for single-ended SCPS connections as indicated in the rules table below.
+                    This does not affect the optimization of SCPS connections between Steelheads.''',
+            widget='checkboxLeft',
+            label='Enable Single-Ended Connection Rules Table'),
+        'tcpOptimization': NodeEntry(
+            path='/rbt/sport/vegas/config/cong_ctrl/mode',
+            type='uint8',
+            widget='radio',
+            tooltip={
+                '2': '''For inner connections, "Auto-Detect" will attempt to use the peer's mode if known,
+                    Skipware when negotiated, or default to Standard TCP for all other cases. For single-ended
+                    connections, "Auto-Detect" will attempt to use Skipware when possible or Standard
+                    TCP otherwise.''' },
+            label={ '2': 'Auto-Detect TCP Optimization',
+                    '1': 'Standard TCP (RFC-Compliant)',
+                    '3': 'HighSpeed TCP Optimization',
+                    '4': 'Bandwidth Estimation TCP Optimization',
+                    '6': 'Skipware Per-Connection TCP Optimization',
+                    '7': 'Skipware Error-Tolerant TCP Optimization',
+                    '5': 'RTT Invariant TCP Optimization'})
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    # Port Label doesn't have a link for policy pages.
+    policy, prefix, cmcMode = self.retargetCmcPolicyNodes()
+    if (cmcMode):
+        portLabelText = 'Port or Port Label'
+    else:
+        portLabelText = 'Port or <a href="/mgmt/gui?p=setupPortLabels">Port Label</a>'
+
+    return {
+        'transport_idx': FormUtils.NodeEntry(
+            name='idx',
+            widget='select',
+            label='Position'),
+        'transport_src/network': FormUtils.NodeEntry(
+            name='src/network',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Source Subnet',
+            validate='ipv4prefix'),
+        'transport_dst/network': FormUtils.NodeEntry(
+            name='dst/network',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Destination Subnet',
+            validate='ipv4prefix'),
+        'transport_dst/port_label': FormUtils.NodeEntry(
+            name='dst/port_label',
+            widgetClass='portOrLabel',
+            value='all',
+            label=portLabelText,
+            validate='portPortLabel'),
+        'transport_vlan': FormUtils.NodeEntry(
+            name='vlan',
+            value='all',
+            label='VLAN Tag ID',
+            validate='vlan'),
+        'transport_scps/allow_scps': FormUtils.NodeEntry(
+            name='scps/allow_scps',
+            value='true',
+            widget='radio',
+            label={'true': 'Enable',
+                   'false': 'Passthrough'})
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, cmcMode = self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+scpsLicense = Nodes.present(mgmt, pathPrefix + '/rbt/sport/vegas/config/sat_opt/scps/licensed') == 'true'
+congestionCtrl = Nodes.present(mgmt, pathPrefix + '/rbt/sport/vegas/config/cong_ctrl/mode')
+
+dialogEntries = self.dialogEntries()
+addTransport = 'addTransport_'
+editTransport = 'editTransport_'
+
+ruleIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/transport/config/rule')
+ruleIndices.sort(FormUtils.alphanumericCompare)
+ruleIndices.append(ruleIndices and str(1 + int(ruleIndices[-1])) or '1')
+dialogEntries['transport_idx'].selectOptions = [('1', 'Start')] + ruleIndices + [(ruleIndices[-1], 'End')]
+dialogEntries['transport_idx'].value = ruleIndices[-1]
+
+transportRulesTable = ajaxentrytable.AjaxEntryTable('transportRules',
+    titleText='Single-Ended Connection Rules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=transportRules'),
+    headerSpec=('', 'Rule', 'Source', 'Destination', 'VLAN', 'SCPS Mode'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('id',
+                                 'moveFromTransportRule_',
+                                 'moveToTransportRule_',
+                                 ['default']),
+  AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+  AjaxEntryTable.tdAttr('src-network-pretty'),
+  AjaxEntryTable.tdAttr('dst-pretty'),
+  AjaxEntryTable.tdAttr('vlan-pretty'),
+  AjaxEntryTable.tdAttr('scps-allow-pretty')]""",
+     emptyMessage='No current Transport rules.',
+     removeName='removeRules',
+     removeButtonText='Remove Selected Rules',
+     moveName='moveRules',
+     moveButtonText='Move Selected Rules...',
+     moveButtonCancelText='Cancel Move',
+     addButtonText='Add New Rule',
+     addButtonName='addTransportRule',
+     editButtonName='editTransportRule')
+
+transportRulesTable.addDivContent = '''
+  <div class="midLevel" id="addRuleDiv">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      <tr>
+        <td class="nodeEntry">SCPS Mode:</td>
+        <td class="nodeEntry"><span class="labelPaddedRight">%s</span>%s</td>
+      </tr>
+    </table>
+  </div>
+''' % (dialogEntries['transport_idx'].html(self, namePrefix=addTransport),
+       dialogEntries['transport_src/network'].html(self, namePrefix=addTransport),
+       dialogEntries['transport_dst/network'].html(self, namePrefix=addTransport,
+            more=[dialogEntries['transport_dst/port_label']]),
+       dialogEntries['transport_vlan'].html(self, namePrefix=addTransport),
+       dialogEntries['transport_scps/allow_scps'].html(self, namePrefix=addTransport, value='true', format='inline'),
+       dialogEntries['transport_scps/allow_scps'].html(self, namePrefix=addTransport, value='false', format='inline'))
+
+transportRulesTable.editDivContent = '''
+  <div class="midLevel" id='editRuleDiv'>
+    <table>
+      %s
+      %s
+      %s
+      <tr>
+        <td class="nodeEntry">SCPS Mode:</td>
+        <td class="nodeEntry"><span class="labelPaddedRight">%s</span>%s</td>
+      </tr>
+    </table>
+  </div>
+  <div>
+    <input type="hidden" name="editTransport_index" />
+  </div>
+''' % (dialogEntries['transport_src/network'].html(self, namePrefix=editTransport),
+       dialogEntries['transport_dst/network'].html(self, namePrefix=editTransport,
+           more=[dialogEntries['transport_dst/port_label']]),
+       dialogEntries['transport_vlan'].html(self, namePrefix=editTransport),
+       dialogEntries['transport_scps/allow_scps'].html(self, namePrefix=editTransport, value='true', format='inline'),
+       dialogEntries['transport_scps/allow_scps'].html(self, namePrefix=editTransport, value='false', format='inline'))
+
+self.beginPagelet()
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="transportOptimizationForm">
+  <fieldset id="transportOptSettings">
+  <legend>Transport Optimization</legend>
+    <%= nodeEntries['tcpOptimization'].html(self, format='block', value='2') %>
+    <%= nodeEntries['tcpOptimization'].html(self, format='block', value='1') %>
+    <%= nodeEntries['tcpOptimization'].html(self, format='block', value='3') %>
+    <%= nodeEntries['tcpOptimization'].html(self, format='block', value='4') %>
+    <div id="SCPSOptimizations">
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='6') %>
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='7') %>
+    </div>
+<%
+if congestionCtrl == '5': {  # hidden unless selected
+    self.write('<div id="hiddenOptimizations">')
+    self.write(nodeEntries['tcpOptimization'].html(self, format='block', value='5' ))
+    self.write('</div>')
+}
+if scpsLicense or cmcMode: {
+%>
+    <div class="midLevel">
+      <%= nodeEntries['enableSEITable'].html(self) %>
+    </div>
+<% } %>
+  </fieldset>
+  <fieldset>
+    <legend>Buffer Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['lanSendSize'].html(self) %>
+        <%= nodeEntries['lanReceiveSize'].html(self) %>
+        <%= nodeEntries['wanSendSize'].html(self) %>
+        <%= nodeEntries['wanReceiveSize'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <div class="midLevel">
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <%= FormUtils.formSubmitButtons(self, ({'name': 'apply', 'value': 'Apply'})) %>
+  </div>
+</form>
+<%
+# Show SCPS transport table if a license is installed or if on a CMC Page
+if scpsLicense or cmcMode: { %>
+<form method="post" action="<%= self.thisPageletRequest() %>" id="transportRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceTransportRules" />
+    <%= transportRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<%
+} else: {
+# Disable the SCPS congestion control options when no license is installed or if not a CMC Page
+self.addOnload('disableSCPSOptimizations()')
+}
+self.addOnload('disableHiddenOptimizations()')
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+function disableSCPSOptimizations() {
+    enableElements('SCPSOptimizations', false);
+}
+
+function disableHiddenOptimizations() {
+    enableElements('hiddenOptimizations', false);
+}
+
+<% if scpsLicense or cmcMode: { %>
+// Transport Rules Table Scripts
+transportRulesTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = document.getElementById('transportRulesForm');
+    setFormValue(form, 'editTransport_index', editName);
+    setFormValue(form, 'editTransport_src/network', el.getAttribute('src-network'));
+    setFormValue(form, 'editTransport_dst/network', el.getAttribute('dst-network'));
+    setFormValue(form, 'editTransport_dst/port_label', el.getAttribute('dst-portlabel'));
+    setFormValue(form, 'editTransport_vlan', el.getAttribute('vlan'));
+    setFormValue(form, 'editTransport_scps/allow_scps', (el.getAttribute('scps-allow')));
+    return true;
+}
+<% } %>
+// ]]>
+</script>

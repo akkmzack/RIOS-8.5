@@ -1,0 +1,3305 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Aaron Endelman
+##
+## This is the new Current Connections report.
+##
+## We use quite a few images in this report.
+## Here's a summary to ease comprehension.
+##
+##     Image file            Description
+##     =================     ================================
+##     A_1000_0433_Z.png     AET Header - Random connections sprite
+##     A_1000_0434_N.png     AET Header - Sorting up arrow
+##     A_1000_0434_H.png     AET Header - Sorting up arrow hover
+##     A_1000_0434_X.png     AET Header - Sorting up arrow unavailable
+##     A_1000_0435_N.png     AET Header - Sorting down arrow
+##     A_1000_0435_H.png     AET Header - Sorting down arrow hover
+##     A_1000_0435_X.png     AET Header - Sorting down arrow unavailable
+##     A_1000_0438_Z.png     AET Header - Error sort sprite
+##     A_1000_0510_N_s1.png  Machine type - SH
+##     A_1000_0530_N.png     Connection - RiOS
+##     A_1000_0531_N.png     Connection - Opening
+##     A_1000_0532_N.png     Connection - Closing
+##     A_1000_0533_N.png     Connection - Intentional passthrough
+##     A_1000_0535_N.png     Connection - Forwarded link
+##     A_1000_0536_N.png     Connection - Forwarded data
+##     A_1000_0539_N.png     Connection - Has error
+##     A_1000_0540_N.png     Connection - Packet-mode optimized
+##     A_1000_0541_N.png     Connection - Passthrough failed terminated
+##     A_1000_0542_N.png     Connection - Passthrough failed packet-mode
+##     A_1000_0543_N.png     Connection - RiOS + SCPS optimized
+##     A_1000_0544_N.png     Connection - SCPS optimized
+##     A_1000_0545_N.png     Connection - TCP proxy optimized
+##     A_1000_0546_N.png     Connection - Establishing
+##     A_1000_0552_N.png     Notes - SDR active
+##     A_1000_0552_X.png     Notes - SDR disabled
+##     A_1000_0553_0.png     Notes - Cloud Acceleration not applicable (whitespace)
+##     A_1000_0553_N.png     Notes - Cloud Acceleration active
+##     A_1000_0553_X.png     Notes - Cloud Acceleration disabled
+##     A_1000_0554_N.png     Notes - Compression active
+##     A_1000_0554_X.png     Notes - Compression disabled
+##     A_1000_0555_0.png     Notes - Encryption not applicable (whitespace)
+##     A_1000_0555_N.png     Notes - Encryption active
+##     A_1000_0555_X.png     Notes - Encryption disabled
+##     A_1000_0571_N.png     Daisy chain - Source
+##     A_1000_0572_N.png     Daisy chain - Destination
+##     A_1000_0576_N.png     Daisy chain - Cloud
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, FormUtils, Nodes, PagePresentation:Pagelet, RBA" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %><% self.relatedPages = ('setupServiceInpathRules',) %>
+
+<%
+mgmt = self.session().value('mgmt')
+
+isMonitor = RBA.isMonitorUser(mgmt) and 1 or 0
+sportOk = 1
+
+if not (Nodes.present(mgmt, '/rbt/sport/main/state/sport_connected') == 'true'): {
+    self.getPagePresentationServlet().setFormError('The optimization service is not currently running; some details in the Current Connections report will be unavailable. <p>Go to <a href="/mgmt/gui?p=setupAppliance_service" class="pseudoLink">Services</a> to start the optimization process.</p>', safe=True)
+    sportOk = 0
+}
+%>
+
+<psp:method name="pageIsReadable">
+    # Nodes.permission() returns 'read' for monitor, but monitor gets full permission
+    # except reset and keep-alive.
+    #
+    # The action permissions are 'read' if an RBM user CANNOT perform them,
+    # 'write' if allowed. This oddity prevents pageletNodes from working.
+
+    if not RBA.isRBAUser(self.session()):   # admin or monitor
+        return True
+    else:
+        mgmt = self.session().value('mgmt')
+        return 'write' == Nodes.permission(mgmt, '/rbt/sport/connection/action/get_connections', \
+            '/rbt/sport/connection/action/get_connection_stats')
+</psp:method>
+
+<%
+scpsLicensed = (Nodes.present(mgmt, '/rbt/sport/vegas/state/scps/license_in_use') == 'true') and 1 or 0
+
+# Generate an alphabetized application protocols list for the app filter selector,
+# and maps for translating between the numeric application ID and the position
+# of the name in the selector.
+#
+# Variables with leading underscores are not used past this chunk of Python code.
+#
+try: {
+    _appIdToNameMap = Nodes.getTreeifiedSubtree(mgmt, '/rbt/sport/connection/state/protocol')
+    _appNameToIdMap = dict([v,k] for k,v in _appIdToNameMap.iteritems())
+    self.appNames = _appNameToIdMap.keys()
+    self.appNames.sort(FormUtils.alphanumericCompare)
+    _appNameToPosMap = dict(zip(self.appNames, range(len(self.appNames))))
+    appIdToPosMap = dict([_appNameToIdMap[name], _appNameToPosMap[name]] for name in self.appNames)
+    appPosToIdMap = dict([v,k] for k,v in appIdToPosMap.iteritems())
+}
+except: {
+    self.appNames = ['(unavailable)'];
+    appIdToPosMap = {};
+    appPosToIdMap = {};
+    sportOk = 0;
+}
+%>
+
+<psp:method name="dialogEntries">
+
+    return {
+        'queryFilterInput0': FormUtils.NodeEntry(
+            widgetClass='ipv6addr enterKeySubmits',
+            name='srcSubnet',
+            inputOptional=True),
+        'queryFilterInput1': FormUtils.NodeEntry(
+            widgetClass='port enterKeySubmits',
+            name='srcPort',
+            inputOptional=True),
+        'queryFilterInput2': FormUtils.NodeEntry(
+            widgetClass='ipv6addr enterKeySubmits',
+            name='dstSubnet',
+            inputOptional=True),
+        'queryFilterInput3': FormUtils.NodeEntry(
+            widgetClass='port enterKeySubmits',
+            name='dstPort',
+            inputOptional=True),
+        'queryFilterInput5': FormUtils.NodeEntry(
+            name='applicationSelector',
+            selectOptions = self.appNames),
+        'queryFilterInput6': FormUtils.NodeEntry(
+            widgetClass='datetime enterKeySubmits',
+            name='startedBefore',
+            inputOptional=True),
+        'queryFilterInput7': FormUtils.NodeEntry(
+            widgetClass='datetime enterKeySubmits',
+            name='startedAfter',
+            inputOptional=True)
+     }
+</psp:method>
+
+<psp:method name="css">
+    return """
+/*
+ * These top-level containers implement a table-like div structure.
+ *
+ * Width of summaryColumn must match right edge of summaryBackground.
+ * These govern the size of the filter pool.
+ */
+#currentConnections {
+  width: 1138px;
+}
+#summaryAndQuery {
+  margin-bottom: 14px;
+}
+#summaryColumn {
+  width: 378px;
+}
+#summaryBackground {
+  right: 378px;
+}
+#totalsContainer,
+#deniedDiscardedContainer {
+  padding-top: 13px;
+}
+#totalsContainer {
+  padding-left: 29px;
+  width: 301px;
+}
+#deniedDiscardedContainer {
+  width: 350px;
+}
+#errorsAndCounts,
+#connections {
+  clear: left;
+}
+#connections {
+  padding-top: 12px;
+}
+/* CSS for dynamic sizing of the filter pool and background.
+ * Floating everything left ensures consistent vertical size.
+ * See bug 138862 for technical details.
+ */
+#summaryAndQuery,
+#summaryBackground,
+#summaryColumn,
+#summaryErrorsTable,
+#queryBackground,
+#queryColumn,
+#queryConnections,
+#totalsContainer,
+#deniedDiscardedContainer {
+  float: left;
+}
+#summaryBackground,
+#summaryColumn {
+  overflow: hidden;
+}
+#summaryBackground {
+  position: relative;
+  background-color: transparent;
+}
+#queryBackground {
+  position: relative;
+  width: 100%;
+  background-color: #d2daeb;
+}
+/*
+ * Live connections summary table
+ * All IDs beginning with 'summ' are descendants of this table.
+ */
+#summEstablished,
+#summPacketModeOptimized {
+  border-bottom: 1px solid lightgray;
+}
+#summForwarded {
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+}
+#summPassthrough {
+  border-bottom: 1px solid lightgray;
+}
+/* Any selectable stat (ganged with connection type selector) */
+.selectableStat {
+  cursor: pointer;
+}
+/* Right-justify the summary numbers. */
+.summaryData {
+  width: 52px;
+  text-align: right;
+}
+/* Right-justify the summary percentages. */
+.summaryPct {
+  width: 38px;
+  text-align: right;
+}
+/* containers for the summary numbers */
+.summaryTextContainer,
+.summaryTextPseudolink,
+.summaryTextPseudolinkSelected {
+  width: 208px;
+}
+/* active, unselected summary pseudolink */
+.summaryTextPseudolink {
+  color: blue;
+}
+/* inactive, selected summary pseudolink */
+.summaryTextPseudolinkSelected {
+  color: black;
+}
+/* indentations for different category levels */
+.summaryIndent {
+  padding-left: 10px;
+}
+.summaryIndent2 {
+  padding-left: 25px;
+}
+/* pale light blue background for bridge and filter pool */
+#summAllCurrent:hover,
+#summEstablished:hover,
+#summFailedTerminated:hover,
+#summFailedPacketMode:hover,
+#summForwarded:hover,
+#summHalfOpen:hover,
+#summHalfClosed:hover,
+#summIntentional:hover,
+#summOptimized:hover,
+#summPacketModeOptimized:hover,
+#summPassthrough:hover,
+#summUnintentional:hover,
+#summaryConnectedTable tr.summarySelected {
+  background-color: #d2daeb;
+}
+/* table holding connection summaries */
+#summaryConnectedTable {
+  border-right: 0;
+}
+/* a selected row in that table */
+#summaryConnectedTable tr.summarySelected {
+  font-weight: bold;
+  border-top: 1px solid #c2cae3;
+  border-bottom: 1px solid #c2cae3;
+}
+/* borders at table top and bottom */
+#summaryConnectedTable tr:first-child td {
+  border-top: 2px solid silver;
+}
+#summaryConnectedTable tr:first-child td.bridge {
+  border-top: 2px solid white;
+}
+#summaryConnectedTable tr:first-child td.bridge.visible {
+  border-top: 2px solid #c2cae3;
+}
+#summaryConnectedTable tr:last-child td {
+  border-bottom: 2px solid silver;
+}
+#summaryConnectedTable tr:last-child td.bridge {
+  border-bottom: 2px solid white;
+}
+#summaryConnectedTable tr:last-child td.bridge.visible {
+  border-bottom: 2px solid #c2cae3;
+}
+/*
+ * Bridge stuff.  A bridge is a small DIV that
+ * connects a summary line item with the query area.
+ *
+ * Bridges are normally white to make them invisible,
+ * because we also need to show a couple of borders,
+ * thus 'visibility: hidden' isn't an option.
+ */
+td.bridge {
+  width: 14px;
+  background-color: white;
+  border-top: 1px solid white;
+  border-left: 1px solid silver;
+}
+/*
+ * A visible bridge is colored to match the #queryColumn
+ * background and also the selected category line.
+ */
+td.bridge.visible {
+  background-color: #d2daeb;
+  border-top: 1px solid #c2cae3;
+  border-right: 1px solid #d2daeb;
+  border-bottom: 1px solid #c2cae3;
+  border-left: 0px;
+}
+/* column for all the query stuff */
+#queryColumn {
+  width: 650px;
+}
+#queryForm {
+  padding-left: 24px;
+}
+/* holds the category selection line */
+#queryTop {
+  padding-top: 8px;
+  display: inline-block;
+}
+/* holds the query filters */
+#queryMiddle {
+  padding-left: 34px;
+  padding-top: 10px;
+}
+/* The Update button is positioned relative to the
+ * outer container. */
+#queryBottom {
+  height: 34px;
+  position: absolute;
+  bottom: 0;
+  left: 401px;
+}
+/* internal layout of the query filters selectors */
+#queryFilters select {
+  width: 205px;
+  float: left;
+}
+/* one row in the dynamic table */
+.queryFilterRow {
+  width: 600px;
+  height: 27px;
+  float: left;
+}
+/* the one and only [add filter] button */
+#queryFilterAddButton {
+  padding-left: 24px;
+  padding-top: 3px;
+  float: left;
+  visibility: hidden;
+}
+/* the one-per-row filter remove button */
+a.queryFilterRemoveButton {
+  margin: 5px 4px 0 8px;
+  float: left;
+  width: 12px;
+  height: 12px;
+  background-image: url('/images/A_1000_0432_N.png');
+}
+/* hover image */
+a.queryFilterRemoveButton:hover {
+  background-image: url('/images/A_1000_0432_H.png');
+}
+/* container for the filter input fields */
+.queryFilterInput {
+  padding-left: 5px;
+  float: left;
+}
+.queryFilterInput input {
+  margin-top: 2px;
+}
+/* text: 'Show' */
+#queryText1 {
+  font-weight: bold;
+  padding: 4px 5px 0 0;
+  float: left;
+}
+/* text: 'connections' */
+#queryText2 {
+  padding: 3px 5px 0 3px;
+  float: left;
+}
+/* the 'Update' button */
+#queryUpdateButton {
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+/* cells for total, denied and discarded connection counts */
+#deniedDiscardedContainer {
+  text-align: right;
+}
+
+/*
+ * Zebra-striped tables.
+ * They look like AETs but without any mechanism.
+ * Their salient feature is the ability to add rows
+ * that are automatically the correct stripe color.
+ *
+ * The topology table is also striped,
+ * but its HTML, CSS and JS are significantly different.
+ */
+
+/* table borders */
+table.zebraTable,
+table.topologyTable{
+  border-top: 2px solid gray;
+  border-bottom: 2px solid gray;
+  border-left: 1px solid silver;
+  border-right: 1px solid silver;
+}
+/* zebra table: cell attributes */
+table.zebraTableSeparateCells td,
+table.zebraTableSeparateCells th {
+  border-left: 1px solid silver;
+  height: 22px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+/* topology row: left-side TD (holds image) */
+table.topologyTable tr td.leftSide {
+  vertical-align: middle;
+  text-align: center;
+  padding: 8px 5px 5px 5px;
+}
+/* topology row: right-side TD (holds multiple text lines) */
+table.topologyTable tr td.rightSide {
+  vertical-align: middle;
+  padding: 5px;
+}
+/* vertical separation of topology text lines in a given stripe */
+table.topologyTable tr td.rightSide p {
+  margin-top: 4px;
+  margin-bottom: 5px;
+}
+/* bold font for the zebra table header */
+table.zebraTableSeparateCells th {
+  font-weight: bold;
+}
+/* Odd rows of zebra and topology tables are a very pale blue. */
+table.topologyTable tr.topologyTableOddRow,
+table.zebraTable tr.zebraTableOddRow {
+  background-color: #EFF2F7;
+}
+/* Even rows of zebra and topology tables are white. */
+table.topologyTable tr.topologyTableEvenRow,
+table.zebraTable tr.zebraTableEvenRow {
+  background-color: #FFFFFF;
+}
+/* Zebra table header rows have a solid line underneath. */
+table.zebraTable tr.zebraTableHeaderRow {
+  border-bottom: 1px solid black;
+}
+/* height and left/right spacing for zebra header and body elements */
+table.zebraTable tr.zebraTableHeaderRow th,
+table.zebraTable tr.zebraTableOddRow td,
+table.zebraTable tr.zebraTableEvenRow td {
+  height: 22px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+/* This 'you are here' text is bolded and offset. */
+#detSourceApplianceYouAreHere,
+#detDestApplianceYouAreHere {
+  font-weight: bold;
+  margin-left: 3px;
+}
+/*
+ * Size the left column of connection details to fit
+ * the text 'Passthrough reason'. (The total width
+ * is defined in #detParticulars.)
+ */
+table.connectionDetailsTable tr td:first-child {
+  width: 120px;
+}
+
+/*
+ * The current connections AET
+ */
+
+/* begin connections table header CSS */
+
+/* Need this explicitly for IE7/8. */
+#connectionsTable_table th div {
+  height: 13px;
+}
+
+/* the grayed-out header, made visible by enableSorting() */
+#connectionsTable_table th div.tableHeaderGrayed div.headerLabel {
+  display: none;
+  color: lightgray;
+}
+
+/* dice sprite for the randomize column header */
+#connectionsTable_table th div.randomize .headerLabel {
+  background-image: url('/images/A_1000_0433_Z.png');
+  background-repeat: no-repeat;
+  width: 20px;
+  height: 9px;
+  position: relative;
+  bottom: -3px;
+  display: block;
+}
+
+/* dice sprite roll-over */
+#connectionsTable_table th div.tableHeaderNormal.randomize a.headerLabel:hover {
+  background-position: 0 -9px;
+}
+
+/* dice sprite grayed */
+#connectionsTable_table th div.tableHeaderGrayed.randomize div.headerLabel {
+  background-position: 0 -18px;
+}
+
+/* triangle sprite for the if-error column header */
+#connectionsTable_table th div.errorColumn .headerLabel {
+  background-image: url('/images/A_1000_0438_Z.png');
+  background-repeat: no-repeat;
+  width: 15px;
+  height: 11px;
+  position: relative;
+  bottom: -1px;
+  display: block;
+}
+
+/* triangle sprite roll-over */
+#connectionsTable_table th div.tableHeaderNormal.errorColumn a.headerLabel:hover {
+  background-position: 0 -11px;
+}
+
+/* triangle sprite grayed */
+#connectionsTable_table th div.tableHeaderGrayed.errorColumn div.headerLabel {
+  background-position: 0 -22px;
+}
+
+/* All TH element descendants stack from the left. */
+#connectionsTable_table th div.headerSpec,
+#connectionsTable_table th div.headerSpec a,
+#connectionsTable_table th div.headerSpec div,
+#connectionsTable_table th div .headerLabel,
+#connectionsTable_table th div .showSortArrow {
+  float: left;
+}
+
+/* the little up and down sort arrows */
+
+/* Sort arrows are invisible until needed. */
+#connectionsTable_table th div.tableHeaderNormal a.downSortArrow.hideSortArrow,
+#connectionsTable_table th div.tableHeaderNormal a.upSortArrow.hideSortArrow,
+#connectionsTable_table th div.tableHeaderGrayed div.downSortArrow.hideSortArrow,
+#connectionsTable_table th div.tableHeaderGrayed div.upSortArrow.hideSortArrow {
+  display: none;
+}
+
+/* 'up' sort arrow, normal state */
+#connectionsTable_table th div.tableHeaderNormal a.upSortArrow {
+  background-image: url('/images/A_1000_0434_N.png');
+  background-repeat: no-repeat;
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 5px;
+}
+/* 'up' sort arrow, hover state */
+#connectionsTable_table th div.tableHeaderNormal a.upSortArrow:hover {
+  background-image: url('/images/A_1000_0434_H.png');
+}
+/* 'up' sort arrow, grayed state */
+#connectionsTable_table th div.tableHeaderGrayed div.upSortArrow {
+  background-image: url('/images/A_1000_0434_X.png');
+  background-repeat: no-repeat;
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 5px;
+}
+/* 'down' sort arrow, normal state */
+#connectionsTable_table th div.tableHeaderNormal a.downSortArrow {
+  background-image: url('/images/A_1000_0435_N.png');
+  background-repeat: no-repeat;
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 5px;
+}
+/* 'down' sort arrow, hover state */
+#connectionsTable_table th div.tableHeaderNormal a.downSortArrow:hover {
+  background-image: url('/images/A_1000_0435_H.png');
+}
+/* 'down' sort arrow, grayed state */
+#connectionsTable_table th div.tableHeaderGrayed div.downSortArrow {
+  background-image: url('/images/A_1000_0435_X.png');
+  background-repeat: no-repeat;
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 5px;
+}
+/* Position the sort arrows w/r/t their text. */
+#connectionsTable_table th div a.upSortArrow,
+#connectionsTable_table th div div.upSortArrow {
+  bottom: -2px;
+  left: 2px;
+  margin-right: 2px;
+}
+#connectionsTable_table th div a.downSortArrow,
+#connectionsTable_table th div div.downSortArrow {
+  bottom: -6px;
+  left: 2px;
+  margin-right: 2px;
+}
+/* Special case:  position the sort arrows w/r/t the error icon. */
+#connectionsTable_table th div.errorColumn a.upSortArrow,
+#connectionsTable_table th div.errorColumn div.upSortArrow {
+  bottom: -2px;
+}
+#connectionsTable_table th div.errorColumn a.downSortArrow,
+#connectionsTable_table th div.errorColumn div.downSortArrow {
+  bottom: -6px;
+}
+/* At most, one sort arrow is visible; the rest are hidden. */
+#connectionsTable_table th div a.hideSortArrow,
+#connectionsTable_table th div div.hideSortArrow {
+  display: none;
+}
+/* never a sort direction for the randomization column */
+#connectionsTable_table th div.randomize a.sortArrowNormal,
+#connectionsTable_table th div.randomize div.sortArrowNormal {
+  display: none;
+}
+/* a little extra space around the colon in IP:Port headers */
+#connectionsTable_table th div.ipPortColon div.headerLabel {
+  padding-left: 1px;
+  padding-right: 1px;
+}
+
+/* end connections table header CSS */
+
+/* begin connections table body CSS */
+
+/* Never show the connection ID. */
+#connectionsTable_table .connectionId {
+  display: none;
+}
+/* Use our own percentage bar color. */
+#connectionsTable_table div.percentBarWidget_bar {
+  background-color: #d29d36;
+}
+/* special display for percentage bar extremes (0% and 100%) */
+#connectionsTable_table .reductionBounds_wrapText {
+  color: #cd000b;
+}
+/* ditto */
+#connectionsTable_table .reductionBounds_wrapBar {
+  border: solid 2px #cd000b;
+}
+/* Right-align table cells containing numeric data. */
+#connectionsTable_table td.numeric {
+  text-align: right;
+}
+/* Center cell graphics. */
+#connectionsTable_table td.graphic {
+  text-align: center;
+  vertical-align: middle;
+}
+#connectionsTable_table td.notes img {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+#connectionsTable_table div.sorted {
+  min-width: 32px;
+}
+#connectionsTable_table td.ipPortColumn {
+  min-width: 195px;
+}
+
+/* end connections table body CSS */
+
+/* The AET edit div.  It serves as the details pane.
+ * Note that all id and class names inside this div
+ * are prefixed with 'det'.
+ */
+#connectionDetails {
+  margin: 10px;
+}
+/* The details pane is divided up into two columns. */
+#connectionDetails div.detColumn {
+  float: left;
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+/* 'Connection closed' pane */
+#connectionClosed {
+  display: none;
+  font-size: large;
+  color: gray;
+}
+/* Keep the Particulars table from pushing the right column into a new row. */
+#detParticulars {
+  width: 400px;
+}
+/* Need a little space between the connection state image and its name. */
+#detParticulars img {
+  margin-right: 4px;
+}
+
+/* the LAN/WAN statistics table */
+#detStats {
+  padding-top: 10px;
+}
+/* The buttons and link section */
+#detButtonsAndLink {
+  padding-top: 16px;
+  width: 305px;
+}
+/* The Refresh Data button */
+#detRefreshData {
+  width: 125px;
+}
+/* The details buttons result messages */
+#detRefreshDataMsg,
+#detSendKeepAliveMsg,
+#detResetConnectionMsg
+{
+  font-style: italic;
+  top: 3px;
+  position: relative;
+}
+/* The details buttons result messages, if failed */
+#detSendKeepAliveMsg.failure,
+#detResetConnectionMsg.failure {
+  color: red;
+}
+/* The Keep Alive button */
+#detSendKeepAlive {
+  margin-top: 4px;
+  width: 125px;
+}
+/* The Reset Connection button */
+#detResetConnection {
+  margin-top: 4px;
+  width: 125px;
+}
+/* container for the link to the system logs page */
+#detLinks {
+  margin-top: 12px;
+}
+/* the connection type image in the table body */
+#detUiCategoryIcon {
+  float: left;
+  margin-right: 4px;
+  background-repeat: no-repeat;
+}
+/*
+ * improvements to ipv4/ipv6 address legibility:
+ * colons, square brackets and dots, oh my!
+ */
+.ipv6Punc {
+  float: left;
+  color: #bda270;
+}
+.ipv4Punc {
+  float: left;
+  color: black;
+}
+/* octets and quads */
+.ipHunk {
+  color: black;
+}
+/* all-zeroes quads */
+.ipHunkDimmed {
+  color: #dcd7d4;
+}
+/* common positioning */
+.ipHunk,
+.ipHunkDimmed {
+  float: left;
+  width: 30px;
+  text-align: right;
+  margin-right: 2px;
+}
+/* IPv6 second line indentation */
+.ipQuadNewLine {
+  margin-left: 5px;
+}
+/* octet positioning */
+.ipOctet {
+  float: left;
+  text-align: right;
+}
+/* indentation for IPv4 */
+.ipOctetIndent {
+  margin-left: 8px;
+}
+/* styles for n/a */
+.ipNotAvailable {
+  color: #bab0a8;
+  margin-left: 8px;
+}
+"""
+</psp:method>
+
+<%
+dialogEntries = self.dialogEntries()
+
+queryFilterInputs = [
+    dialogEntries['queryFilterInput0'].html(self, format='inline'),
+    dialogEntries['queryFilterInput1'].html(self, format='inline'),
+    dialogEntries['queryFilterInput2'].html(self, format='inline'),
+    dialogEntries['queryFilterInput3'].html(self, format='inline'),
+    '<span></span>',  # errors only
+    dialogEntries['queryFilterInput5'].html(self, format='inline'),
+    dialogEntries['queryFilterInput6'].html(self, format='inline'),
+    dialogEntries['queryFilterInput7'].html(self, format='inline'),
+    '<span></span>']  # single/double ended
+
+# makeHeaderSpec() creates column headers.
+#
+# CSS and JavaScript code depends on the structure herein,
+# so be careful if you change the HTML it produces.
+#
+# The HTML it returns consists of two sequential DIV elements,
+# one for the normal header, the other for the disabled (grayed) header.
+# (Headers are disabled when sorting has been disallowed.)
+#
+# Headers of sortable columns ('sortField' non-empty) have this structure:
+#
+#   The normal header DIV contains three link ('A') elements:
+#   - the first for the label or background image,
+#   - the second for the 'up' sort arrow,
+#   - the third for the 'down' sort arrow.
+#
+#   The grayed header DIV contains three DIV elements:
+#   - the first for the label or background image,
+#   - the second for the 'up' sort arrow,
+#   - the third for the 'down' sort arrow.
+#
+# Headers of non-sortable columns have this structure:
+#
+#   The normal header DIV contains one DIV element, for the label or background image.
+#   The grayed header DIV contains one DIV element, for the label or background image.
+#
+# Arguments are used as follows:
+#
+#   sortField
+#   -- If specified, the HTML (and the matching CSS) will create sortable links.
+#   -- If not, the header will be static and passive.
+#
+#   displayName
+#   -- a string which becomes the contents of the header label link.
+#   -- Don't specify if CSS is providing a background-image.
+#
+#   className
+#   -- a class name for the top-level DIVs that identifies the column.
+#
+#   toolTip
+#   -- tooltip for the header label
+#
+def makeHeaderSpec(sortField='', displayName='', className='', toolTip=''): {
+    args = dict(locals())
+    if sortField: {
+        return '''
+            <div class="headerSpec tableHeaderNormal %(className)s">
+              <a href=""
+                 class="headerLabel pseudoLink"
+                 title="%(toolTip)s"
+                 onclick="connectionHeaderClick('%(sortField)s'); return false;">%(displayName)s</a>
+              <a href=""
+                 id="%(sortField)sUpArrowNormal"
+                 class="hideSortArrow upSortArrow sortArrowNormal"
+                 onclick="connectionHeaderClick('%(sortField)s'); return false;"></a>
+              <a href=""
+                 id="%(sortField)sDownArrowNormal"
+                 class="hideSortArrow downSortArrow sortArrowNormal"
+                 onclick="connectionHeaderClick('%(sortField)s'); return false;"></a>
+              <div style="clear: both;"></div>
+            </div>
+            <div class="headerSpec tableHeaderGrayed %(className)s">
+              <div class="headerLabel">%(displayName)s</div>
+              <div id="%(sortField)sUpArrowGrayed"
+                   class="hideSortArrow upSortArrow sortArrowGrayed"></div>
+              <div id="%(sortField)sDownArrowGrayed"
+                   class="hideSortArrow downSortArrow sortArrowGrayed"></div>
+             <div style="clear: both;"></div>
+            </div>''' % args
+    } else: {
+        return '''
+            <div class="headerSpec tableHeaderNormal %(className)s">
+              <div class="headerLabel" title="%(toolTip)s">%(displayName)s</div>
+            </div>
+            <div class="headerSpec tableHeaderGrayed %(className)s">
+              <div class="headerLabel" title="%(toolTip)s">%(displayName)s</div>
+            </div>''' % args
+    }
+}
+%>
+
+<% self.beginPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Constants beginning with RBT_ mirror those
+// in rbt_sh/src/include/rbt_connections.h
+// and in currentConnectionsConstants.
+//
+// Note that some constants in rbt_connections.h
+// have, unfortunately, overlaid the meaning of
+// the RBT_CONN prefix.  Some are specific to
+// terminated connections, others to packet-mode.
+//
+// That has caused me considerable confusion,
+// so in the interests of clarity and good code,
+// the RBT_CONN prefixed constants are renamed
+// to RBT_TCP for terminated connections, or
+// to RBT_FLOW for packet-mode (IP Blade) connections,
+// where appropriate.  RBT_CONN is reserved for
+// non-specific connection types.
+//
+var RBT_TCP_FLAG_OPTIMIZED = 1 << 0;
+var RBT_TCP_FLAG_INPATH = 1 << 1;
+var RBT_TCP_FLAG_CODEC_ENABLED = 1 << 2;
+var RBT_TCP_FLAG_LZ_ENABLED = 1 << 3;
+var RBT_TCP_FLAG_INFO_UNKNOWN = 1 << 4;
+var RBT_TCP_FLAG_CLIENT_SPLICE = 1 << 5;
+var RBT_TCP_FLAG_FORWARDED = 1 << 6;
+var RBT_TCP_FLAG_ENCRYPTION_ENABLED = 1 << 7;
+var RBT_TCP_FLAG_SE_SPLICE = 1 << 8;
+var RBT_TCP_FLAG_SCPS_INIT = 1 << 9;
+var RBT_TCP_FLAG_SCPS_INIT_LAN = 1 << 10;
+var RBT_TCP_FLAG_SCPS_TERM = 1 << 11;
+var RBT_TCP_FLAG_SCPS_TERM_LAN = 1 << 12;
+var RBT_TCP_FLAG_UNUSED_BIT_13 = 1 << 13;
+var RBT_TCP_FLAG_PREEXISTING_AR = 1 << 14;
+var RBT_TCP_FLAG_PREEXISTING = 1 << 15;
+var RBT_TCP_FLAG_SAAS_ENABLED = 1 << 16;
+var RBT_TCP_FLAG_SCPS_SIDE_WAN_MASK = 1 << 17;
+
+var RBT_FLOW_FLAG_OPTIMIZED = 1 << 0;
+var RBT_FLOW_FLAG_FLOW_DIR = 1 << 1; // 1 - SH is CFE, 0 - SH is SFE
+var RBT_FLOW_FLAG_SHARED = 1 << 2;
+var RBT_FLOW_FLAG_PARSE_INCOMPLETE = 1 << 3;
+var RBT_FLOW_FLAG_CODEC_ENABLED = 1 << 4;
+var RBT_FLOW_FLAG_LZ_ENABLED = 1 << 5;
+
+var RBT_CONN_SORTBY_NONE = 0;
+var RBT_CONN_SORTBY_STATE = 1;
+var RBT_CONN_SORTBY_SRCIP = 2;
+var RBT_CONN_SORTBY_SRCPORT = 3;
+var RBT_CONN_SORTBY_DESTIP = 4;
+var RBT_CONN_SORTBY_DESTPORT = 5;
+var RBT_CONN_SORTBY_APP = 6;
+var RBT_CONN_SORTBY_REDUCTION = 7;
+var RBT_CONN_SORTBY_BYTEIN = 8;
+var RBT_CONN_SORTBY_BYTEOUT = 9;
+var RBT_CONN_SORTBY_STARTTIME = 10;
+var RBT_CONN_SORTBY_ERRORS = 11;
+var RBT_CONN_SORTBY_PEERIP = 12;
+var RBT_CONN_SORTBY_PEERPORT = 13;
+
+var RBT_CONN_TYPE_DOUBLE_ENDED = 0x0001;
+var RBT_CONN_TYPE_HALF_OPEN = 0x0002;
+var RBT_CONN_TYPE_HALF_CLOSED = 0x0004;
+var RBT_CONN_TYPE_SINGLE_ENDED = 0x0008;
+var RBT_CONN_TYPE_INTENTIONAL_PASS = 0x0010;
+var RBT_CONN_TYPE_UNINTENTIONAL_PASS = 0x0020;
+var RBT_CONN_TYPE_FORWARDED = 0x0040;
+var RBT_CONN_TYPE_IPB_OPTIMIZED = 0x0100;
+var RBT_CONN_TYPE_IPB_INTENTIONAL_PASS = 0x1000;
+var RBT_CONN_TYPE_IPB_UNINTENTIONAL_PASS = 0x2000;
+// Extra flags for single/double-ended filter.
+// They're stored in user preferences but are
+// stripped out before being passed to mgmt.
+var RBT_CONN_TYPE_UI_DOUBLE_ENDED = 0x20000000;
+var RBT_CONN_TYPE_UI_SINGLE_ENDED = 0x40000000;
+// We don't use the high-order bit so as to avoid
+// the complexities of handling negative numbers.
+
+var RBT_CONN_TYPE_ESTABLISHED = (
+    RBT_CONN_TYPE_DOUBLE_ENDED |
+    RBT_CONN_TYPE_SINGLE_ENDED |
+    RBT_CONN_TYPE_IPB_OPTIMIZED);
+var RBT_CONN_TYPE_INTENTIONAL = (
+    RBT_CONN_TYPE_INTENTIONAL_PASS |
+    RBT_CONN_TYPE_IPB_INTENTIONAL_PASS);
+var RBT_CONN_TYPE_PASS = (
+    RBT_CONN_TYPE_INTENTIONAL |
+    RBT_CONN_TYPE_UNINTENTIONAL_PASS |
+    RBT_CONN_TYPE_IPB_UNINTENTIONAL_PASS);
+var RBT_CONN_TYPE_ALL_CURRENT = (
+    RBT_CONN_TYPE_ESTABLISHED |
+    RBT_CONN_TYPE_PASS |
+    RBT_CONN_TYPE_HALF_OPEN |
+    RBT_CONN_TYPE_HALF_CLOSED |
+    RBT_CONN_TYPE_FORWARDED);
+
+// Constants defining a fixed order for
+// the dynamic UI filters in the Query section.
+var UI_FILTER_SRC_SUBNET = 0;
+var UI_FILTER_SRC_PORT = 1;
+var UI_FILTER_DST_SUBNET = 2;
+var UI_FILTER_DST_PORT = 3;
+var UI_FILTER_ERRORS = 4;
+var UI_FILTER_APPLICATION = 5;
+var UI_FILTER_STARTED_BEFORE = 6;
+var UI_FILTER_STARTED_AFTER = 7;
+var UI_FILTER_SINGLE_ENDED = 8;
+var UI_FILTER_DOUBLE_ENDED = 9;
+
+var UI_FILTER_MENU_ITEMS_COUNT = 10;
+
+// The connection pull-down menu in the query section
+var UI_CONN_MENU_ALL_CURRENT = 0;
+var UI_CONN_MENU_ESTABLISHED = 1;
+var UI_CONN_MENU_PACKET_MODE_OPTIMIZED = 2;
+var UI_CONN_MENU_OPENING = 3;
+var UI_CONN_MENU_CLOSING = 4;
+var UI_CONN_MENU_FORWARDED = 5;
+var UI_CONN_MENU_PASSTHROUGH = 6;
+var UI_CONN_MENU_FAILED_TERMINATED = 7;
+var UI_CONN_MENU_FAILED_PACKET_MODE = 8;
+var UI_CONN_MENU_INTENTIONAL = 9;
+
+
+// 'started before' and 'started after' are mutually exclusive.
+// 'single ended' and 'double ended' are mutually exclusive.
+var UI_MAX_FILTER_COUNT = 8;
+
+// Constants defining the position of each UI category
+// in the "Connections" SELECT widget.
+//
+<%
+if scpsLicensed: {
+%>
+    var UI_CAT_ALL_CURRENT = 0;
+    var UI_CAT_ESTABLISHED = 1;
+    var UI_CAT_RIOS = 2;
+    var UI_CAT_RIOS_SCPS = 3;
+    var UI_CAT_SCPS = 4;
+    var UI_CAT_TCP_PROXY = 5;
+    var UI_CAT_PACKET_MODE_OPTIMIZED = 6;
+    var UI_CAT_ESTABLISHING = 7;
+    var UI_CAT_HALF_OPEN = 8;
+    var UI_CAT_HALF_CLOSED = 9;
+    var UI_CAT_FORWARDED = 10;
+    var UI_CAT_PASS = 11;
+    var UI_CAT_FAILED_TERMINATED = 12;
+    var UI_CAT_FAILED_PACKET_MODE = 13;
+    var UI_CAT_PASS_INTENTIONAL = 14;
+<%
+} else: {
+%>
+    var UI_CAT_ALL_CURRENT = 0;
+    var UI_CAT_ESTABLISHED = 1;
+    var UI_CAT_RIOS = 2;
+    var UI_CAT_TCP_PROXY = 3;
+    var UI_CAT_PACKET_MODE_OPTIMIZED = 4;
+    var UI_CAT_ESTABLISHING = 5;
+    var UI_CAT_HALF_OPEN = 6;
+    var UI_CAT_HALF_CLOSED = 7;
+    var UI_CAT_FORWARDED = 8;
+    var UI_CAT_PASS = 9;
+    var UI_CAT_FAILED_TERMINATED = 10;
+    var UI_CAT_FAILED_PACKET_MODE = 11;
+    var UI_CAT_PASS_INTENTIONAL = 12;
+<%
+}
+%>
+
+// Map to translate from UI category to connection menu index...
+var uiCategoryToConnIdxMap = {};
+uiCategoryToConnIdxMap[UI_CAT_ALL_CURRENT] = UI_CONN_MENU_ALL_CURRENT;
+uiCategoryToConnIdxMap[UI_CAT_ESTABLISHED] = UI_CONN_MENU_ESTABLISHED;
+uiCategoryToConnIdxMap[UI_CAT_PACKET_MODE_OPTIMIZED] = UI_CONN_MENU_PACKET_MODE_OPTIMIZED;
+uiCategoryToConnIdxMap[UI_CAT_HALF_OPEN] = UI_CONN_MENU_OPENING;
+uiCategoryToConnIdxMap[UI_CAT_HALF_CLOSED] = UI_CONN_MENU_CLOSING;
+uiCategoryToConnIdxMap[UI_CAT_FORWARDED] = UI_CONN_MENU_FORWARDED;
+uiCategoryToConnIdxMap[UI_CAT_PASS] = UI_CONN_MENU_PASSTHROUGH;
+uiCategoryToConnIdxMap[UI_CAT_FAILED_TERMINATED] = UI_CONN_MENU_FAILED_TERMINATED;
+uiCategoryToConnIdxMap[UI_CAT_FAILED_PACKET_MODE] = UI_CONN_MENU_FAILED_PACKET_MODE;
+uiCategoryToConnIdxMap[UI_CAT_PASS_INTENTIONAL] = UI_CONN_MENU_INTENTIONAL;
+
+// ... and its abstraction.
+function uiCatToConnIdx(idx) {
+    return uiCategoryToConnIdxMap[idx];
+}
+
+// Map to translate from connection menu index to UI category...
+var connIdxToUiCategoryMap = {};
+connIdxToUiCategoryMap[UI_CONN_MENU_ALL_CURRENT] = UI_CAT_ALL_CURRENT;
+connIdxToUiCategoryMap[UI_CONN_MENU_ESTABLISHED] = UI_CAT_ESTABLISHED;
+connIdxToUiCategoryMap[UI_CONN_MENU_PACKET_MODE_OPTIMIZED] = UI_CAT_PACKET_MODE_OPTIMIZED;
+connIdxToUiCategoryMap[UI_CONN_MENU_OPENING] = UI_CAT_HALF_OPEN;
+connIdxToUiCategoryMap[UI_CONN_MENU_CLOSING] = UI_CAT_HALF_CLOSED;
+connIdxToUiCategoryMap[UI_CONN_MENU_FORWARDED] = UI_CAT_FORWARDED;
+connIdxToUiCategoryMap[UI_CONN_MENU_PASSTHROUGH] = UI_CAT_PASS;
+connIdxToUiCategoryMap[UI_CONN_MENU_FAILED_TERMINATED] = UI_CAT_FAILED_TERMINATED;
+connIdxToUiCategoryMap[UI_CONN_MENU_FAILED_PACKET_MODE] = UI_CAT_FAILED_PACKET_MODE;
+connIdxToUiCategoryMap[UI_CONN_MENU_INTENTIONAL] = UI_CAT_PASS_INTENTIONAL;
+
+// ... and its abstraction.
+function connIdxToUiCat(idx) {
+    return connIdxToUiCategoryMap[idx];
+}
+
+// Map to translate from UI category to RBT connection type...
+var uiCategoryToConnTypeMap = {};
+uiCategoryToConnTypeMap[UI_CAT_ALL_CURRENT] = RBT_CONN_TYPE_ALL_CURRENT;
+uiCategoryToConnTypeMap[UI_CAT_ESTABLISHED] = RBT_CONN_TYPE_ESTABLISHED;
+uiCategoryToConnTypeMap[UI_CAT_HALF_OPEN] = RBT_CONN_TYPE_HALF_OPEN;
+uiCategoryToConnTypeMap[UI_CAT_HALF_CLOSED] = RBT_CONN_TYPE_HALF_CLOSED;
+uiCategoryToConnTypeMap[UI_CAT_PACKET_MODE_OPTIMIZED] = RBT_CONN_TYPE_IPB_OPTIMIZED;
+uiCategoryToConnTypeMap[UI_CAT_FORWARDED] = RBT_CONN_TYPE_FORWARDED;
+uiCategoryToConnTypeMap[UI_CAT_PASS] = RBT_CONN_TYPE_PASS;
+uiCategoryToConnTypeMap[UI_CAT_FAILED_TERMINATED] = RBT_CONN_TYPE_UNINTENTIONAL_PASS;
+uiCategoryToConnTypeMap[UI_CAT_FAILED_PACKET_MODE] = RBT_CONN_TYPE_IPB_UNINTENTIONAL_PASS;
+uiCategoryToConnTypeMap[UI_CAT_PASS_INTENTIONAL] = RBT_CONN_TYPE_INTENTIONAL;
+
+// ...and its abstraction.
+function uiCategoryToConnType(uiCategory) {
+    return uiCategoryToConnTypeMap[uiCategory];
+}
+
+// functions to differentiate different groupings of categories
+
+<%
+if scpsLicensed: {
+%>
+    function isCategoryTerminated(uiCategory) {
+        return arrayContains(
+           [UI_CAT_ESTABLISHED,
+            UI_CAT_RIOS,
+            UI_CAT_RIOS_SCPS,
+            UI_CAT_SCPS,
+            UI_CAT_TCP_PROXY,
+            UI_CAT_HALF_OPEN,
+            UI_CAT_HALF_CLOSED,
+            UI_CAT_FAILED_TERMINATED], uiCategory);
+    }
+    function isCategoryOptimized(uiCategory) {
+        return arrayContains(
+           [UI_CAT_ESTABLISHED,
+            UI_CAT_RIOS,
+            UI_CAT_RIOS_SCPS,
+            UI_CAT_SCPS,
+            UI_CAT_TCP_PROXY,
+            UI_CAT_HALF_OPEN,
+            UI_CAT_HALF_CLOSED,
+            UI_CAT_PACKET_MODE_OPTIMIZED], uiCategory);
+}
+<%
+} else: {
+%>
+    function isCategoryTerminated(uiCategory) {
+        return arrayContains(
+           [UI_CAT_ESTABLISHED,
+            UI_CAT_RIOS,
+            UI_CAT_TCP_PROXY,
+            UI_CAT_HALF_OPEN,
+            UI_CAT_HALF_CLOSED,
+            UI_CAT_FAILED_TERMINATED], uiCategory);
+    }
+    function isCategoryOptimized(uiCategory) {
+        return arrayContains(
+           [UI_CAT_ESTABLISHED,
+            UI_CAT_RIOS,
+            UI_CAT_TCP_PROXY,
+            UI_CAT_HALF_OPEN,
+            UI_CAT_HALF_CLOSED,
+            UI_CAT_PACKET_MODE_OPTIMIZED], uiCategory);
+    }
+<%
+}
+%>
+function isCategoryPacketMode(uiCategory) {
+    return arrayContains(
+       [UI_CAT_PACKET_MODE_OPTIMIZED,
+        UI_CAT_FAILED_PACKET_MODE], uiCategory);
+}
+
+function isCategoryPassthrough(uiCategory) {
+    return arrayContains(
+        [UI_CAT_FAILED_TERMINATED,
+         UI_CAT_FAILED_PACKET_MODE,
+         UI_CAT_PASS_INTENTIONAL], uiCategory);
+}
+
+// Special CSS class for the percent bar when the value is 0 or 100
+function percentBarExtremes(pct, element) {
+    var uiCategory = parseInt(element.getAttribute('uiCategory'));
+    var isOptimized = isCategoryOptimized(uiCategory);
+    if (isOptimized && (pct == 0 || pct == 100)) {
+        return [null, 'reductionBounds_wrapText', 'reductionBounds_wrapBar', null];
+    } else {
+        return null;
+    }
+}
+
+// Create the query filters.
+function createFilters() {
+
+    new RBT.DynamicList({
+        name: 'filters',
+        template: ' \
+            <div class="queryFilterRow"> \
+              <div> \
+                <a class="queryFilterRemoveButton" \
+                   title="Remove this filter." \
+                   href="" \
+                   onclick="ccns.removeFilter(\'{id}\'); return false;"> \
+                </a> \
+              </div> \
+              <select class="queryFilterSelect" onchange="onSelectFilter(this); "> \
+                <option class="queryFilterType0" pos="0">from source IP address/mask</option> \
+                <option class="queryFilterType1" pos="1">from source port</option> \
+                <option class="queryFilterType2" pos="2">to destination IP address/mask</option> \
+                <option class="queryFilterType3" pos="3">to destination port</option> \
+                <option class="queryFilterType4" pos="4">that have errors</option> \
+                <option class="queryFilterType5" pos="5">for application</option> \
+                <option class="queryFilterType6" pos="6">that were started before</option> \
+                <option class="queryFilterType7" pos="7">that were started after</option> \
+                <option class="queryFilterType8" pos="8">that are single-ended only</option> \
+                <option class="queryFilterType9" pos="9">that are double-ended only</option> \
+              </select> \
+              <div class="queryFilterInput"/> \
+              </div> \
+              <select class="queryFilterOptionPool" style="display: none"> \
+              </select> \
+              <br style="clear: both"/> \
+            </div>',
+        postAddFn: function(id) { afterAddFilter(id); },
+        preRemoveFn: function(id) { beforeRemoveFilter(id); },
+        parent: '#queryFilters'
+    });
+
+}
+
+// Global filter count information.
+var filterCount = 0;
+
+// IE9 can't see onclick() without a namespace qualifier,
+// so we make one here (Current Connections NameSpace = ccns).
+// Don't know about earlier verions of IE.
+var ccns = {};
+
+// Add a new filter when you click on the 'add filter' link.
+ccns.addFilter = function() {
+    if (filterCount < UI_MAX_FILTER_COUNT) {
+        RBT.DynamicList.addRowStatic('filters');
+    }
+    filterCount++;
+    if (filterCount == UI_MAX_FILTER_COUNT) {
+        Y.one('#queryFilterAddButton').setStyle('visibility', 'hidden');
+    } else {
+        Y.one('#queryFilterAddButton').setStyle('visibility', 'visible');
+    }
+};
+
+// Remove a filter when you click on its delete button-style link.
+ccns.removeFilter = function(lineId) {
+    RBT.DynamicList.removeRowStatic('filters', lineId);
+    Y.one('#queryFilterAddButton').setStyle('visibility', 'visible');
+    filterCount--;
+};
+
+// Add a given filter option to a given SELECT widget.
+function showOption(selectEl, pos) {
+    var pool = selectEl.ancestor().one('.queryFilterOptionPool');
+    var option = pool.one('option[pos=' + pos + ']');
+    if (option) {
+        pool.removeChild(option)
+        var brokeOut = false;
+        var oldSelPos = getSelectedPosition(selectEl); // This is the currently selected option.
+        selectEl.all('option').some(function(opt, idx) {
+            var optPos = opt.getAttribute('pos');
+            if (optPos == pos) {
+                brokeOut = true;
+            }
+            if (optPos > pos) {
+                selectEl.insertBefore(option, opt);
+                setSelectedPosition(selectEl, oldSelPos);
+                brokeOut = true;
+            }
+            return brokeOut;
+        });
+        if (!brokeOut) {
+            selectEl.appendChild(option);
+        }
+        setSelectedPosition(selectEl, oldSelPos); // Reset the selection to the current option.
+    }
+}
+
+// Remove a given filter option from a given SELECT widget.
+function hideOption(selectEl, pos) {
+    var pool = selectEl.ancestor().one('.queryFilterOptionPool');
+    var option = selectEl.one('option[pos=' + pos + ']');
+    if (option) {
+        var oldSelPos = getSelectedPosition(selectEl);
+        selectEl.removeChild(option);
+        setSelectedPosition(selectEl, oldSelPos);
+        pool.appendChild(option);
+    }
+}
+
+// Return a set of SELECT nodes that represent all filter rows.
+function queryFilterSelectNodeSet() {
+    return Y.one('#queryFilters').all('.queryFilterRow .queryFilterSelect');
+}
+
+// When a filter's SELECT OPTION changes, use this function
+// to re-enable the old OPTION (disable the new OPTION)
+// in the other filters' SELECTs.
+//
+// Expected inputs are a set containing SELECTs for all rows,
+// the current SELECT element (for exclusion from updates),
+// the OPTION to be changed and the desired state.
+function enableOptionOtherSelectors(filterSelectNodeSet, selectEl, pos, enable) {
+    filterSelectNodeSet.each(function(selector) {
+        if (selector != selectEl) {
+            if (enable) {
+                showOption(selector, pos);
+            } else {
+                hideOption(selector, pos);
+            }
+        }
+    });
+}
+
+// The HTML for each filter's input field, used with setContent().
+var filtersHtml = [
+    '<%= queryFilterInputs[0] %>',  // src IP
+    '<%= queryFilterInputs[1] %>',  // src port
+    '<%= queryFilterInputs[2] %>',  // dst IP
+    '<%= queryFilterInputs[3] %>',  // dst port
+    '',                             // errors only
+    '<%= queryFilterInputs[5] %>',  // application
+    '<%= queryFilterInputs[6] %>',  // started before
+    '<%= queryFilterInputs[7] %>',  // started after
+    ''];                            // endedness
+
+// Remember the state of the update button when it gets changed by the validator code.
+var updateButtonEnabled = true;
+
+var filtersValidators = [
+    'ipv4or6subnetoraddr',
+    'port',
+    'ipv4or6subnetoraddr',
+    'port',
+    '',
+    '',
+    'datetime',
+    'datetime',
+    ''];
+
+// Since we're moving OPTION elements around, we need a way
+// to remember their proper positions.  Thus we add the 'pos'
+// attribute, which allows us to identify OPTION elements
+// and (re)assemble their SELECTs correctly.
+function getSelectedPosition(sel) {
+    var idx = sel.get('selectedIndex');
+    var option = sel.all('option').item(idx);
+    return parseInt(option.getAttribute('pos'));
+}
+function setSelectedPosition(sel, pos) {
+    sel.all('option').some(function(option, idx) {
+        if (option.getAttribute('pos') == pos) {
+            sel.set('selectedIndex', idx);
+            return true;
+        }
+        return false;
+    });
+}
+
+// After a filter is added, we need to disable any options in its SELECT
+// if they're already in use by other filters.  When we do that, we also
+// may need to advance the SELECT to the first non-disabled option.
+//
+// If rowEl is supplied, use it, otherwise derive it from lineId.
+function afterAddFilter(lineId, rowEl) {
+
+    // Get the TR and SELECT.
+    rowEl = rowEl || Y.one(RBT.DynamicList.findRowElStatic('filters', lineId));
+    var selectEl = rowEl.one('.queryFilterSelect');
+
+    // Cache the set of SELECT nodes.
+    var filterSelectSet = queryFilterSelectNodeSet();
+
+    // Disable any options on this SELECT that are already in use
+    // by the SELECTs of other rows.
+    filterSelectSet.each(function(selector) {
+        if (selector != selectEl) {
+            var pos = getSelectedPosition(selector);
+            if (pos == UI_FILTER_STARTED_BEFORE || pos == UI_FILTER_STARTED_AFTER) {
+                // Special case: 'started before' and 'started after'
+                // options are mutually exclusive, so hide both in
+                // the other selectors.
+                hideOption(selectEl, UI_FILTER_STARTED_BEFORE);
+                hideOption(selectEl, UI_FILTER_STARTED_AFTER);
+            } else if (pos == UI_FILTER_SINGLE_ENDED || pos == UI_FILTER_DOUBLE_ENDED) {
+                // Special case: 'single ended' and 'double ended'
+                // options are mutually exclusive, so hide both in
+                // the other selectors.
+                hideOption(selectEl, UI_FILTER_SINGLE_ENDED);
+                hideOption(selectEl, UI_FILTER_DOUBLE_ENDED);
+            } else {
+                hideOption(selectEl, pos);
+            }
+        }
+    });
+
+    var selPos = getSelectedPosition(selectEl);
+
+    // Set the input field to match the current selection.
+    var queryInput = rowEl.one('.queryFilterInput');
+    queryInput.setContent(filtersHtml[selPos]);
+    var queryInputField = queryInput.one('input');
+    if (queryInputField) {
+        RBT.Validator.addFieldValidation(queryInputField, filtersValidators[selPos], true);
+        function fastValidate() {
+            RBT.Validator.validateField(queryInputField, true);
+        }
+        queryInputField.setAttribute('fastValidate', fastValidate);
+        queryInputField.on('key', fastValidate, 'down:enter');
+    }
+
+    if (selPos == UI_FILTER_STARTED_BEFORE || selPos == UI_FILTER_STARTED_AFTER) {
+        // Special case: 'started before' and 'started after'
+        // options are mutually exclusive, so disable both in
+        // the other selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_BEFORE, false);
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_AFTER, false);
+    } else if (selPos == UI_FILTER_SINGLE_ENDED || selPos == UI_FILTER_DOUBLE_ENDED) {
+        // Special case: 'single ended' and 'double ended'
+        // options are mutually exclusive, so disable both in
+        // the other selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_SINGLE_ENDED, false);
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_DOUBLE_ENDED, false);
+    } else {
+        // Disable this option in all other filter selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, selPos, false);
+    }
+
+    // Save the selected index for when we change the selection.
+    selectEl.setAttribute('prevSelectedPos', selPos);
+}
+
+// When we remove a filter, we also want to remove its input field,
+// and to enable the ability of other filters' SELECTs
+// to select this filter's old option.
+function beforeRemoveFilter(lineId) {
+    // Get the TR and SELECT.
+    var rowEl = Y.one(RBT.DynamicList.findRowElStatic('filters', lineId));
+    var selectEl = rowEl.one('.queryFilterSelect');
+
+    // Get the filter's selector's current selected index.
+    var selPos = getSelectedPosition(selectEl);
+
+    // Cache the set of SELECT nodes.
+    var filterSelectSet = queryFilterSelectNodeSet();
+
+    // Disable any options on this SELECT that are already in use
+    // by the SELECTs of other rows.
+    if (selPos == UI_FILTER_STARTED_BEFORE || selPos == UI_FILTER_STARTED_AFTER) {
+        // Special case: if removing a 'started before' or
+        // 'started after' option, re-enable both options
+        // in the other filter selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_BEFORE, true);
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_AFTER, true);
+    } else if (selPos == UI_FILTER_SINGLE_ENDED || selPos == UI_FILTER_DOUBLE_ENDED) {
+        // Special case: if removing a 'single ended' or
+        // 'double ended' option, re-enable both options
+        // in the other filter selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_SINGLE_ENDED, true);
+        enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_DOUBLE_ENDED, true);
+    } else {
+        // Re-enable the option in all other filters selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, selPos, true);
+    }
+
+    // Remove the previous selected index.
+    selectEl.removeAttribute('prevSelectedPos');
+
+    // Remove the validation of the field and re-validate the form.
+    var queryInput = rowEl.one('.queryFilterInput');
+    var queryInputField = queryInput.one('input');
+    if (queryInputField) {
+        RBT.Validator.removeFieldValidation(queryInputField);
+        var fastValidate = queryInputField.getAttribute('fastValidate');
+        queryInputField.detach('key', fastValidate, 'down:enter');
+        queryInputField.removeAttribute('fastValidate');
+    }
+    RBT.Validator.validateForm(Y.one('#queryForm'));
+
+    // Remove the input field.
+    queryInput.setContent('');
+}
+
+// When we select a filter option, we need to set the contents
+// of the filter's DIV to the HTML for the chosen filter type.
+// We also need to propagate the change to the other extant
+// filter selectors so they (1) can't use the option we've
+// chosen, and (2) can again use the previously-chosen option.
+function onSelectFilter(selectEl) {
+
+    // YUI-ify the selector
+    selectEl = Y.one(selectEl);
+    // The selector index current value.
+    var selPos = getSelectedPosition(selectEl);
+    // The selector index previous value, which we manage.
+    var prevPos = parseInt(selectEl.getAttribute('prevSelectedPos'));
+
+    // Cache the set of SELECT nodes.
+    var filterSelectSet = queryFilterSelectNodeSet();
+
+    var wasBeforeOrAfter = prevPos == UI_FILTER_STARTED_BEFORE || prevPos == UI_FILTER_STARTED_AFTER;
+    var isBeforeOrAfter = selPos == UI_FILTER_STARTED_BEFORE || selPos == UI_FILTER_STARTED_AFTER;
+    var wasSingleOrDouble = prevPos == UI_FILTER_SINGLE_ENDED || prevPos == UI_FILTER_DOUBLE_ENDED;
+    var isSingleOrDouble = selPos == UI_FILTER_SINGLE_ENDED || selPos == UI_FILTER_DOUBLE_ENDED;
+
+    if (wasBeforeOrAfter || isBeforeOrAfter || wasSingleOrDouble || isSingleOrDouble) {
+        if (wasBeforeOrAfter) {
+            // Special case: if the previous selection was either
+            // 'started before' or 'started after', enable both
+            // of these options in the other filter selectors.
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_BEFORE, true);
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_AFTER, true);
+        }
+        if (isBeforeOrAfter) {
+            // Special case: if the current selection is either
+            // 'started before' or 'started after', disable both
+            // of these options in the other filter selectors.
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_BEFORE, false);
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_STARTED_AFTER, false);
+        }
+        if (wasSingleOrDouble) {
+            // Special case: if the previous selection was either
+            // 'single ended' or 'double ended', enable both
+            // of these options in the other filter selectors.
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_SINGLE_ENDED, true);
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_DOUBLE_ENDED, true);
+        }
+        if (isSingleOrDouble) {
+            // Special case: if the current selection is either
+            // 'single ended' or 'double ended', disable both
+            // of these options in the other filter selectors.
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_SINGLE_ENDED, false);
+            enableOptionOtherSelectors(filterSelectSet, selectEl, UI_FILTER_DOUBLE_ENDED, false);
+        }
+    } else {
+        // Re-enable the previous option in other selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, prevPos, true);
+        // Disable the newly-selected option in the other selectors.
+        enableOptionOtherSelectors(filterSelectSet, selectEl, selPos, false);
+    }
+
+    // Get the TR and set the input DIV's contents to the appropriate HTML.
+    var rowEl = selectEl.ancestor('div');
+    var inputHtml = filtersHtml[selPos];
+    var queryInput = rowEl.one('.queryFilterInput');
+    queryInput.setContent(inputHtml);
+    RBT.Validator.addFieldValidation(queryInput.one('input'), filtersValidators[selPos], true);
+
+    // Store the current selected index for next time.
+    selectEl.setAttribute('prevSelectedPos', selPos);
+}
+
+// Names of the filter arguments known by the server, in UI order.
+var filterArgNames = [
+    'src_subnet',
+    'src_port',
+    'dest_subnet',
+    'dest_port',
+    'filter_on_error',
+    'app_type',
+    'started_before',
+    'started_after',
+    'single_ended',
+    'double_ended'];
+
+var sortColumnNames = [
+    'random',
+    'isError',
+    'uiCategory',
+    'notes',
+    'srcIp',
+    'srcPort',
+    'dstIp',
+    'dstPort',
+    'kbIn',
+    'kbOut',
+    'reduction',
+    'startTime',
+    'appProtocolName'
+];
+
+// Map the attrName of a given column to the sort_by parameter value.
+var columnAttrNameToSortByNumberMap = {
+    'isError': RBT_CONN_SORTBY_ERRORS,
+    'uiCategory': RBT_CONN_SORTBY_STATE,
+    'srcIp': RBT_CONN_SORTBY_SRCIP,
+    'srcPort': RBT_CONN_SORTBY_SRCPORT,
+    'dstIp': RBT_CONN_SORTBY_DESTIP,
+    'dstPort': RBT_CONN_SORTBY_DESTPORT,
+    'kbIn': RBT_CONN_SORTBY_BYTEIN,
+    'kbOut': RBT_CONN_SORTBY_BYTEOUT,
+    'reduction': RBT_CONN_SORTBY_REDUCTION,
+    'startTime': RBT_CONN_SORTBY_STARTTIME,
+    'appProtocolName': RBT_CONN_SORTBY_APP};
+
+var sortByNumberToColumnAttrNameMap = []
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_ERRORS] = 'isError';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_STATE] = 'uiCategory';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_SRCIP] = 'srcIp';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_SRCPORT] = 'srcPort';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_DESTIP] = 'dstIp';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_DESTPORT] = 'dstPort';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_BYTEIN] = 'kbIn';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_BYTEOUT] = 'kbOut';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_REDUCTION] = 'reduction';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_STARTTIME] = 'startTime';
+sortByNumberToColumnAttrNameMap[RBT_CONN_SORTBY_APP] = 'appProtocolName';
+
+var prevSortBy = 0;
+var prevSortReverse = false;
+
+// Set up and pass a request to the server with the table sorted on the given column.
+// If the user repeats the previous sort, the sort direction switches.
+function connectionHeaderClick(sortField) {
+    var args = {};
+    if (sortField == 'random') {
+        args['sort_by'] = '';
+    } else {
+        args['sort_by'] = columnAttrNameToSortByNumberMap[sortField];
+        if (args['sort_by'] == prevSortBy) {
+            args['sort_reverse'] = !prevSortReverse;
+        } else {
+            // Descending initial sort for transfer bytes, reduction and start time only.
+            args['sort_reverse'] = arrayContains(
+                ['kbIn', 'kbOut', 'reduction', 'startTime'],
+                sortField);
+        }
+    }
+    prepQuery(args);
+    $('queryForm').submit();
+}
+
+// Convert an IPv4 address string into an IPv6 address string.
+// Needed for the ipv6addr bindings on the server side for 'reset' and 'keep alive'.
+function ipv4AddrToIpv6Addr(ipv4) {
+    function decToHex(d) {
+        var hex = Number(d).toString(16);
+        while (hex.length < 2) {
+            hex = "0" + hex;
+        }
+        return hex;
+    }
+    var octets = ipv4.split('.');
+    return '::ffff:' + decToHex(octets[0]) + decToHex(octets[1]) + ':' + decToHex(octets[2]) + decToHex(octets[3]);
+}
+
+// If addr is IPv4, change it to IPv4-embedded-in-IPv6 format, otherwise, leave it unchanged.
+function normalizeToIpv6Addr(addr) {
+    return (addr.indexOf('.') >= 0) ? ipv4AddrToIpv6Addr(addr) : addr;
+}
+
+// Variables set when the edit div is opened.
+var detOuterLocalIp = null;
+var detOuterLocalPort = null;
+var detOuterRemoteIp = null;
+var detOuterRemotePort = null;
+var detSourceIp = null;
+var detSourcePort = null;
+var detDestinationIp = null;
+var detDestinationPort = null;
+var detUsePassthroughReset = false;
+
+// 'Send Keep-Alive' button onclick function
+function sendKeepAlive() {
+    var params = [
+        'p=sendKeepAlive',
+        'localIp=' + normalizeToIpv6Addr(detOuterLocalIp),
+        'localPort=' + detOuterLocalPort,
+        'remoteIp=' + normalizeToIpv6Addr(detOuterRemoteIp),
+        'remotePort=' + detOuterRemotePort ];
+    var keepAliveStatusMessage = Y.one('#detSendKeepAliveMsg');
+
+    keepAliveStatusMessage.setContent('sending...');
+    sendKeepAliveOrResetAction(params, keepAliveStatusMessage, 'sent');
+}
+
+// 'Reset Connection' button onclick function
+function sendResetConnection() {
+    var params;
+    var resetStatusMessage = Y.one('#detResetConnectionMsg');
+
+    if (detUsePassthroughReset) {
+        params = [
+            'p=sendPassthroughReset',
+            'srcIp=' + normalizeToIpv6Addr(detSourceIp),
+            'srcPort=' + detSourcePort,
+            'dstIp=' + normalizeToIpv6Addr(detDestinationIp),
+            'dstPort=' + detDestinationPort ];
+    } else {
+        params = [
+            'p=sendOptimizedReset',
+            'localIp=' + normalizeToIpv6Addr(detOuterLocalIp),
+            'localPort=' + detOuterLocalPort,
+            'remoteIp=' + normalizeToIpv6Addr(detOuterRemoteIp),
+            'remotePort=' + detOuterRemotePort ];
+    }
+    resetStatusMessage.setContent('sending...');
+    sendKeepAliveOrResetAction(params, resetStatusMessage, 'reset');
+}
+
+// Submit 'keep-alive' or 'reset' request to the server,
+// then, if successful,  do a 'refresh data'.
+function sendKeepAliveOrResetAction(params, msgEl, successMessage) {
+    var request = newAjaxRequest('xmldata');
+    msgEl.removeClass('failure');
+    setReadyStateChangeFunc(request, function() {
+        var success = false;
+        var timestamp = '';
+        var errorMessage = '';
+        if ((200 <= request.status && request.status < 300) || (0 == request.status)) {
+            var xmlContainer = request.responseXML.documentElement.getElementsByTagName('xmlContainer');
+            var xmlResult = request.responseXML.documentElement.getElementsByTagName('result');
+            if (xmlContainer.length > 0) {
+                success = xmlContainer[0].getAttribute('success');
+                timestamp = xmlContainer[0].getAttribute('timeStamp');
+            }
+            if (xmlResult.length > 0) {
+                errorMessage = xmlResult[0].getAttribute('errorMsg');
+            }
+        }
+        if (success) {
+            msgEl.setContent(successMessage + ' ' + timestamp);
+            refreshEditDiv();
+        } else {
+            msgEl.setContent(errorMessage ? errorMessage : ('failed ' + timestamp));
+            msgEl.addClass('failure');
+        }
+    });
+    request.send(params.join('&'));
+}
+
+// JavaScript versions of application id to app selector position maps.
+var appPosToIdMap = <%= str(appPosToIdMap) %>;
+var appIdToPosMap = <%= str(appIdToPosMap) %>;
+
+// These variables are set when the 'sort_by' user preference is retrieved. */
+var currentSortArrowNormal = null;
+var currentSortArrowGrayed = null;
+
+// enableSorting() is triggered when the Update button becomes enabled/disabled.
+// It's responsible for enabling/disabling the connections table header.
+// If ENABLE is false, the header contents are grayed and made mouse-insensitive.
+// This includes the current sort arrow, if there is one.
+//
+function enableSorting(enable) {
+    var header = Y.one('#connectionsTable_table thead');
+    var normalColumnLabels = header.all('th div.tableHeaderNormal .headerLabel');
+    var grayedColumnLabels = header.all('th div.tableHeaderGrayed .headerLabel');
+    if (enable) {
+        normalColumnLabels.each(function(el) {
+            var parent = el.ancestor();
+            if (parent.hasClass('randomize') || parent.hasClass('errorColumn')) {
+                el.setStyle('display', 'block');
+            } else {
+                el.setStyle('display', 'inline');
+            }
+        });
+        grayedColumnLabels.each(function(el) {
+            el.setStyle('display', 'none');
+        });
+        if (currentSortArrowNormal) {
+            currentSortArrowNormal.addClass('showSortArrow');
+            currentSortArrowNormal.removeClass('hideSortArrow');
+        }
+        if (currentSortArrowGrayed) {
+            currentSortArrowGrayed.removeClass('showSortArrow');
+            currentSortArrowGrayed.addClass('hideSortArrow');
+        }
+    } else {
+        normalColumnLabels.each(function(el) {
+            el.setStyle('display', 'none');
+        });
+        grayedColumnLabels.each(function(el) {
+            var parent = el.ancestor();
+            if (parent.hasClass('randomize') || parent.hasClass('errorColumn')) {
+                el.setStyle('display', 'block');
+            } else {
+                el.setStyle('display', 'inline');
+            }
+        });
+        if (currentSortArrowNormal) {
+            currentSortArrowNormal.removeClass('showSortArrow');
+            currentSortArrowNormal.addClass('hideSortArrow');
+        }
+        if (currentSortArrowGrayed) {
+            currentSortArrowGrayed.addClass('showSortArrow');
+            currentSortArrowGrayed.removeClass('hideSortArrow');
+        }
+    }
+}
+
+// Onclick function for the Update button.
+// Collect the args and insert hidden inputs for each one.
+//
+function prepQuery(extraArgs) {
+
+    var form = Y.one('#queryForm');
+
+    // 'Adding an arg' actually means ensuring that there is an element
+    // inside the enclosing FORM with the correct value.
+    function addArg(name, value) {
+        var argEl = form.one('[name=' + name + ']')
+        if (argEl) {
+            argEl.set('value', value + '');
+        } else {
+            argEl = Y.one(document.createElement('input'));
+            argEl.set('type', 'hidden');
+            argEl.set('name', name);
+            argEl.set('value', value + '');
+            form.appendChild(argEl);
+        }
+    }
+
+    addArg('persistent', '1');
+
+    // Send the connection category desired.
+    var selectEl = Y.one('#queryConnections select');
+    var uiCategory = connIdxToUiCat(selectEl.get('selectedIndex'));
+    addArg('ui_category', uiCategory);
+    var connType = uiCategoryToConnType(uiCategory);
+
+    // Here we cycle through all the filter rows, retrieving the names
+    // and values of the user controls, and adding them to the form as needed.
+    Y.one('#queryFilters').all('.queryFilterRow').each(function(el, idx) {
+        var selPos = getSelectedPosition(el.one('.queryFilterSelect'));
+        var inputContainer = el.one('.queryFilterInput');
+        var inputEl = inputContainer.one('*');
+        var tagName = inputEl ? inputEl.get('tagName') : '';
+        var filterValue = '';
+        var filterArgName = filterArgNames[selPos];
+        var skipThisFilter = false;
+        if (filterArgName == 'src_subnet' || filterArgName == 'dest_subnet') {
+            // Ensure subnets are completely specified.
+            filterValue = inputEl.get('value');
+            if (filterValue && filterValue.indexOf('/') == -1) {
+                filterValue += (filterValue.indexOf(':') == -1) ? '/32' : '/128';
+            }
+        } else if (filterArgName == 'filter_on_error') {
+            filterValue = 'true';
+        } else if (filterArgName == 'single_ended') {
+            //
+            // Single-ended and double-ended filters are actually connection types,
+            // so we replace the conn_type bits entirely.
+            //
+            // Endedness is only a property of 'Established' connections, so we only
+            // pass on the bits to mgmt for 'Established' (or 'All current').
+            //
+            // Nonetheless, we always duplicate the single/double bit at the high end of conn_type;
+            // saving it in user preferences allows us to restore the filter state.
+            //
+            if (uiCategory == UI_CAT_ALL_CURRENT || uiCategory == UI_CAT_ESTABLISHED) {
+                connType = RBT_CONN_TYPE_SINGLE_ENDED | RBT_CONN_TYPE_UI_SINGLE_ENDED;
+            } else {
+                connType = RBT_CONN_TYPE_UI_SINGLE_ENDED;
+            }
+            return; // Y.each() 'continue'
+        } else if (filterArgName == 'double_ended') {
+            if (uiCategory == UI_CAT_ALL_CURRENT || uiCategory == UI_CAT_ESTABLISHED) {
+                connType = RBT_CONN_TYPE_DOUBLE_ENDED | RBT_CONN_TYPE_UI_DOUBLE_ENDED;
+            } else {
+                connType = RBT_CONN_TYPE_UI_DOUBLE_ENDED;
+            }
+            return; // Y.each() 'continue'
+        } else if (tagName == 'INPUT') {
+            filterValue = inputEl.get('value');
+        } else if (tagName == 'SELECT') { // application selector
+            if (<%= sportOk %>) {
+                filterValue = appPosToIdMap[inputEl.get('selectedIndex')];
+            } else {
+                skipThisFilter = true;
+            }
+        } else if (tagName == 'SPAN') {
+            filterValue = 1;
+        }
+        if (skipThisFilter) {
+            skipThisFilter = false;
+        } else {
+            addArg(filterArgNames[selPos], filterValue);
+        }
+    });
+
+    addArg('conn_type', '0x' + connType.toString(16));
+
+    // Add any extra args (that were passed in for sorting).
+    for (arg in extraArgs) {
+        addArg(arg, extraArgs[arg]);
+    }
+
+    if (!extraArgs || !('sort_by' in extraArgs)) {
+        if (prevSortBy) {
+            addArg('sort_by', prevSortBy);
+            addArg('sort_reverse', prevSortReverse);
+        }
+    }
+}
+
+// Pretty rendering of an IPv4/6 address:port combo.
+// It's much much faster to simply assemble the HTML as a string
+// and stuff it into the TD, than to create nodes, parent them, etc.
+function tdIpPort(ipAttr, portAttr, isIpv6Attr, tdClass) {
+
+    return function(entryTable, tr, element) {
+
+        var td = document.createElement('td');
+        if (tdClass) {
+            td.className = tdClass;
+        }
+
+        var ip = element.getAttribute(ipAttr);
+        var isIpv6 = element.getAttribute(isIpv6Attr);
+
+        var contents = '';
+
+        if (isIpv6) {
+            if (ip == '0000:0000:0000:0000:0000:0000:0000:0000' ||
+                ip == 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff') {
+                // Show these IPs as n/a
+                Y.one(td).setContent('<span class="ipNotAvailable">n/a</span>');
+                tr.appendChild(td);
+                return;
+            }
+            contents += tdIpPort.leftBracket;
+            var ipGroups = ip.split(':');
+            for (var i = 0; i < 8; i++) {
+                var elValue = ipGroups[i];
+                var elStyle = elValue == '0000' ? 'ipHunkDimmed ' : 'ipHunk ';
+                if (i == 4) {
+                    elStyle += 'ipQuadNewLine ';
+                }
+                contents += '<span class="' + elStyle + '">' + elValue + '</span>';
+                if (i < 7) {
+                    contents += tdIpPort.ipv6Colon;
+                }
+                if (i == 3) {
+                    contents += '<br style="clear: both"/>';
+                }
+            }
+            contents += tdIpPort.rightBracket;
+        } else { // IPv4
+            if (ip == '0.0.0.0') {
+                // Show IP of zero as n/a.
+                Y.one(td).setContent('<span class="ipNotAvailable">n/a</span>');
+                tr.appendChild(td);
+                return;
+            }
+            var ipOctets = ip.split('.');
+            for (var i = 0; i < 4; i++) {
+                var elValue = ipOctets[i];
+                var elStyle = 'ipOctet ';
+                if (i == 0) {
+                    elStyle += 'ipOctetIndent ';
+                }
+                contents += '<span class="' + elStyle + '">' + elValue + '</span>';
+                if (i < 3) {
+                    contents += tdIpPort.ipv4Dot;
+                }
+            }
+        }
+        var port = portAttr ? element.getAttribute(portAttr) : null;
+        if (port) {
+            contents += (isIpv6 ? tdIpPort.ipv6Colon : tdIpPort.ipv4Colon) + port;
+        }
+        Y.one(td).setContent(contents);
+        tr.appendChild(td);
+    }
+}
+
+// You lookin' at me, punc?
+tdIpPort.ipv4Dot = '<span class="ipv4Punc">.</span>';
+tdIpPort.ipv4Colon = '<span class="ipv4Punc">:</span>';
+tdIpPort.ipv6Colon = '<span class="ipv6Punc">:</span>';
+tdIpPort.leftBracket = '<span class="ipv6Punc">[</span>';
+tdIpPort.rightBracket = '<span class="ipv6Punc">]</span>';
+
+// ]]>
+</script>
+
+<%
+connectionsTable = ajaxentrytable.AjaxEntryTable('connections',
+    dataType='csv',
+    headerSpec=(
+        makeHeaderSpec(
+            sortField='random',
+            toolTip='Show a quasi-random selection of the current connections.',
+            className='randomize'),
+        makeHeaderSpec(
+            sortField='isError',
+            toolTip='Sort on error status.\n\nA connection will display a red triangle when an error occurs in the application-level or transport-level protocol.\n\nClick on the magnifying glass icon to reveal the details.',
+            className='errorColumn'),
+        makeHeaderSpec(
+            sortField='uiCategory',
+            displayName='CT',
+            toolTip='Sort on connection type.\n\nMove the mouse over each icon to see its meaning.',
+            className='typeColumn'),
+        makeHeaderSpec(
+            displayName='Notes',
+            className='notes',
+            toolTip='Move the mouse over each icon to see its meaning.'),
+        makeHeaderSpec(
+            sortField='srcIp',
+            displayName='Source',
+            toolTip='Sort by source IP address.') +
+        makeHeaderSpec(
+            displayName=':',
+            className='ipPortColon') +
+        makeHeaderSpec(
+            sortField='srcPort',
+            displayName='Port',
+            toolTip='Sort by source port.'),
+        makeHeaderSpec(
+            sortField='dstIp',
+            displayName='Destination',
+            toolTip='Sort by destination IP address.') +
+        makeHeaderSpec(
+            displayName=':',
+            className='ipPortColon') +
+        makeHeaderSpec(
+            sortField='dstPort',
+            displayName='Port',
+            toolTip='Sort by destination port.'),
+        makeHeaderSpec(
+            sortField='kbIn',
+            displayName='LAN kB',
+            toolTip='Sort by LAN traffic, in kilobytes.',
+            className='lanColumn'),
+        makeHeaderSpec(
+            sortField='kbOut',
+            displayName='WAN kB',
+            toolTip='Sort by WAN traffic, in kilobytes.',
+            className='wanColumn'),
+        makeHeaderSpec(
+            sortField='reduction',
+            displayName='Reduction',
+            toolTip='Sort by relative data reduction amount.\n\nThis bar shows the degree of WAN traffic optimization as a percentage of LAN traffic sent.  Higher percentages mean fewer bytes sent over the WAN.',
+            className='reductionColumn'),
+        makeHeaderSpec(
+            sortField='startTime',
+            toolTip='Sort according to the time the connection was established.',
+            displayName='Start Time',
+            className='startTimeColumn'),
+        makeHeaderSpec(
+            sortField='appProtocolName',
+            toolTip='Sort alphabetically, by application protocol name.\n\nNote that the application protocol is only relevant for optimized connections.',
+            displayName='Application')
+        ),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('serialNumber', 'connectionId', 'graphic'),
+ AjaxEntryTable.tdIcon('errorIcon', 'Connection has errors.  Click the magnifying glass for details', null, 'graphic'),
+ AjaxEntryTable.tdIcon('uiCategoryIcon', 'uiCategoryTooltip', null, 'graphic'),
+ AjaxEntryTable.tdIconList([['iconSdrEnabled', 'tooltipSdrEnabled'], ['iconLzCompression', 'tooltipLzCompression'], ['iconWanEncryption', 'tooltipWanEncryption'], ['iconCloudAcceleration', 'tooltipCloudAcceleration']], 'notes'),
+ tdIpPort('srcIp', 'srcPort', 'isSrcIpv6', 'ipPortColumn'),
+ tdIpPort('dstIp', 'dstPort', 'isDstIpv6', 'ipPortColumn'),
+ AjaxEntryTable.tdAttr('kbIn', 'numeric'),
+ AjaxEntryTable.tdAttr('kbOut', 'numeric'),
+ AjaxEntryTable.tdPercentBarWidget('reduction', 32, percentBarExtremes),
+ AjaxEntryTable.tdAttr('startTime'),
+ AjaxEntryTable.tdAttr('appProtocolName')]""",
+    emptyMessage='No matching connections.')
+
+connectionsTable.editDivContent='''
+    <div id="connectionClosed">Connection closed.</div>
+    <div id="connectionDetails">
+      <div class="detColumn">
+        <div id="detParticulars">
+        </div>
+        <div id="detButtonsAndLink">
+          <div id="detButtons">
+            <span>
+              <input id="detRefreshData"
+                     type="button"
+                     value="Refresh Data"
+                     onclick="refreshEditDiv(); "/>
+              <span id="detRefreshDataMsg"></span>
+            </span>
+            <br id="detRefreshDataBreak"/>
+            <span>
+              <input id="detSendKeepAlive"
+                     type="button"
+                     value="Send Keep-Alive"
+                     onclick="sendKeepAlive(); "/>
+              <span id="detSendKeepAliveMsg"></span>
+            </span>
+            <br id="detSendKeepAliveBreak"/>
+            <span>
+              <input id="detResetConnection"
+                     type="button"
+                     value="Reset Connection"
+                     onclick="sendResetConnection(); "/>
+              <span id="detResetConnectionMsg"></span>
+            </span>
+         </div>
+          <div id="detLinks">
+            <a href="/mgmt/gui?p=logDisplay&amp;logPrefix=" class="pseudoLink">
+              Log for this Steelhead
+            </a>
+          </div>
+        </div>
+      </div>
+      <div id="detColumn2" class="detColumn">
+        <div id="detTopology">
+          <table id="detTopologyTable" class="topologyTable">
+            <tbody>
+              <tr>
+                <td class="leftSide">
+                  <img id="detTopologyImageClient" src="/images/A_1000_0571_N.png" title="Client" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detSourceIpAndPort" class="dynamicText" title="Client's address and port"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="leftSide">
+                  <img src="/images/A_1000_0576_N.png" title="WAN" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detClientSideWanLine1" class="dynamicText"></span>
+                    </p>
+                    <p>
+                      <span id="detClientSideWanLine2" class="dynamicText"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="leftSide">
+                  <img id="detTopologyImageClientAppliance" src="/images/A_1000_0510_N_s1.png" title="Client-side Steelhead" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detSourceOuterIpAndPort" class="dynamicText" title="Client-side Steelhead's LAN-facing address and port"></span>
+                    </p>
+                    <p>
+                      <span id="detSourceApplianceInfo" title="Client-side Steelhead and its version"></span>
+                      <span id="detSourceApplianceYouAreHere" class="dynamicText" title="You are viewing this report on this Steelhead."></span>
+                    </p>
+                    <p>
+                      <span id="detSourceInnerIpAndPort" class="dynamicText" title="Client-side Steelhead's WAN-facing address and port"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="leftSide">
+                  <img src="/images/A_1000_0576_N.png" title="WAN" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detServerSideWanLine1" class="dynamicText"></span>
+                    </p>
+                    <p>
+                      <span id="detServerSideWanLine2" class="dynamicText"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="leftSide">
+                  <img id="detTopologyImageServerAppliance" src="/images/A_1000_0510_N_s1.png" title="Server-side Steelhead" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detDestInnerIpAndPort" class="dynamicText" title="Server-side Steelhead's WAN-facing address and port"></span>
+                    </p>
+                    <p>
+                      <span id="detDestApplianceInfo" title="Server-side Steelhead and its version"></span>
+                      <span id="detDestApplianceYouAreHere" class="dynamicText" title="You are viewing this report on this Steelhead."></span>
+                    </p>
+                    <p>
+                      <span id="detDestOuterIpAndPort" class="dynamicText" title="Server-side Steelhead's LAN-facing address and port"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="leftSide">
+                  <img id="detTopologyImageServer" src="/images/A_1000_0572_N.png" title="Server" alt=""/>
+                </td>
+                <td class="rightSide">
+                  <div class="topologyLines">
+                    <p>
+                      <span id="detDestIpAndPort" class="dynamicText" title="Server's address and port"></span>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="detStats">
+          <table class="zebraTable zebraTableSeparateCells">
+            <tr class="zebraTableHeaderRow">
+              <th></th>
+              <th id="detStatsLeftHeader" class="numeric"></th>
+              <th id="detStatsRightHeader" class="numeric"></th>
+            </tr>
+            <tr class="zebraTableOddRow">
+              <td>Bytes</td>
+              <td class="numeric" id="detLanBytes"></td>
+              <td class="numeric" id="detWanBytes"></td>
+            </tr>
+            <tr class="zebraTableEvenRow">
+              <td>Packets</td>
+              <td class="numeric" id="detLanPackets"></td>
+              <td class="numeric" id="detWanPackets"></td>
+            </tr>
+            <tr class="zebraTableOddRow">
+              <td>Retransmitted</td>
+              <td class="numeric" id="detLanRetransmitted"></td>
+              <td class="numeric" id="detWanRetransmitted"></td>
+            </tr>
+            <tr class="zebraTableEvenRow">
+              <td>Fast retransmitted</td>
+              <td class="numeric" id="detLanFastRetransmitted"></td>
+              <td class="numeric" id="detWanFastRetransmitted"></td>
+            </tr>
+            <tr class="zebraTableOddRow">
+              <td>Timeouts</td>
+              <td class="numeric" id="detLanTimeouts"></td>
+              <td class="numeric" id="detWanTimeouts"></td>
+            </tr>
+            <tr class="zebraTableEvenRow">
+              <td>Congestion window</td>
+              <td class="numeric" id="detLanCongestionWindow"></td>
+              <td class="numeric" id="detWanCongestionWindow"></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>'''
+%>
+
+<div id="currentConnections">
+  <div id="summaryAndQuery">
+    <div id="queryBackground">
+      <div id="summaryColumn">
+        <table id="summaryConnectedTable" class="zebraTable">
+          <tr id="summAllCurrent" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="Total of all current connections.">
+            <td id="summAllCurrentData" class="summaryData"> -- </td>
+            <td id="summAllCurrentPct" class="summaryPct"> -- </td>
+            <td class="summaryTextContainer summaryTextPseudolink">All current connections</td>
+            <td id="bridgeAllCurrent" class="bridge"></td>
+          </tr>
+          <tr id="summEstablished" onclick="onClickSummary(this);" class="selectableStat zebraTableEvenRow" title="All current terminated, optimized, established connections, as a portion of the total.">
+            <td id="summEstablishedData" class="summaryData"> -- </td>
+            <td id="summEstablishedPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent">
+                <span class="summaryTextContainer summaryTextPseudolink">Established</span>
+              </span>
+            </td>
+            <td id="bridgeEstablished" class="bridge"></td>
+          </tr>
+          <tr id="summRios" class="zebraTableOddRow" title="All current, double-ended, non-SCPS connections, as a portion of the total.">
+            <td id="summRiosData" class="summaryData"> -- </td>
+            <td id="summRiosPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0530_N.png" alt=""/></span>
+                <span class="summaryTextContainer">RiOS</span>
+              </span>
+            </td>
+            <td id="bridgeRios" class="bridge"></td>
+          </tr>
+  <%
+  if scpsLicensed: {
+  %>
+          <tr id="summRiosScps" class="zebraTableEvenRow" title="All current, double-ended connections that are also SCPS-optimized, as a portion of the total.">
+            <td id="summRiosScpsData" class="summaryData"> -- </td>
+            <td id="summRiosScpsPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0543_N.png" alt=""/></span>
+                <span class="summaryTextContainer">RiOS + SCPS</span>
+              </span>
+            </td>
+            <td id="bridgeRiosScps" class="bridge"></td>
+          </tr>
+          <tr id="summScps" class="zebraTableOddRow" title="All current, single-ended SCPS-optimized connections, as a portion of the total.">
+            <td id="summScpsData" class="summaryData"> -- </td>
+            <td id="summScpsPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0544_N.png" alt=""/></span>
+                <span class="summaryTextContainer">SCPS</span>
+              </span>
+            </td>
+            <td id="bridgeScps" class="bridge"></td>
+          </tr>
+  <%
+  }
+  %>
+          <tr id="summTcpProxy" class="zebraTableEvenRow" title="All current TCP proxy (single-ended, non-SCPS) connections, as a portion of the total.">
+            <td id="summTcpProxyData" class="summaryData"> -- </td>
+            <td id="summTcpProxyPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0545_N.png" alt=""/></span>
+                <span class="summaryTextContainer">TCP proxy</span>
+              </span>
+            </td>
+            <td id="bridgeTcpProxy" class="bridge"></td>
+          </tr>
+          <tr id="summPacketModeOptimized" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="All current packet-mode, optimized connections, as a portion of the total.">
+            <td id="summPacketModeOptimizedData" class="summaryData"> -- </td>
+            <td id="summPacketModeOptimizedPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0540_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Packet-mode optimized</span>
+              </span>
+            </td>
+            <td id="bridgePacketModeOptimized" class="bridge"></td>
+          </tr>
+          <tr id="summEstablishing" class="zebraTableEvenRow" title="All current connections not yet fully established, as a portion of the total.">
+            <td id="summEstablishingData" class="summaryData"> -- </td>
+            <td id="summEstablishingPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent">
+                <span><img src="/images/A_1000_0546_N.png" alt=""/></span>
+                <span class="summaryTextContainer">Establishing</span>
+              </span>
+            </td>
+            <td id="bridgeEstablishing" class="bridge"></td>
+          </tr>
+          <tr id="summHalfOpen" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="All current terminated, optimized, half-open connections, as a portion of the total.">
+            <td id="summHalfOpenData" class="summaryData"> -- </td>
+            <td id="summHalfOpenPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent">
+                <span><img src="/images/A_1000_0531_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Opening</span>
+              </span>
+            </td>
+            <td id="bridgeHalfOpen" class="bridge"></td>
+          </tr>
+          <tr id="summHalfClosed" onclick="onClickSummary(this);" class="selectableStat zebraTableEvenRow" title="All current terminated, optimized, half-closed connections, as a portion of the total.">
+            <td id="summHalfClosedData" class="summaryData"> -- </td>
+            <td id="summHalfClosedPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent">
+                <span><img src="/images/A_1000_0532_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Closing</span>
+              </span>
+            </td>
+            <td id="bridgeHalfClosed" class="bridge"></td>
+          </tr>
+          <tr id="summForwarded" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="All current forwarded connections, as a portion of the total.">
+            <td id="summForwardedData" class="summaryData"> -- </td>
+            <td id="summForwardedPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent">
+                <span><img src="/images/A_1000_0535_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Forwarded</span>
+              </span>
+            </td>
+            <td id="bridgeForwarded" class="bridge"></td>
+          </tr>
+          <tr id="summPassthrough" onclick="onClickSummary(this);" class="selectableStat zebraTableEvenRow" title="All current passthrough connections, as a portion of the total.">
+            <td id="summPassthroughData" class="summaryData"> -- </td>
+            <td id="summPassthroughPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent summaryTextPseudolink">
+                Passthrough (unoptimized)
+              </span>
+            </td>
+            <td id="bridgePassthrough" class="bridge"></td>
+          </tr>
+          <tr id="summFailedTerminated" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="All current terminated connections that are unintentionally passed through unoptimized, as a portion of the total.">
+            <td id="summFailedTerminatedData" class="summaryData"> -- </td>
+            <td id="summFailedTerminatedPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0541_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Failed terminated</span>
+              </span>
+            </td>
+            <td id="bridgeFailedTerminated" class="bridge"></td>
+          </tr>
+          <tr id="summFailedPacketMode" onclick="onClickSummary(this);" class="selectableStat zebraTableEvenRow" title="All current packet-mode connections that are unintentionally passed through unoptimized, as a portion of the total.">
+            <td id="summFailedPacketModeData" class="summaryData"> -- </td>
+            <td id="summFailedPacketModePct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0542_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Failed packet-mode</span>
+              </span>
+            </td>
+            <td id="bridgeFailedPacketMode" class="bridge"></td>
+          </tr>
+          <tr id="summIntentional" onclick="onClickSummary(this);" class="selectableStat zebraTableOddRow" title="All current connections that are intentionally passed through unoptimized, as a portion of the total.">
+            <td id="summIntentionalData" class="summaryData"> -- </td>
+            <td id="summIntentionalPct" class="summaryPct"> -- </td>
+            <td>
+              <span class="summaryIndent2">
+                <span><img src="/images/A_1000_0533_N.png" alt=""/></span>
+                <span class="summaryTextContainer summaryTextPseudolink">Intentional</span>
+              </span>
+            </td>
+            <td id="bridgeIntentional" class="bridge"></td>
+          </tr>
+        </table>
+      </div>
+      <div id="queryColumn">
+        <form id="queryForm" onsubmit="return updateButtonEnabled; " method="get" action="<%= self.thisPageletRequest() %>">
+          <div id="queryTop">
+            <input type="hidden" name="p" value="reportConnections"/>
+            <div id="queryText1">
+              <span>Show</span>
+            </div>
+            <div id="queryConnections">
+              <select onchange="onSelectConn(this);">
+                <option>All current</option>
+                <option>&nbsp;&nbsp;&nbsp;Established</option>
+                <option>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Packet-mode optimized</option>
+                <option>&nbsp;&nbsp;&nbsp;Opening</option>
+                <option>&nbsp;&nbsp;&nbsp;Closing</option>
+                <option>&nbsp;&nbsp;&nbsp;Forwarded</option>
+                <option>&nbsp;&nbsp;&nbsp;Passthrough (unoptimized)</option>
+                <option>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Failed terminated</option>
+                <option>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Failed packet-mode</option>
+                <option>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Intentional</option>
+              </select>
+            </div>
+            <div id="queryText2">
+              <span>connections</span>
+            </div>
+          </div>
+          <div id="queryMiddle">
+            <div id="queryFilters">
+            </div>
+            <div id="queryFilterAddButton">
+              <a href=""
+                 class="pseudoLink"
+                 onclick="ccns.addFilter(); return false;">
+                [add filter]
+              </a>
+            </div>
+          </div>
+          <div id="queryBottom">
+            <input id="queryUpdateButton"
+                   type="submit"
+                   value="Update"
+                   onclick="prepQuery(); return true;"
+                   />
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div id="errorsAndCounts">
+    <table id="summaryErrorsTable" class="zebraTable">
+      <tr id="summErrors" class="zebraTableOddRow" title="All current connections that have application or transport protocol errors, as a portion of the total.">
+        <td id="summErrorData" class="summaryData"> -- </td>
+        <td id="summErrorPct" class="summaryPct"></td>
+        <td class="summaryTextContainer">
+          <span>
+            <span><img src="/images/A_1000_0539_N.png" alt=""/></span>
+            <span class="summaryTextContainer">Errors</span>
+          </span>
+        </td>
+      </tr>
+    </table>
+    <div id="totalsContainer">
+      showing <span id="totalsReturned">--</span> matching connections
+    </div>
+    <div id="deniedDiscardedContainer">
+      <span id="summOptimizedData">--</span> optimized,
+      <span id="summDeniedData">--</span> denied,
+      <span id="summDiscardedData">--</span> discarded connections
+    </div>
+  </div>
+  <div id="connections">
+    <%= connectionsTable.html(self) %>
+  </div>
+</div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// If a topology text field has class 'dynamicText',
+// make its stripe visible when non-empty text is added.
+// If not, just set the text normally.
+//
+// Note that all stripes in the topology table are initially hidden.
+//
+function topologyTextSet(textSpan, text) {
+    if (text) {
+        var tr = textSpan.ancestor('tr');
+        if (textSpan.hasClass('dynamicText')) {
+            if (tr.getStyle('display') == 'none') {
+                tr.setStyle('display', '');
+            }
+        }
+        textSpan.setContent(text);
+    }
+}
+
+// Create and return a new zebraTable, with new rows automatically zebra-striped.
+//
+function createZebraTable() {
+    var table = Y.one(document.createElement('table'));
+    table.addClass('zebraTable');
+    table.appendChild(Y.one(document.createElement('tbody')));
+
+    // Append a row to a zebraTable.
+    //
+    // Items in tdTextList are either strings or [list-style] arrays.
+    // If the former, the string becomes the content of the td.
+    // If the latter, ar[0] is a string that becomes the content of the td,
+    // and ar[1] is a dict-style array containing attributes and values for the td.
+    //
+    // If sameColor is true, the new row will have the same color as the former last row.
+    //
+    // Returns Y.one(newRow).
+    //
+    table.appendRow = function(tdTextList, sameColor) {
+        var tbody = this.one('tbody');
+        var lastRow = tbody.one('tr:last-child');
+        var newClass;
+        if (lastRow) {
+            var lastClass = lastRow.hasClass('zebraTableOddRow') ? 'zebraTableOddRow' : 'zebraTableEvenRow';
+            if (sameColor) {
+                newClass = lastClass;
+            } else {
+                newClass = lastClass == 'zebraTableOddRow' ? 'zebraTableEvenRow' : 'zebraTableOddRow';
+            }
+        } else {
+            newClass = 'zebraTableOddRow';
+        }
+        var tr = Y.one(document.createElement('tr'));
+        tr.addClass(newClass);
+
+        tdTextList = tdTextList || [];
+        for (var i = 0; i < tdTextList.length; i++) {
+            var td = Y.one(document.createElement('td'));
+            var item = tdTextList[i];
+            if (typeof item == 'string') {
+                td.setContent(item);
+            } else {
+                td.setContent(item[0]);
+                var attrs = item[1];
+                for (var attr in attrs) {
+                    if (attrs.hasOwnProperty(attr)) {
+                        td.set(attr, attrs[attr]);
+                    }
+                }
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+        return tr;
+    };
+    return table;
+}
+
+// Display names for the terminated bit flags.
+// If blank, they're not shown in the Notes section,
+// but rather through some other visual cue.
+var terminatedFlagNames = [
+    '', // optimized
+    'In-path',
+    'SDR optimized',
+    'LZ compressed',
+    '', // initialized
+    'Client side',
+    '', // forwarded
+    'WAN encrypted',
+    'Single-ended',
+    '', // SCPS initiate
+    '', // SCPS initiate LAN
+    '', // SCPS terminate
+    '', // SCPS terminate LAN
+    '', // unused
+    'Pre-existing asymmetric',
+    'Pre-existing',
+    'Cloud-accelerated'];
+
+// Display names for the packet-mode bit flags.
+// If blank, they're not shown in the Notes section,
+// but rather through some other visual cue.
+var packetModeFlagNames = [
+    '', // optimized
+    'Client side',
+    '', // shared
+    'Incomplete parse',
+    'SDR optimized',
+    'LZ compressed'];
+
+// This function is run when the edit div is exposed.
+connectionsTable.editEntry = function(entryId) {
+    refreshEditDiv(entryId, true);
+};
+
+var prevUiCategory = null;
+var prevDetailUiCategory = null;
+
+// This function is run when the edit div is opened or the 'Refresh Data' button is clicked.
+function refreshEditDiv(entryId, opening) {
+
+    entryId = entryId || connectionsTable.editName;
+    var currentSrc = connectionsTable.docElement.rows[parseInt(entryId) - 1];
+    var dst = Y.one('#' + connectionsTable.editDivId);
+
+    if (opening) {
+        prevUiCategory = null;
+        prevDetailUiCategory = null;
+        dst.one('#connectionClosed').setStyle('display', 'none');
+        dst.one('#connectionDetails').setStyle('display', 'none');
+        dst.one('#detRefreshDataMsg').setContent('');
+        dst.one('#detSendKeepAliveMsg').setContent('');
+        dst.one('#detResetConnectionMsg').setContent('');
+    } else {
+        dst.one('#detRefreshDataMsg').setContent('fetching...');
+    }
+
+    var uiCategory = parseInt(currentSrc.getAttribute('uiCategory'))
+    var flags, isOptimized, isTerminated, isPacketMode;
+    var isForwarded, isSingleEnded, isClientSide;
+
+    var initDetailsPane = function(src, reLayout) {
+
+        if (reLayout) {
+            var tt = Y.one('#detTopologyTable');
+            tt.all('tr').each(function (el) {
+                el.setStyle('display', 'none');
+            });
+            tt.all('.dynamicText').each(function (el) {
+                el.setContent('');
+            });
+        }
+
+        flags = parseInt(src.getAttribute('flags'))
+        isOptimized = isCategoryOptimized(uiCategory);
+        isTerminated = isCategoryTerminated(uiCategory);
+        isPacketMode = isCategoryPacketMode(uiCategory);
+        isForwarded = (uiCategory == UI_CAT_FORWARDED);
+        isClosing = (uiCategory == UI_CAT_HALF_CLOSED);
+        isSingleEnded = isTerminated && (flags & RBT_TCP_FLAG_SE_SPLICE);
+        if (isSingleEnded) {
+            isClientSide = ((flags & RBT_TCP_FLAG_SCPS_SIDE_WAN_MASK) == 0) ? 
+                ((flags & RBT_TCP_FLAG_SCPS_INIT) != 0) :
+                ((flags & RBT_TCP_FLAG_SCPS_INIT_LAN) != 0);
+        } else if (isTerminated) {
+            isClientSide = ((flags & RBT_TCP_FLAG_CLIENT_SPLICE) != 0);
+        } else if (isPacketMode) {
+            isClientSide = ((flags & RBT_FLOW_FLAG_FLOW_DIR) != 0);
+        } else {
+            isClientSide = false;
+        }
+
+        // Globals for the keep-alive, reset actions
+        detUsePassthroughReset = isCategoryPassthrough(uiCategory) || isForwarded;
+        detOuterLocalIp = src.getAttribute('outerLocalIp');
+        detOuterLocalPort = src.getAttribute('outerLocalPort');
+        detOuterRemoteIp = src.getAttribute('outerRemoteIp');
+        detOuterRemotePort = src.getAttribute('outerRemotePort');
+        detDestinationIp = src.getAttribute('dstIp');
+        detDestinationPort = src.getAttribute('dstPort');
+        detSourceIp = src.getAttribute('srcIp');
+        detSourcePort = src.getAttribute('srcPort');
+
+        if (reLayout) {
+            // Show or hide the optimization column...
+            dst.one('#detColumn2').setStyle('display', isOptimized ? 'block' : 'none');
+            // ...and the Keep Alive, Reset Connection, and Refresh Data buttons.
+            var isMonitorUser = <%= isMonitor %>;
+            var isMapiPrepopClient = (isClientSide && src.getAttribute('appProtocolName') == 'MAPI-PREPOP');
+            var notEstablishing = (uiCategory != UI_CAT_ESTABLISHING);
+            var showKeepAlive = (!isMonitorUser && isOptimized && !isPacketMode && !isClosing && !isMapiPrepopClient && notEstablishing);
+            var showReset = (!isMonitorUser && !isPacketMode && !isClosing && !isForwarded && !isMapiPrepopClient && notEstablishing);
+            var showRefresh = notEstablishing;
+            dst.one('#detRefreshData').setStyle('display', showRefresh ? 'inline-block' : 'none');
+            dst.one('#detRefreshDataMsg').setStyle('display', showRefresh ? 'inline' : 'none');
+            dst.one('#detRefreshDataBreak').setStyle('display', showRefresh ? 'inline' : 'none');
+            dst.one('#detSendKeepAlive').setStyle('display', showKeepAlive ? 'inline-block' : 'none');
+            dst.one('#detSendKeepAliveBreak').setStyle('display', showKeepAlive ? 'inline' : 'none');
+            dst.one('#detSendKeepAliveMsg').setStyle('display', showKeepAlive ? 'inline' : 'none');
+            dst.one('#detResetConnection').setStyle('display', showReset ? 'inline-block' : 'none');
+            dst.one('#detResetConnectionMsg').setStyle('display', showReset ? 'inline' : 'none');
+        }
+    };
+
+    initDetailsPane(currentSrc, prevUiCategory != uiCategory);
+    prevUiCategory = uiCategory;
+
+    var request = newAjaxRequest('xmldata');
+
+    setReadyStateChangeFunc(request, function() {
+        if ((200 <= request.status && request.status < 300) || (0 == request.status)) {
+            var data = new CsvDoc(request.responseText);
+            if (parseInt(data.attributes.retCount) == 0) {
+                dst.one('#connectionDetails').setStyle('display', 'none');
+                dst.one('#connectionClosed').setStyle('display', 'block');
+            } else {
+
+                var detailSrc = data.rows[0];
+
+                // Connection category may have changed; if so, reinit the details pane.
+                var detailUiCategory = parseInt(detailSrc.getAttribute('uiCategory'));
+                var uiCategoryChanged = uiCategory != detailUiCategory;
+                var detailUiCategoryChanged = prevDetailUiCategory != detailUiCategory;
+                if (uiCategoryChanged || detailUiCategoryChanged) {
+                    uiCategory = detailUiCategory;
+                    prevDetailUiCategory = detailUiCategory;
+                    initDetailsPane(detailSrc, detailUiCategoryChanged);
+                }
+
+                dst.one('#connectionClosed').setStyle('display', 'none');
+                dst.one('#connectionDetails').setStyle('display', 'block');
+                if (!opening) {
+                    dst.one('#detRefreshDataMsg').setContent('fetched ' + detailSrc.getAttribute('timeStamp'));
+                }
+
+                // Trash the previous connection particulars table.
+                var tableDiv = dst.one('#detParticulars');
+                var table = tableDiv.one('.zebraTable');
+                if (table) {
+                   tableDiv.removeChild(table);
+                }
+                table = createZebraTable();
+                table.addClass('connectionDetailsTable');
+                tableDiv.appendChild(table);
+
+                // The first table entry is the connection type,
+                // and needs special treatment for its value,
+                // which is an icon followed by text.
+                var tr = table.appendRow(['Connection type:', '']);
+                var td = tr.one('td + td');
+                var icon = Y.one(document.createElement('img'));
+                icon.set('src', '/images/' + detailSrc.getAttribute('uiCategoryIcon'));
+                var span = Y.one(document.createElement('span'));
+                span.setContent(detailSrc.getAttribute('uiCategoryName'));
+                td.appendChild(icon);
+                td.appendChild(span);
+
+                // The rest of the details are simple:
+                // if the value exists, add the name to the table.
+                var innerScpsP105Compressed = detailSrc.getAttribute('innerScpsP105Compressed');
+                innerScpsP105Compressed = innerScpsP105Compressed && parseInt(innerScpsP105Compressed);
+                var outerScpsP105Compressed = detailSrc.getAttribute('outerScpsP105Compressed');
+                outerScpsP105Compressed = outerScpsP105Compressed && parseInt(outerScpsP105Compressed);
+                connDetails = [
+                    ['Connection age:', detailSrc.getAttribute('age')],
+                    ['Application error:', detailSrc.getAttribute('appProtocolErrorName')],
+                    ['Transport:', detailSrc.getAttribute('transportName')],
+                    ['Transport error:', detailSrc.getAttribute('transportErrorName')],
+                    ['Protocol:', detailSrc.getAttribute('flowProtocolName')],
+                    ['Passthrough reason:', detailSrc.getAttribute('passthroughReason')],
+                    ['SaaS application:', detailSrc.getAttribute('saasAppName')],
+                    ['Cloud acceleration state:', detailSrc.getAttribute('saasConnState')],
+                    ['Source SkipWare compression in:', outerScpsP105Compressed && detailSrc.getAttribute('outerScpsP105CompRatioIn')],
+                    ['Source SkipWare compression out:', outerScpsP105Compressed && detailSrc.getAttribute('outerScpsP105CompRatioOut')],
+                    ['Dest. SkipWare compression in:', innerScpsP105Compressed && detailSrc.getAttribute('innerScpsP105CompRatioIn')],
+                    ['Dest. SkipWare compression out:', innerScpsP105Compressed && detailSrc.getAttribute('innerScpsP105CompRatioOut')],
+                    ['Parsed packets:', detailSrc.getAttribute('parsedPktCnts')],
+                    ['Unparsed packets:', detailSrc.getAttribute('unparsedPktCnts')]];
+
+                for (var i = 0; i < connDetails.length; i++) {
+                    var detail = connDetails[i];
+                    if (detail[1]) {
+                        table.appendRow(detail);
+                    }
+                }
+
+                // This part is cute.  We only add rows for the named and set bit fields,
+                // and appendRow() keeps the new rows all the same color.
+                if (isOptimized) {
+                    var label = 'Notes:';
+                    if (isTerminated) {
+                        var scpsInit = flags & RBT_TCP_FLAG_SCPS_INIT;
+                        var scpsInitLan = scpsInit && (flags & RBT_TCP_FLAG_SCPS_INIT_LAN);
+                        var scpsInitWan = scpsInit && !(flags & RBT_TCP_FLAG_SCPS_INIT_LAN);
+                        var scpsTerm = flags & RBT_TCP_FLAG_SCPS_TERM;
+                        var scpsTermLan = scpsTerm && (flags & RBT_TCP_FLAG_SCPS_TERM_LAN);
+                        var scpsTermWan = scpsTerm && !(flags & RBT_TCP_FLAG_SCPS_TERM_LAN);
+                        var name;
+                        for (var i = 0; i < terminatedFlagNames.length; i++) {
+                            name = terminatedFlagNames[i];
+                            if (name && (flags & (1 << i))) {
+                                table.appendRow([label, name], !label);
+                                label = '';
+                            }
+                        }
+ 
+                        // Special handling for SCPS, because the meaning
+                        // of the bits is not mutually independent.
+                        var nameSuffix = isSingleEnded ? ' interface' : ' side';
+                        if (scpsTerm) {
+                            if (scpsTermLan) {
+                                name = 'SCPS terminate: LAN' + nameSuffix;
+                            } else {
+                                name = 'SCPS terminate: WAN' + nameSuffix;
+                            }
+                            table.appendRow([label, name], !label);
+                            label = '';
+                        }
+                        if (scpsInit) {
+                            if (scpsInitLan) {
+                                name = 'SCPS initiate: LAN' + nameSuffix;
+                            } else {
+                                name = 'SCPS initiate: WAN' + nameSuffix;
+                            }
+                            table.appendRow([label, name], !label);
+                            label = '';
+                        }
+                    }
+                    if (isPacketMode) {
+                        for (var i = 0; i < packetModeFlagNames.length; i++) {
+                            var name = packetModeFlagNames[i];
+                            if (name && (flags & (1 << i))) {
+                                table.appendRow([label, name], !label);
+                                label = '';
+                            }
+                        }
+                    }
+
+                    // Render ffff..ffff, 0::0, and 0.0.0.0 IPs as 'n/a'.
+                    // See topologyTextSet().
+                    function altIpAndPort(ipAndPort) {
+                        var ip;
+                        if (ipAndPort.charAt(0) == '[') {
+                            // IPv6
+                            ip = ipAndPort.split(']')[0];
+                            if (ip == '[0000:0000:0000:0000:0000:0000:0000:0000' ||
+                                ip == '[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff') {
+                                return 'n/a';
+                            } else {
+                                return ipAndPort;
+                            }
+                        } else {
+                            // IPv4
+                            ip = ipAndPort.split(':')[0];
+                            return ip == '0.0.0.0' ? 'n/a' : ipAndPort;
+                        }
+                    }
+
+                    topologyTextSet(dst.one('#detSourceIpAndPort'), altIpAndPort(detailSrc.getAttribute('srcIpAndPort')));
+                    topologyTextSet(dst.one('#detDestIpAndPort'), altIpAndPort(detailSrc.getAttribute('dstIpAndPort')));
+
+                    var isTcpProxy = (uiCategory == UI_CAT_TCP_PROXY);
+                    var prefixHere = '#det' + ((isClientSide || isTcpProxy) ? 'Source' : 'Dest');
+                    var prefixThere = '#det' + ((isClientSide || isTcpProxy) ? 'Dest' : 'Source');
+
+                    topologyTextSet(dst.one(prefixHere + 'OuterIpAndPort'), altIpAndPort(detailSrc.getAttribute('outerLocalIpAndPort')));
+
+                    var appliance = detailSrc.getAttribute('appliance');
+                    var applianceVersion = detailSrc.getAttribute('applianceVersion');
+                    if (appliance || applianceVersion) {
+                        topologyTextSet(dst.one(prefixHere + 'ApplianceInfo'), appliance + ' ' + applianceVersion);
+                        topologyTextSet(dst.one(prefixHere + 'ApplianceYouAreHere'), '(YOU ARE HERE)');
+                    }
+
+                    topologyTextSet(dst.one(prefixHere + 'InnerIpAndPort'), altIpAndPort(detailSrc.getAttribute('innerLocalIpAndPort')));
+
+                    if (isSingleEnded) {
+                        if (isTcpProxy) {
+                            topologyTextSet(dst.one('#detServerSideWanLine2'), 'Congestion control: ' + detailSrc.getAttribute('innerCongAlgoPretty'));
+                            topologyTextSet(dst.one('#detClientSideWanLine2'), 'Congestion control: ' + detailSrc.getAttribute('outerCongAlgoPretty'));
+                        } else if (uiCategory == UI_CAT_SCPS) {
+                            if (detailSrc.getAttribute('innerScps')) {
+                                topologyTextSet(dst.one('#detServerSideWanLine2'), 'Congestion control: ' + detailSrc.getAttribute('innerCongAlgoPretty'));
+                            }
+                            if (detailSrc.getAttribute('outerScps')) {
+                                topologyTextSet(dst.one('#detClientSideWanLine2'), 'Congestion control: ' + detailSrc.getAttribute('outerCongAlgoPretty'));
+                            }
+                        }
+                    } else {
+                        topologyTextSet(dst.one(prefixThere + 'InnerIpAndPort'), altIpAndPort(detailSrc.getAttribute('peerIpAndPort')));
+                        topologyTextSet(dst.one(prefixThere + 'OuterIpAndPort'), '');
+                        topologyTextSet(dst.one('#detServerSideWanLine2'), 'Congestion control: ' + detailSrc.getAttribute('innerCongAlgoPretty'));
+                        var peer = detailSrc.getAttribute('peer');
+                        var peerVersion = detailSrc.getAttribute('peerVersion');
+                        if (peer || peerVersion) {
+                            topologyTextSet(dst.one(prefixThere + 'ApplianceInfo'), peer + ' ' + peerVersion);
+                        }
+                        if (isPacketMode) {
+                            var channelId = detailSrc.getAttribute('channelId');
+                            var channelType = detailSrc.getAttribute('channelType');
+                            if (channelId == '') {
+                                topologyTextSet(dst.one('#detServerSideWanLine1'), 'Channel type: ' + channelType);
+                            } else {
+                                topologyTextSet(dst.one('#detServerSideWanLine1'), 'Channel ID, type: ' + channelId + ', ' + channelType);
+                            }
+                        } else { // double-ended
+                            var transparencyMode = detailSrc.getAttribute('transparencyMode');
+                            if (transparencyMode) {
+                                topologyTextSet(dst.one('#detServerSideWanLine1'), 'Transparency mode: ' + transparencyMode);
+                            }
+                        }
+                    }
+
+                    // Stripe the topology table.
+                    var tt = Y.one('#detTopologyTable');
+                    var currentRowClass = 'topologyTableOddRow';
+                    var nextRowClass = 'topologyTableEvenRow';
+                    tt.all('tr').each(function (el) {
+                        if (el.getStyle('display') != 'none') {
+                            el.removeClass(nextRowClass);
+                            el.addClass(currentRowClass);
+                            var rowClass = currentRowClass;
+                            currentRowClass = nextRowClass;
+                            nextRowClass = rowClass;
+                        }
+                    });
+
+                    // Statistics table
+                    dst.one('#detStatsLeftHeader').setContent(isSingleEnded ? 'Source' : 'LAN side');
+                    dst.one('#detStatsRightHeader').setContent(isSingleEnded ? 'Destination' : 'WAN side');
+                    dst.one('#detLanBytes').setContent(detailSrc.getAttribute('bytesIn'));
+                    dst.one('#detWanBytes').setContent(detailSrc.getAttribute('bytesOut'));
+                    dst.one('#detWanPackets').setContent(detailSrc.getAttribute('innerPacketsOut'));
+                    dst.one('#detWanRetransmitted').setContent(detailSrc.getAttribute('innerPacketsRetrans'));
+                    dst.one('#detWanFastRetransmitted').setContent(detailSrc.getAttribute('innerFastRetransPkts'));
+                    dst.one('#detWanTimeouts').setContent(detailSrc.getAttribute('innerTimeouts'));
+                    dst.one('#detWanCongestionWindow').setContent(detailSrc.getAttribute('innerCongestionWindow'));
+                    if (isPacketMode) {
+                        dst.one('#detLanPackets').setContent('');
+                        dst.one('#detLanRetransmitted').setContent('');
+                        dst.one('#detLanFastRetransmitted').setContent('');
+                        dst.one('#detLanTimeouts').setContent('');
+                        dst.one('#detLanCongestionWindow').setContent('');
+                    } else {
+                        dst.one('#detLanPackets').setContent(detailSrc.getAttribute('outerPacketsOut'));
+                        dst.one('#detLanRetransmitted').setContent(detailSrc.getAttribute('outerPacketsRetrans'));
+                        dst.one('#detLanFastRetransmitted').setContent(detailSrc.getAttribute('outerFastRetransPkts'));
+                        dst.one('#detLanTimeouts').setContent(detailSrc.getAttribute('outerTimeouts'));
+                        dst.one('#detLanCongestionWindow').setContent(detailSrc.getAttribute('outerCongestionWindow'));
+                    }
+                }
+            }
+        }
+    });
+
+    var params = ['p=currentConnections'];
+    params.push('opt_type=' + currentSrc.getAttribute('optType'));
+    params.push('flags=' + currentSrc.getAttribute('flags'));
+    params.push('src_port=' + currentSrc.getAttribute('srcPort'));
+    params.push('dest_port=' + currentSrc.getAttribute('dstPort'));
+    params.push('persistent=');
+    params.push('stats=' + (isOptimized ? '1' : ''));
+    params.push('max_ret_count=1');
+    params.push('conn_type=0x' + RBT_CONN_TYPE_ALL_CURRENT.toString(16));
+    var srcSubnet = currentSrc.getAttribute('srcIp');
+    if (srcSubnet && (srcSubnet.indexOf('/') == -1)) {
+        srcSubnet += (srcSubnet.indexOf(':') >= 0) ? '/128' : '/32';
+    }
+    params.push('src_subnet=' + srcSubnet);
+    params.push('src_ip=' + srcSubnet.split('/')[0]);
+    var dstSubnet = currentSrc.getAttribute('dstIp');
+    if (dstSubnet && (dstSubnet.indexOf('/') == -1)) {
+        dstSubnet += (dstSubnet.indexOf(':') >= 0) ? '/128' : '/32';
+    }
+    params.push('dest_subnet=' + dstSubnet);
+    params.push('dest_ip=' + dstSubnet.split('/')[0]);
+
+    request.send(params.join('&'));
+}
+
+connectionsTable.postPopulateTableHook = function() {
+
+    restorePersistentSettings();
+
+    var attrs = connectionsTable.docElement.attributes;
+    if (attrs.retCount != attrs.fullCount) {
+      Y.one('#totalsReturned').setContent(attrs.retCount + ' of ' + attrs.fullCount);
+    } else {
+      Y.one('#totalsReturned').setContent(attrs.retCount);
+    }
+    Y.one('#summAllCurrentData').setContent(attrs.allCurrent);
+    Y.one('#summEstablishingData').setContent(attrs.establishing);
+    Y.one('#summEstablishedData').setContent(attrs.established);
+    Y.one('#summRiosData').setContent(attrs.termRios);
+<%
+if scpsLicensed: {
+%>
+    Y.one('#summRiosScpsData').setContent(attrs.termRiosScps);
+    Y.one('#summScpsData').setContent(attrs.termScps);
+<%
+}
+%>
+    Y.one('#summTcpProxyData').setContent(attrs.termTcpProxy);
+    Y.one('#summHalfOpenData').setContent(attrs.termHalfOpen);
+    Y.one('#summHalfClosedData').setContent(attrs.termHalfClosed);
+    Y.one('#summPacketModeOptimizedData').setContent(attrs.pmOptimized);
+    Y.one('#summForwardedData').setContent(attrs.forwarded);
+    Y.one('#summPassthroughData').setContent(attrs.passthrough);
+    Y.one('#summFailedTerminatedData').setContent(attrs.failedTerm);
+    Y.one('#summFailedPacketModeData').setContent(attrs.failedPm);
+    Y.one('#summIntentionalData').setContent(attrs.intentional);
+    Y.one('#summDiscardedData').setContent(attrs.discarded);
+    Y.one('#summDeniedData').setContent(attrs.denied);
+    Y.one('#summErrorData').setContent(attrs.errs);
+    Y.one('#summAllCurrentPct').setContent(attrs.allCurrentPct);
+    Y.one('#summEstablishingPct').setContent(attrs.establishingPct);
+    Y.one('#summEstablishedPct').setContent(attrs.establishedPct);
+    Y.one('#summRiosPct').setContent(attrs.termRiosPct);
+<%
+if scpsLicensed: {
+%>
+    Y.one('#summRiosScpsPct').setContent(attrs.termRiosScpsPct);
+    Y.one('#summScpsPct').setContent(attrs.termScpsPct);
+<%
+}
+%>
+    Y.one('#summTcpProxyPct').setContent(attrs.termTcpProxyPct);
+    Y.one('#summHalfOpenPct').setContent(attrs.termHalfOpenPct);
+    Y.one('#summHalfClosedPct').setContent(attrs.termHalfClosedPct);
+    Y.one('#summPacketModeOptimizedPct').setContent(attrs.pmOptimizedPct);
+    Y.one('#summForwardedPct').setContent(attrs.forwardedPct);
+    Y.one('#summPassthroughPct').setContent(attrs.passthroughPct);
+    Y.one('#summFailedTerminatedPct').setContent(attrs.failedTermPct);
+    Y.one('#summFailedPacketModePct').setContent(attrs.failedPmPct);
+    Y.one('#summIntentionalPct').setContent(attrs.intentionalPct);
+    Y.one('#summErrorPct').setContent(attrs.errsPct);
+
+    // TODO under bug 134225 -- remove isNaN()
+    var optimizedCount = parseInt(attrs.established) + parseInt(attrs.termHalfOpen) +
+            parseInt(attrs.termHalfClosed) + parseInt(attrs.establishing);
+    if (!isNaN(optimizedCount)) {
+        Y.one('#summOptimizedData').setContent(optimizedCount);
+    }
+
+    // Eventually, set the Update button to be initially disabled,
+    // then enable it here.  Currently not solid enough to do that.
+    Y.one('#queryUpdateButton').set('disabled', false);
+};
+
+var summaryNames = [
+    'summAllCurrent',
+    'summEstablished',
+    'summRios',
+<%
+if scpsLicensed: {
+%>
+    'summRiosScps',
+    'summScps',
+<%
+}
+%>
+    'summTcpProxy',
+    'summPacketModeOptimized',
+    'summEstablishing',
+    'summHalfOpen',
+    'summHalfClosed',
+    'summForwarded',
+    'summPassthrough',
+    'summFailedTerminated',
+    'summFailedPacketMode',
+    'summIntentional'];
+
+var summaryNameToIdxMap = {};
+for (var i = 0; i < summaryNames.length; i++) {
+    summaryNameToIdxMap[summaryNames[i]] = i;
+}
+
+// Restore saved widget settings.
+function restorePersistentSettings() {
+
+    function addFilterSelector(pos) {
+        ccns.addFilter();
+        var rowDiv = Y.one('#queryFilters div:last-child');
+        afterAddFilter(null, rowDiv);
+        var selectEl = rowDiv.one('select')
+        setSelectedPosition(selectEl, pos);
+        onSelectFilter(selectEl);
+        return rowDiv;
+    }
+    function setFilterSelectorInputText(pos, text) {
+        addFilterSelector(pos).one('.queryFilterInput input').set('value', text);
+    }
+
+    performRemoteCall('currentConnectionsParameters', {}, function(xmlBody) {
+
+        var app_type = xmlBody.getAttribute('app_type');
+        var conn_type = xmlBody.getAttribute('conn_type');
+        var dest_port = xmlBody.getAttribute('dest_port');
+        var dest_subnet = xmlBody.getAttribute('dest_subnet');
+        var filter_on_error = xmlBody.getAttribute('filter_on_error');
+        var max_ret_count = xmlBody.getAttribute('max_ret_count');  // not user-configurable
+        var sort_by = xmlBody.getAttribute('sort_by');
+        var sort_reverse = xmlBody.getAttribute('sort_reverse');
+        var src_port = xmlBody.getAttribute('src_port');
+        var src_subnet = xmlBody.getAttribute('src_subnet');
+        var started_after = xmlBody.getAttribute('started_after');
+        var started_before = xmlBody.getAttribute('started_before');
+        var transport_type = xmlBody.getAttribute('transport_type');
+        var ui_category = xmlBody.getAttribute('ui_category');
+
+        if (app_type && <%= sportOk %>) {
+            addFilterSelector(UI_FILTER_APPLICATION).one('.queryFilterInput select').set('selectedIndex', appIdToPosMap[app_type]);
+        }
+        if (dest_port) {
+            setFilterSelectorInputText(UI_FILTER_DST_PORT, dest_port);
+        }
+        if (conn_type) {
+            conn_type = parseInt(conn_type, 16);
+            var singleEnded = conn_type & RBT_CONN_TYPE_UI_SINGLE_ENDED;
+            var doubleEnded = conn_type & RBT_CONN_TYPE_UI_DOUBLE_ENDED;
+            if (singleEnded && !doubleEnded) {
+                addFilterSelector(UI_FILTER_SINGLE_ENDED);
+            } else if (doubleEnded && !singleEnded) {
+                addFilterSelector(UI_FILTER_DOUBLE_ENDED);
+            }
+        }
+        if (dest_subnet) {
+            setFilterSelectorInputText(UI_FILTER_DST_SUBNET, dest_subnet);
+        }
+        if (filter_on_error) {
+            addFilterSelector(UI_FILTER_ERRORS);
+        }
+        if (sort_by) {
+            prevSortBy = sort_by;
+            sort_reverse = sort_reverse == 'true';
+            if (sort_reverse) {
+                prevSortReverse = sort_reverse;
+            }
+            var colName = sortByNumberToColumnAttrNameMap[parseInt(sort_by)]
+            var arrowName = colName + (sort_reverse ? 'DownArrow' : 'UpArrow');
+            var arrow = Y.one('#' + arrowName + 'Normal');
+            arrow.addClass('showSortArrow');
+            arrow.removeClass('hideSortArrow');
+            var wrapper = arrow.ancestor('div');
+            wrapper.addClass('hasSortArrow');
+            // Save arrows globally for later use.
+            currentSortArrowNormal = arrow;
+            currentSortArrowGrayed = Y.one('#' + arrowName + 'Grayed');
+        }
+        if (src_port) {
+            setFilterSelectorInputText(UI_FILTER_SRC_PORT, src_port);
+        }
+        if (src_subnet) {
+            setFilterSelectorInputText(UI_FILTER_SRC_SUBNET, src_subnet);
+        }
+        if (started_after) {
+            setFilterSelectorInputText(UI_FILTER_STARTED_AFTER, started_after);
+        } else if (started_before) {
+            setFilterSelectorInputText(UI_FILTER_STARTED_BEFORE, started_before);
+        }
+        if (transport_type) {
+            // Not currently used.
+        }
+        if (ui_category) {
+            ui_category = parseInt(ui_category);
+            Y.one('#queryConnections select').set('selectedIndex', uiCatToConnIdx(ui_category));
+            selectSummary('#' + summaryNames[ui_category]);
+        }
+    });
+    if (filterCount < UI_MAX_FILTER_COUNT) {
+        Y.one('#queryFilterAddButton').setStyle('visibility', 'visible');
+    }
+}
+
+// onclick() function for the Summary table;
+// also sets the Show Connections drop-down menu selection
+//
+function onClickSummary(div) {
+    selectSummary(div);
+    Y.one('#queryConnections select').set('selectedIndex', uiCatToConnIdx(summaryNameToIdxMap[div.id]));
+}
+
+// onselect() function for the Show Connections drop-down menu;
+// also sets the corresponding entry in the Summary table.
+//
+function onSelectConn(sel) {
+    var idx = connIdxToUiCat(Y.one(sel).get('selectedIndex'));
+    selectSummary('#' + summaryNames[idx]);
+}
+
+// remember the currently selected category
+var selectedSummaryDiv = null;
+
+// the real work of selecting a category
+function selectSummary(div) {
+    function getBridge(d) {
+        return Y.one('#bridge' + d.get('id').slice(4));
+    }
+    div = Y.one(div);
+    if (selectedSummaryDiv) {
+        selectedSummaryDiv.removeClass('summarySelected');
+        getBridge(selectedSummaryDiv).removeClass('visible');
+        var td = selectedSummaryDiv.one('.summaryTextPseudolinkSelected');
+        td.removeClass('summaryTextPseudolinkSelected')
+        td.addClass('summaryTextPseudolink');
+    }
+    selectedSummaryDiv = div;
+    div.addClass('summarySelected');
+    div.addClass('summaryTextPseudolinkSelected');
+    getBridge(div).addClass('visible');
+    var td = div.one('.summaryTextPseudolink');
+    if (td) {
+        td.removeClass('summaryTextPseudolink')
+        td.addClass('summaryTextPseudolinkSelected');
+    }
+}
+
+// called when the page is first loaded
+function sendInitialRequest() {
+    var inParams = window.location.href.split('?')[1] || '';
+    var paramList = inParams.split('&').slice(1) || '';
+    var outParams = ''
+    for (var i = 0; i < paramList.length; i++) {
+        var pair = paramList[i];
+        var name = pair.split('=')[0];
+        if (name != 'p') {
+            outParams += (outParams ? '&' : '') + pair;
+        }
+    }
+    if (outParams) {
+        connectionsTable.sendRequest('/mgmt/xmldata?p=currentConnections&' + outParams);
+    } else {
+        performRemoteCall('currentConnectionsParameters', {}, function(xmlBody) {
+            var params = ['app_type', 'conn_type', 'dest_port', 'dest_subnet',
+                'filter_on_error', 'sort_by', 'sort_reverse',
+                'src_port', 'src_subnet', 'started_after', 'started_before',
+                'transport_type', 'ui_category'];
+            for (var i = 0; i < params.length; i++) {
+                var name = params[i];
+                var value = xmlBody.getAttribute(name);
+                if (value) {
+                    outParams += '&' + name + '=' + value;
+                }
+            }
+            if (!outParams) {
+               outParams = '&ui_category=' + UI_CAT_ALL_CURRENT;
+               outParams += '&conn_type=0x' + RBT_CONN_TYPE_ALL_CURRENT.toString(16);
+            }
+            // Reload the page
+            var href = window.location.href.replace(/&.*/, '') + outParams;
+            window.location.href = href;
+        });
+    }
+}
+
+// Adding submit button validation is non-standard in this case.
+// RBT.Validator.buttonEnabler has already been overridden
+// by the framework code.  Now we want to keep the current version,
+// but also run some other code, so we need to wrap it.
+//
+function addUpdateButtonValidation() {
+    var updateButton = Y.one('#queryUpdateButton');
+    oldButtonEnabler = RBT.Validator.buttonEnabler;
+    RBT.Validator.buttonEnabler = function(buttonEl, enabled) {
+        oldButtonEnabler(buttonEl, enabled);
+        if (buttonEl == updateButton) {
+            updateButtonEnabled = enabled;
+            enableSorting(enabled);
+        }
+    };
+    RBT.Validator.addButtonValidation(updateButton);
+}
+
+// At page load time:
+// (1) Send a data request if the page URL has parameters other than the 'p' parameter.
+// (2) Create the filters.
+// (3) Add validation for the Update button.
+onloadScript += 'sendInitialRequest(); createFilters(); addUpdateButtonValidation(); ';
+
+// ]]>
+</script>
+

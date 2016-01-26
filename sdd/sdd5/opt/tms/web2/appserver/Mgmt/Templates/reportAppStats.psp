@@ -1,0 +1,282 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+##
+## Application Statistics Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, FormUtils, RVBDUtils, ajaxentrytable, UserConfig, qos, Nodes" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('reportAppVis', 'setupAdvNet_netflow') %>
+
+<psp:method name="css">
+    return """
+#appStatsTableTable_main {
+    width: 800px;
+}
+
+#appStatsTableTable_table {
+    table-layout: fixed;
+}
+
+.appStatsBpsCol {
+    width: 80px;
+}
+"""
+</psp:method>
+
+
+<psp:method name="nodeEntries">
+    return {
+        'filterApps': FormUtils.NodeEntry(
+            name='filterApps',
+            userPath='sh/web/reports/appvis/filter',
+            userConfigAutoSave=True,
+            widgetClass='wide2',
+            # Note: The filterApps field is an autocomplete but also a free form
+            # field, so it doesn't need a validator.
+        ),
+        'direction': FormUtils.NodeEntry(
+            name='direction',
+            widget='select',
+            userPath='sh/web/reports/appvis/direction',
+            userConfigAutoSave=True,
+            selectOptions=(('outbound', 'Outbound'),
+                           ('inbound', 'Inbound')),
+        ),
+        'interface': FormUtils.NodeEntry(
+            name='interface',
+            widget='select',
+            userPath='sh/web/reports/appvis/interface',
+            userConfigAutoSave=True,
+            selectOptions=qos.getIfaceSelectOptions()
+        )
+    }
+</psp:method>
+
+
+
+
+<%
+self.MAX_APPLICATIONS = 7
+
+# These NodeEntry objects can't be defined in dialogEntries() because we need
+# the session to get them.
+per, lb, ub = FormUtils.reportsTimeIntervalWidgets(req.parent().session())
+per.selectOptions = list(per.selectOptions)
+per.selectOptions.remove(('min5', 'Last 5 Minutes'))
+per.label = ''
+per.action = 'adjustReportsTimeIntervalWidgets()'
+
+xmldataUrlParams = {'per': per.value,
+                    'lb': lb.value,
+                    'ub': ub.value,
+                    'dir': UserConfig.get(self.session(), 'sh/web/reports/appvis/direction'),
+                    'iface': UserConfig.get(self.session(), 'sh/web/reports/appvis/interface'),
+                    'filter': UserConfig.get(self.session(), 'sh/web/reports/appvis/filter'),}
+
+# Discovered Apps table
+appStatsTable = ajaxentrytable.AjaxEntryTable('appStatsTable',
+    dataType='csv',
+    url='/mgmt/xmldata?p=appStatsTable&per=%(per)s&lb=%(lb)s&ub=%(ub)s&dir=%(dir)s&iface=%(iface)s&filter=%(filter)s' % xmldataUrlParams,
+    titleText='Application Statistics Table',
+    headerSpec=[('', 'ajaxEntryTable_selectCheckboxCell'),
+                ('Application', ''),
+                ('Avg bps', 'appStatsBpsCol', "sortAttrib('avgbps')"),
+                ('Peak bps', 'appStatsBpsCol', "sortAttrib('peakbps')"),
+                ('Per Flow Avg bps', 'appStatsBpsCol', "sortAttrib('avgperflowbps')"),
+                ('Per Flow Peak bps', 'appStatsBpsCol', "sortAttrib('peakperflowbps')")],
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedApp_'),
+ tdHighlightAppVisApp('name'),
+ AjaxEntryTable.tdAttr('avgbps_pretty'),
+ AjaxEntryTable.tdAttr('peakbps_pretty'),
+ AjaxEntryTable.tdAttr('avgperflowbps_pretty'),
+ AjaxEntryTable.tdAttr('peakperflowbps_pretty')]""",
+    emptyMessage='No application stats.')
+
+nodeEntries = self.nodeEntries()
+
+appVisFeatureEnabled = Nodes.present(self.session().value('mgmt'), '/rbt/app_vis/config/enable') == 'true'
+
+# Set up options for the Filer App autocomplete field
+allAppNames = qos.getPyqosAppNames()
+allAppNames.sort(FormUtils.alphanumericCompare)
+
+autocompleteOptions = [{'name': appName, 'description': ''}
+                       for appName in allAppNames]
+
+%>
+
+
+<% self.beginPagelet() %>
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+tdHighlightAppVisApp = function(textAttr, clssName) {
+    return function(entryTable, tr, element) {
+        var td = document.createElement('td');
+        if (clssName) {
+            setElementClass(td, clssName);
+        }
+        var text = element.getAttribute(textAttr) || '';
+
+        if (text == 'All') {
+            // special case: "All" is not bolded at all.
+            var textNode = document.createTextNode(text);
+            td.appendChild(textNode);
+            tr.appendChild(td);
+            return;
+        }
+
+        // This code bolds the last protocol in the app name:
+        textParts = text.split(' > ');
+        lastPart = textParts.pop();
+        text = (textParts.length < 1) ? '' : textParts.join(' > ') + ' > ';
+
+        var textNode = document.createTextNode(text);
+        td.appendChild(textNode);
+
+        var lastPartTextNode = document.createTextNode(lastPart);
+        var lastPartElem = document.createElement('strong');
+        lastPartElem.appendChild(lastPartTextNode)
+        td.appendChild(lastPartElem);
+        tr.appendChild(td);
+    }
+}
+
+// ]]>
+</script>
+
+
+<%
+if not appVisFeatureEnabled: {
+%>
+    <div class="midLevel">
+      Application Visibility is currently disabled. Application Visibility can be enabled on the <a href="/mgmt/gui?p=setupAdvNet_netflow">Flow Statistics</a> page.
+    </div>
+<%
+}
+%>
+
+
+<div class="midLevel">
+  <a href="#" onclick="viewSelectedAppsGraph()">View graphs of the applications selected below.</a> (max 7)
+</div>
+
+
+<form method="post" action=""
+      onsubmit="saveReportsTimeInterval(); appStatsTableTable.sendRequest(getTableURL()); return false;">
+  <div class="midLevel">
+    <table border='0'>
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th>App Name Filter:</th>
+          <th>Direction:</th>
+          <th>Interface:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= per.html(self, format='stacked') %>
+          </td>
+          <%= nodeEntries['filterApps'].html(self, format='horiz') %>
+          <%= nodeEntries['direction'].html(self, format='horiz') %>
+          <%= nodeEntries['interface'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.formSubmitButtons(self, {'name': 'apply', 'value': 'Update'}) %>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div id="customTimes">
+              <%= lb.html(self, format='stacked') %>
+              <%= ub.html(self, format='stacked') %>
+            </div>
+          </td>
+          <td colspan="4">
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<div>&nbsp;</div>
+
+<div>
+  <%= appStatsTable.html(self) %>
+</div>
+
+
+
+
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+
+function getTableURL() {
+    var per_val = Y.one('select[name="per"]').get('value');
+    var ub_val = Y.one('input[name="ub"]').get('value');
+    var lb_val = Y.one('input[name="lb"]').get('value');
+    var filter_val = Y.one('input[name="filterApps"]').get('value');
+    var dir_val = Y.one('select[name="direction"]').get('value');
+    var iface_val = Y.one('select[name="interface"]').get('value');
+
+    return '/mgmt/xmldata?p=appStatsTable&per=' + per_val + '&lb=' + lb_val + '&ub=' + ub_val + '&dir=' + dir_val + '&iface=' + iface_val + '&filter=' + filter_val;
+}
+
+
+function viewSelectedAppsGraph() {
+    var loc = '/mgmt/gui?p=reportAppVis'
+    loc = addQueryStringParameter(loc, 'iface', Y.one('[name="interface"]').get('value'));
+    loc = addQueryStringParameter(loc, 'dir', Y.one('[name="direction"]').get('value'));
+    loc = addQueryStringParameter(loc, 'lb', Y.one('[name="lb"]').get('value'));
+    loc = addQueryStringParameter(loc, 'ub', Y.one('[name="ub"]').get('value'));
+    loc = addQueryStringParameter(loc, 'apps', getCheckedApps().join(','));
+    window.location.href = loc;
+}
+
+function getCheckedApps() {
+    // returns an array of the first 7 checked full app names
+    var checkedApps = [];
+    Y.all('#appStatsTableTable_main input[type="checkbox"]').each(function(node, i, nodeList) {
+        if (checkedApps.length < <%= self.MAX_APPLICATIONS %> && node.get('name') != '' && node.get('checked')) {
+            checkedApps.push(node.get('name').substr('selectedApp_'.length));
+        }
+    });
+    return checkedApps;
+}
+
+
+
+Y.on('domready', function() {
+    // Turn filter text field into an autocomplete.
+    var autocompleteOptions = <%= RVBDUtils.jsonizeAndEscapeForJs(autocompleteOptions) %>;
+    RBT._AutoComplete.makeAutoComplete('filterApps', autocompleteOptions);
+
+    adjustReportsTimeIntervalWidgets();
+});
+
+function adjustReportsTimeIntervalWidgets() {
+    if (Y.one('select[name="per"]').get('value') == 'cust') {
+        Y.one('#customTimes').ancestor('tr').setStyle('display', 'block');
+    } else {
+        Y.one('#customTimes').ancestor('tr').setStyle('display', 'none');
+    }
+}
+
+
+// ]]>
+</script>

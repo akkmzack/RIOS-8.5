@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2010 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sport_transport                                     -->
+<!--   Module Root: /rbt/sport/transport                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_transport.c      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/transport/config/myconfig</name>               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sport_transport">
+    <config-wildcard>
+        <name>/rbt/sport/transport/config/rule/*</name>
+        <description>List of TCP rules</description>
+        <value type="uint16" />
+    </config-wildcard>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/src/network</name>
+        <description>Source IP address with mask for this rule</description>
+        <value type="ipv4prefix">0.0.0.0/0.0.0.0</value>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/dst/network</name>
+        <description>Destination IP address with mask for this rule</description>
+        <value type="ipv4prefix">0.0.0.0/0.0.0.0</value>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/dst/port_label</name>
+        <description>Port for this rule</description>
+        <value type="string">0</value>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/scps/allow_scps</name>
+        <description>Allow SCPS for this rule</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/scps/mode</name>
+        <description>SCPS mode for this rule</description>
+        <value type="string">initiate+terminate</value>
+        <value-choices>
+          <choice>initiate</choice>
+          <choice>terminate</choice>
+          <choice>initiate+terminate</choice>
+        </value-choices>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/scps/allow_only_scps_peering</name>
+        <description>Always Proxy TCP connections for this rule</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/transport/config/rule/*/vlan</name>
+        <description>VLAN Tag ID for this rule</description>
+        <value type="int16" min="-1" max="4094">-1</value>
+    </config>
+    <event>
+        <name>/rbt/sport/transport/event/rule_added</name>
+        <description>A Transport Rule Has Been Added</description>
+        <parameter>idx</parameter>
+        <parameter>src/network</parameter>
+        <parameter>dst/network</parameter>
+        <parameter>dst/port_label</parameter>
+        <parameter>scps/allow_scps</parameter>
+        <parameter>scps/mode</parameter>
+        <parameter>scps/allow_only_scps_peering</parameter>
+        <parameter>vlan</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/transport/event/rule_moved</name>
+        <description>A Transport Rule Has Been Moved</description>
+        <parameter>from_idx</parameter>
+        <parameter>to_idx</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/transport/event/rule_removed</name>
+        <description>A Transport Rule Has Been Removed</description>
+        <parameter>idx</parameter>
+        <parameter>dst/port_label</parameter>
+    </event>
+</node-list>

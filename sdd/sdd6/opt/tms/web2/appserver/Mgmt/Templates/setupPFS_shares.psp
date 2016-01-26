@@ -1,0 +1,817 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupPFS_shares.psp
+##
+## Proxy Files Service Shares table
+%>
+
+<psp:method name="pageletNodes">
+    nodes = ['/rbt/rcu/action/cancel_action',
+             '/rbt/rcu/action/domain_config',
+             '/rbt/rcu/action/smb_global_config',
+             '/rbt/rcu/action/workgroup_config',
+             '/rbt/rcu/config/pfs/enable'
+             '/rbt/rcu/manage_service',
+             '/rbt/rcu/manage_user',
+             '/resolver/nameserver/1/address']
+    return nodes
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    mgmt = self.session().value('mgmt')
+    if not self.session().value('debug', None) \
+    and 'false' == Nodes.present(mgmt, '/rbt/rcu/state/valid_model'):
+        return False
+    if not super(self.__class__, self).pageIsReadable():
+        return False
+    return True
+</psp:method>
+
+<psp:method name="dialogEntries">
+    intervalUnits = (('minutes', 'Minutes'),
+                     ('hours', 'Hours'),
+                     ('days', 'Days'),
+                     ('disabled', 'Disabled'))
+    return {
+        # shared add/edit dialog:
+        'share_standaloneStartDate': FormUtils.NodeEntry(
+            name='standaloneStartDate',
+            type='date',
+            widgetClass='date',
+            label='Sync Start Date and Time',
+            hint='(YYYY/MM/DD)',
+            inputOptional=True),
+        'share_standaloneStartTime': FormUtils.NodeEntry(
+            name='standaloneStartTime',
+            type='time',
+            widgetClass='time',
+            hint='(HH:MM:SS)',
+            inputOptional=True),
+        'share_incSyncStartDate': FormUtils.NodeEntry(
+            name='incSyncStartDate',
+            type='date',
+            widgetClass='date',
+            label='Incremental Sync Start Date and Time',
+            hint='(YYYY/MM/DD)',
+            validate='date'),
+        'share_incSyncStartTime': FormUtils.NodeEntry(
+            name='incSyncStartTime',
+            type='time',
+            widgetClass='time',
+            hint='(HH:MM:SS)',
+            validate='time'),
+        'share_fullSyncStartDate': FormUtils.NodeEntry(
+            name='fullSyncStartDate',
+            type='date',
+            widgetClass='date',
+            label='Full Sync Start Date and Time',
+            hint='(YYYY/MM/DD)',
+            validate='date'),
+        'share_fullSyncStartTime': FormUtils.NodeEntry(
+            name='fullSyncStartTime',
+            type='time',
+            widgetClass='time',
+            hint='(HH:MM:SS)',
+            validate='time'),
+
+        # add dialog
+        'addShare_name': FormUtils.NodeEntry(
+            name='addShare_name',
+            label='Local Share Name',
+            labelClass='label-fixed',
+            validate='nonempty'),
+        'addShare_remotePath': FormUtils.NodeEntry(
+            name='addShare_remotePath',
+            widgetClass='pathname',
+            label='Remote Path',
+            hint='''<span id="sao6">(optional)</span>
+                    <span id="remotePathNoteV3" class="hidden">
+                      (Format is "\\\\servername\\sharename")</span>
+                    <span id="remotePathNoteV2" class="hidden">
+                      (Format is "\\\\servername\\sharename" or "c:\\directory")</span>''',
+            action='addShareRemotePathChange2()',
+            validate='validateRemotePath',
+            inputOptional=True),
+        'addShare_mode': FormUtils.NodeEntry(
+            name='addShare_mode',
+            selectOptions=(('broadcast', 'Broadcast'),
+                           ('local', 'Local'),
+                           ('standalone', 'Standalone')),
+            label='Mode and Version',
+            action='updateUpdateables(this.form)'),
+        'addShare_version': FormUtils.NodeEntry(
+            name='addShare_version',
+            selectOptions=(('2', 'Version 2'),
+                           ('3', 'Version 3')),
+            value='3',
+            action='updateUpdateables(this.form)'),
+        'addShare_serverName': FormUtils.NodeEntry(
+            name='addShare_serverName',
+            label='Server Name',
+            hint='<span id="sao1">(optional)</span>',
+            inputOptional=True),
+        'addShare_serverPort': FormUtils.NodeEntry(
+            name='addShare_serverPort',
+            widgetClass='small',
+            value='8777',
+            label='Port',
+            hint='<span id="sao2">(optional)</span>',
+            inputOptional=True),
+        'addShare_serverAccount': FormUtils.NodeEntry(
+            name='addShare_serverAccount',
+            widgetClass='account',
+            label='Account',
+            hint='<span id="sao3">(optional)</span>',
+            inputOptional=True),
+        'addShare_serverPassword': FormUtils.NodeEntry(
+            name='addShare_serverPassword',
+            widget='password',
+            label='Password',
+            hint='<span id="sao4"> (optional)</span>',
+            validate='password',
+            inputOptional=True),
+        'addShare_serverPasswordConfirm': FormUtils.NodeEntry(
+            name='addShare_serverPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            hint='<span id="sao5"> (optional)</span>',
+            validate='password',
+            inputOptional=True),
+        'addShare_incSyncInterval': FormUtils.NodeEntry(
+            name='addShare_incSyncInterval',
+            value='1',
+            widgetClass='small',
+            label='Incremental Sync Interval',
+            validate='uint16'),
+        'addShare_incSyncUnits': FormUtils.NodeEntry(
+            name='addShare_incSyncUnits',
+            value='days',
+            selectOptions=intervalUnits,
+            action="return disableableIntervalChange(this, 'addShare_incSyncInterval')"),
+        'addShare_fullSyncInterval': FormUtils.NodeEntry(
+            name='addShare_fullSyncInterval',
+            value='7',
+            widgetClass='small',
+            label='Full Sync Interval',
+            validate='uint16'),
+        'addShare_fullSyncUnits': FormUtils.NodeEntry(
+            name='addShare_fullSyncUnits',
+            value='days',
+            selectOptions=intervalUnits,
+            action="return disableableIntervalChange(this, 'addShare_fullSyncInterval')"),
+        'addShare_comment': FormUtils.NodeEntry(
+            name='addShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+
+        # edit dialog:
+        'editShare_mode': FormUtils.NodeEntry(
+            name='editShare_mode',
+            selectOptions=(('broadcast', 'Broadcast'),
+                           ('local', 'Local'),
+                           ('standalone', 'Standalone')),
+            label='Mode',
+            labelClass='label-fixed',
+            action='return updatePfsEditDialog()'),
+        'editShare_shareEnable': FormUtils.NodeEntry(
+            name='editShare_shareEnable',
+            widget='checkbox',
+            label='Sharing',
+            units='Enable'),
+        'editShare_syncEnable': FormUtils.NodeEntry(
+            name='editShare_syncEnable',
+            widget='checkbox',
+            label='Syncing',
+            units='Enable'),
+        'editShare_serverPort': FormUtils.NodeEntry(
+            name='editShare_serverPort',
+            widgetClass='small',
+            label='Port'),
+        'editShare_serverAccount': FormUtils.NodeEntry(
+            name='editShare_serverAccount',
+            widgetClass='account',
+            label='Account',
+            hint='<span id="seo3">(optional)</span>'),
+        'editShare_serverPassword': FormUtils.NodeEntry(
+            name='editShare_serverPassword',
+            widget='password',
+            label='Password',
+            hint='<span id="seo4"> (optional)</span>',
+            validate='password'),
+        'editShare_serverPasswordConfirm': FormUtils.NodeEntry(
+            name='editShare_serverPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            hint='<span id="seo5"> (optional)</span>',
+            validate='password'),
+        'editShare_remotePath': FormUtils.NodeEntry(
+            name='editShare_remotePath',
+            widgetClass='pathname',
+            label='New Remote Path',
+            hint='<br />(Format is "\\\\servername\\sharename")',
+            validate='sharePath'),
+        'editShare_incSyncInterval': FormUtils.NodeEntry(
+            name='editShare_incSyncInterval',
+            value='1',
+            widgetClass='small',
+            label='Incremental Sync Interval',
+            validate='uint16'),
+        'editShare_incSyncUnits': FormUtils.NodeEntry(
+            name='editShare_incSyncUnits',
+            value='days',
+            selectOptions=intervalUnits,
+            action="return disableableIntervalChange(this, 'editShare_incSyncInterval')"),
+        'editShare_fullSyncInterval': FormUtils.NodeEntry(
+            name='editShare_fullSyncInterval',
+            value='7',
+            widgetClass='small',
+            label='Full Sync Interval',
+            validate='uint16'),
+        'editShare_fullSyncUnits': FormUtils.NodeEntry(
+            name='editShare_fullSyncUnits',
+            value='days',
+            selectOptions=intervalUnits,
+            action="return disableableIntervalChange(this, 'editShare_fullSyncInterval')"),
+        'editShare_upgrade': FormUtils.NodeEntry(
+            name='editShare_upgrade',
+            widget='checkbox',
+            label='Upgrade to Version 3 on Save',
+            action='return updatePfsEditDialog()'),
+        'editShare_comment': FormUtils.NodeEntry(
+            name='editShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+    }
+</psp:method>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+
+self.hasHelp = True
+
+self.relatedPages = ({'page': 'setupHostSettings', 'note': 'DNS Settings'},
+                     'setupServiceDomain',
+                     'setupPFS_settings',
+                     'reportPFSShares',
+                     'reportPFSStatistics')
+
+mgmt = self.session().value('mgmt')
+hostname = Nodes.present(mgmt, '/system/hostname')
+dialogEntries = self.dialogEntries()
+addShare = 'addShare_'
+editShare = 'editShare_'
+
+# default dates and times
+nowDate, nowTime = Nodes.present(mgmt, '/time/now/datetime').split(' ')
+dialogEntries['share_standaloneStartDate'].value = nowDate
+dialogEntries['share_standaloneStartTime'].value = nowTime
+dialogEntries['share_incSyncStartDate'].value = nowDate
+dialogEntries['share_incSyncStartTime'].value = nowTime
+dialogEntries['share_fullSyncStartDate'].value = nowDate
+dialogEntries['share_fullSyncStartTime'].value = nowTime
+
+
+pfsSharesTable = ajaxentrytable.AjaxEntryTable('pfsShares',
+    headerSpec=('', 'Local Name', 'Sharing', 'Syncing', 'Status', 'Last Sync Time', 'Last Sync Status', 'Actions'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('local_name', 'ck_'),
+ AjaxEntryTable.tdEdit('local_name', 'local_name'),
+ AjaxEntryTable.tdAttr('sharing'),
+ AjaxEntryTable.tdAttr('syncing'),
+ AjaxEntryTable.tdChildAttr('status', 'status', 'col_status'),
+ AjaxEntryTable.tdChildAttr('status', 'last_sync_time'),
+ AjaxEntryTable.tdChildAttr('status', 'last_sync_status', 'col_syncStatus'),
+ AjaxEntryTable.tdActiveSelect(null, 'share_', 'local_name', shareActions, 'return shareAction(this)')]""",
+    emptyMessage='No PFS shares have been configured.',
+    addButtonText='Add a New Proxy Share',
+    addButtonName='addShare',
+    removeName='removePFSShares',
+    removeButtonText='Remove Selected Shares',
+    editDivTitle='Edit Proxy Share <b>\\\\%s\\<span id="editShareName"></span></b>' % hostname,
+    editButtonName='editShare')
+
+pfsSharesTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    <tbody>
+      %s
+      %s
+      %s
+      <tr><td colspan="2">&nbsp;</td></tr>
+    </tbody>
+    <tbody id="addShareV2Items">
+      %s
+    </tbody>
+    <tbody id="addShareV3Items">
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody>
+      <tr><td colspan="2">&nbsp;</td></tr>
+    </tbody>
+    <tbody id="addShareStandaloneItems">
+      %s
+    </tbody>
+    <tbody id="addShareBroadcastLocalItems">
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody>
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['addShare_name'].html(self),
+       dialogEntries['addShare_remotePath'].html(self),
+       dialogEntries['addShare_mode'].html(self, more=[ \
+           dialogEntries['addShare_version']]),
+
+       # addShareV2Items
+       dialogEntries['addShare_serverName'].html(self,
+           more=[dialogEntries['addShare_serverPort']]),
+
+       # addShareV3Items
+       dialogEntries['addShare_serverAccount'].html(self),
+       dialogEntries['addShare_serverPassword'].html(self),
+       dialogEntries['addShare_serverPasswordConfirm'].html(self),
+
+       # addShareStandaloneItems
+       dialogEntries['share_standaloneStartDate'].html(self, namePrefix=addShare,
+           more=[dialogEntries['share_standaloneStartTime']]),
+
+       # addShareBroadcastLocalItems
+       dialogEntries['share_incSyncStartDate'].html(self, namePrefix=addShare,
+           more=[dialogEntries['share_incSyncStartTime']]),
+       dialogEntries['addShare_incSyncInterval'].html(self,
+           more=[dialogEntries['addShare_incSyncUnits']]),
+       dialogEntries['share_fullSyncStartDate'].html(self, namePrefix=addShare,
+           more=[dialogEntries['share_fullSyncStartTime']]),
+       dialogEntries['addShare_fullSyncInterval'].html(self,
+           more=[dialogEntries['addShare_fullSyncUnits']]),
+
+       # end
+       dialogEntries['addShare_comment'].html(self)
+)
+
+pfsSharesTable.editDivContent = '''
+    <h3>Configuration</h3>
+    <div class="indent">
+      <table>
+        <tbody>
+          <tr><td class="label-fixed-indent">Local Name:</td><td><span id="editShareInfo_localName"></span></td></tr>
+          <tr><td>Version:</td><td><span id="editShareInfo_version"></span></td></tr>
+        </tbody>
+        <tbody id="editShareInfoSection_v2ServerName">
+          <tr><td>Server Name:</td><td><span id="editShareInfo_serverName"> -- </span></td></tr>
+        </tbody>
+        <tbody id="editShareInfoSection_remotePath">
+          <tr><td>Remote Path:</td><td><span id="editShareInfo_remotePath"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Current Status</h3>
+    <div class="indent">
+      <table>
+        <tbody>
+          <tr><td class="label-fixed-indent">Current Status:</td><td><span id="editShareInfo_status"></span></td></tr>
+        </tbody>
+        <tbody id="editShareInfoSection_error">
+          <tr><td>Error Message:</td><td><span id="editShareInfo_error"></span></td></tr>
+        </tbody>
+        <tbody id="editShareInfoSection_lastSync">
+          <tr><td>Last Successful Sync:</td><td><span id="editShareInfo_lastSync"></span></td></tr>
+          <tr><td>Last Sync Status:</td><td><span id="editShareInfo_lastSyncStatus"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <hr />
+    <h3>Edit Share</h3>
+    <table>
+      <tbody>
+        %s
+        %s
+      </tbody>
+      <tbody id="editShare_syncItems">
+        %s
+      </tbody>
+      <tbody id="editShare_v2Items">
+        %s
+      </tbody>
+      <tbody id="editShare_v3Items">
+        %s
+        %s
+        %s
+      </tbody>
+      <tbody id="editShare_upgradeRemotePath">
+        %s
+      </tbody>
+      <tbody id="editShare_standaloneSync">
+        %s
+      </tbody>
+      <tbody id="editShare_broadcastLocalSync">
+        %s
+        %s
+        %s
+        %s
+      </tbody>
+      <tbody id="editShare_upgrade">
+        %s
+      </tbody>
+      <tbody>
+        %s
+      </tbody>
+    </table>
+    <div>
+      <input type="hidden" name="editShare_name" />
+    </div>
+''' % (dialogEntries['editShare_mode'].html(self),
+       dialogEntries['editShare_shareEnable'].html(self),
+
+       # syncItems
+       dialogEntries['editShare_syncEnable'].html(self),
+
+       # v2Items
+       dialogEntries['editShare_serverPort'].html(self),
+
+       # v3 Items
+       dialogEntries['editShare_serverAccount'].html(self),
+       dialogEntries['editShare_serverPassword'].html(self),
+       dialogEntries['editShare_serverPasswordConfirm'].html(self),
+
+       # upgradeRemotePath
+       dialogEntries['editShare_remotePath'].html(self),
+
+       # standaloneSync
+       dialogEntries['share_standaloneStartDate'].html(self, namePrefix=editShare,
+           more=[dialogEntries['share_standaloneStartTime']]),
+
+       # broadcastLocalSync
+       dialogEntries['share_incSyncStartDate'].html(self, namePrefix=editShare,
+           more=[dialogEntries['share_incSyncStartTime']]),
+       dialogEntries['editShare_incSyncInterval'].html(self,
+           more=[dialogEntries['editShare_incSyncUnits']]),
+       dialogEntries['share_fullSyncStartDate'].html(self, namePrefix=editShare,
+           more=[dialogEntries['share_fullSyncStartTime']]),
+       dialogEntries['editShare_fullSyncInterval'].html(self,
+           more=[dialogEntries['editShare_fullSyncUnits']]),
+
+       # upgrade
+       dialogEntries['editShare_upgrade'].html(self),
+
+       # end
+       dialogEntries['editShare_comment'].html(self))
+
+
+self.beginPagelet()
+%>
+
+<script type="text/javascript">
+<!--
+function shareActions(element) {
+    if ('standalone' == element.getAttribute('mode')) {
+        return ['- Actions -',
+                ['cancel', 'Cancel Operation']];
+    }
+    return ['- Actions -',
+            ['verify', 'Start Verify'],
+            ['manual_sync', 'Manual Sync'],
+            ['cancel', 'Cancel Operation']];
+}
+
+function shareAction(select) {
+    var shareName = select.name.substr('share_'.length);
+    var action = select.value;
+    select.selectedIndex = 0;
+    var request = newAjaxRequest('/mgmt/xmldata?p=pfsShareAction');
+    // alert the user if there's an error
+    setReadyStateChangeFunc(request, function() {
+        if (request.responseText.length) {
+            var rdoc = request.responseXML.documentElement.firstChild;
+            if ('error' == rdoc.tagName) {
+                alert('Error: ' + rdoc.childNodes[0].nodeValue);
+            }
+        }
+    });
+    request.send('share=' + escape(shareName) + '&' + 'action=' + escape(action))
+    return false;
+}
+
+function validateRemotePath(val) {
+    var validUNC = val.match(/^\\\\[^<>\*\?\|/+=;:\",&]*$/);
+    var validDOS = val.match(/^[a-zA-Z]:\\[^<>\*\?\|/+=;:\",&]*$/);
+    var select = getFormElement('pfsSharesForm', 'addShare_version')
+    var version = select.options[select.selectedIndex].value;
+    if (version == 3 && !validUNC) {
+        // In PFS V3 a path can be a UNC share path
+        throw 'A valid share path is required.'
+    }
+    else if (version == 2 && !(validUNC || validDOS)) {
+        // In PFS V2 a path can be a UNC share path or a DOS path
+        throw 'A valid share path or DOS path is required.'
+    }
+}
+// -->
+</script>
+
+<form method="post"
+      action="/mgmt/gui?p=setupPFS_shares"
+      id="pfsSharesForm">
+  <div id="div_pfsSharesTable" class="hidden">
+    <input type="hidden" name="_action_" value="pfsShares" />
+    <%= pfsSharesTable.html(self) %>
+  </div>
+  <div id="div_noPfsSharesTable" class="hidden">
+    <p>
+      Proxy File Service is curently disabled.
+    </p>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+pfsSharesTable.updateHook = function() {
+    if ('add' == this.editMode) {
+        updatePfsAddDialog();
+    } else if ('edit' == this.editMode) {
+        updatePfsEditDialog();
+    }
+}
+
+function updatePfsAddDialog() {
+    var form = $('pfsSharesForm');
+    var mode = form.addShare_mode.value;
+    var vers = form.addShare_version.value;
+
+// removed the following code because it is too tied to the internals
+// of the validator -hkao
+//    Validator.fieldMap[form.addShare_serverAccount.id][1] = 'standalone' == mode;
+//    Validator.fieldMap[form.addShare_serverPassword.id][1] = 'standalone' == mode;
+//    Validator.fieldMap[form.addShare_remotePath.id][1] = 'standalone' == mode;
+//    Validator.fieldMap[form.addShare_serverName.id][1] = '2' == vers;
+//    Validator.fieldMap[form.addShare_serverPort.id][1] = '2' == vers;
+
+    if ('3' == form.addShare_version.value) {
+        enableElements('addShareV2Items', 'hide');
+        enableElements('addShareV3Items', true);
+        enableElements('remotePathNoteV2', 'hide');
+        enableElements('remotePathNoteV3', true);
+    } else {
+        enableElements('addShareV2Items', true);
+        enableElements('addShareV3Items', 'hide');
+        enableElements('remotePathNoteV2', true);
+        enableElements('remotePathNoteV3', 'hide');
+    }
+
+    // standalone mode tweaks some things
+    var optDisplay = ('standalone' == mode) ? 'inline' : 'none';
+    $('sao1').style.display = optDisplay;
+    $('sao2').style.display = optDisplay;
+    $('sao3').style.display = optDisplay;
+    $('sao4').style.display = optDisplay;
+    $('sao5').style.display = optDisplay;
+    $('sao6').style.display = optDisplay;
+
+    if ('standalone' == mode) {
+        enableElements('addShareStandaloneItems', true);
+        enableElements('addShareBroadcastLocalItems', 'hide');
+    } else {
+        enableElements('addShareStandaloneItems', 'hide');
+        enableElements('addShareBroadcastLocalItems', true);
+    }
+
+    addShareRemotePathChange2();
+    // changing 'default' values (normally not a good thing)
+    form.addShare_incSyncInterval.disabled = false;
+    if ('local' == form.addShare_mode.value) {
+        form.addShare_incSyncInterval.value = '5';
+        form.addShare_incSyncUnits.value = 'minutes';
+    } else {
+        form.addShare_incSyncInterval.value = '1';
+        form.addShare_incSyncUnits.value = 'days';
+    }
+    form.addShare_fullSyncInterval.value = '7';
+    form.addShare_fullSyncInterval.disabled = false;
+    form.addShare_fullSyncUnits.value = 'days';
+    return true;
+}
+
+var addShareRemotePathDateSave2 = null;
+
+// When in standalone mode, the sync fields need to be blanked when
+// there's no remote path.  This runs off of the keyup event of the
+// remote path field.
+function addShareRemotePathChange2() {
+    var form = $('pfsSharesForm');
+    if ('standalone' == form.addShare_mode.value) {
+        if ('' == form.addShare_remotePath.value) {
+            // Remote Path field is blank, so we should save the current values
+            // in the start date and time fields to addShareRemotePathDateSave2
+            // before disabling those fields.
+            if (null == addShareRemotePathDateSave2) {
+                // addShareRemotePathDateSave2 is null when the page loads, so
+                // we create the array the first time we are disabling the fields.
+                addShareRemotePathDateSave2 = new Array();
+                addShareRemotePathDateSave2[0] = form.addShare_standaloneStartDate.value;
+                addShareRemotePathDateSave2[1] = form.addShare_standaloneStartTime.value;
+            }
+            form.addShare_standaloneStartDate.value = '';
+            form.addShare_standaloneStartDate.disabled = true;
+            form.addShare_standaloneStartTime.value = '';
+            form.addShare_standaloneStartTime.disabled = true;
+        } else if (null != addShareRemotePathDateSave2) {
+            // Remote Path field is not blank, so restore the start date and time
+            // fields with what we had stored in addShareRemotePathDateSave2 beforehand.
+            form.addShare_standaloneStartDate.value = addShareRemotePathDateSave2[0];
+            form.addShare_standaloneStartDate.disabled = false;
+            form.addShare_standaloneStartTime.value = addShareRemotePathDateSave2[1];
+            form.addShare_standaloneStartTime.disabled = false;
+            addShareRemotePathDateSave2 = null;
+        }
+    }
+    return true;
+}
+
+pfsSharesTable.editEntry = function(name) {
+    var share = this.getEntryElement('local_name', name);
+    // first the info section
+    var version = share.getAttribute('version');
+    setElementText('editShareName', name);
+    setElementText('editShareInfo_localName', name);
+    setElementText('editShareInfo_version', version);
+    // version 2/3 issues
+    if ('2' == version) {
+        $('editShareInfoSection_v2ServerName').style.display = '';
+        setElementText('editShareInfo_serverName', share.getAttribute('server_name'));
+    } else {
+        $('editShareInfoSection_v2ServerName').style.display = 'none';
+        setElementText('editShareInfo_serverName', '');
+    }
+    // only display remote path if it has a value
+    var remotePath = share.getAttribute('remote_path');
+    if (remotePath.length) {
+        $('editShareInfoSection_remotePath').style.display = '';
+        setElementText('editShareInfo_remotePath', remotePath);
+    } else {
+        $('editShareInfoSection_remotePath').style.display = 'none';
+        setElementText('editShareInfo_remotePath', '');
+    }
+    var status = share.getElementsByTagName('status').item(0);
+    setElementText('editShareInfo_status', status.getAttribute('status'));
+    // only display error section if there is one
+    var errorMsg = status.getAttribute('error_msg');
+    if (('Share has error' == status.getAttribute('status')) && errorMsg && errorMsg.length) {
+        $('editShareInfoSection_error').style.display = '';
+        setElementText('editShareInfo_error', errorMsg);
+    } else {
+        $('editShareInfoSection_error').style.display = 'none';
+        setElementText('editShareInfo_error', '');
+    }
+    // trulyStandalone
+    var mode = share.getAttribute('mode')
+    var trulyStandalone = ('standalone' == mode) && (0 == remotePath.length)
+
+    // don't show last sync time or status for truly standalone shares
+    $('editShareInfoSection_lastSync').style.display = (trulyStandalone) ? 'none' : '';
+    setElementText('editShareInfo_lastSync', status.getAttribute('last_sync_time'));
+    setElementText('editShareInfo_lastSyncStatus', status.getAttribute('last_sync_status'));
+
+    // fill out the form
+    var form = $('pfsSharesForm');
+    form.editShare_name.value = name;
+    form.editShare_mode.value = share.getAttribute('mode');
+    form.editShare_shareEnable.checked = ('true' == share.getAttribute('sharing'));
+    form.editShare_syncEnable.checked = ('true' == share.getAttribute('syncing'));
+    form.editShare_serverPort.value = share.getAttribute('port');
+    form.editShare_serverAccount.value = share.getAttribute('server_acct');
+    form.editShare_serverPassword.value = share.getAttribute('server_password');
+    form.editShare_serverPasswordConfirm.value = share.getAttribute('server_password');
+
+    form.editShare_incSyncStartDate.value = share.getAttribute('incSyncStartDate');
+    form.editShare_incSyncStartTime.value = share.getAttribute('incSyncStartTime');
+    var incSyncInterval = share.getAttribute('incSyncInterval');
+    if ('0' == incSyncInterval) {
+        // blank widget for zero
+        incSyncInterval = '';
+    }
+    form.editShare_incSyncInterval.value = incSyncInterval;
+    form.editShare_incSyncUnits.value = share.getAttribute('incSyncUnits');
+    form.editShare_fullSyncStartDate.value = share.getAttribute('fullSyncStartDate');
+    form.editShare_fullSyncStartTime.value = share.getAttribute('fullSyncStartTime');
+    var fullSyncInterval = share.getAttribute('fullSyncInterval');
+    if  ('0' == fullSyncInterval) {
+        // blank widget for zero
+        fullSyncInterval = '';
+    }
+    form.editShare_fullSyncInterval.value = fullSyncInterval;
+    form.editShare_fullSyncUnits.value = share.getAttribute('fullSyncUnits');
+    form.editShare_comment.value = share.getAttribute('comment');
+    msieSelectBugSetup(form.editShare_mode);
+}
+
+// Responsible for updating the edit div when something has changed.
+function updatePfsEditDialog() {
+    var form = $('pfsSharesForm');
+    var share = pfsSharesTable.getEntryElement('local_name', pfsSharesTable.editName);
+    var remotePath = share.getAttribute('remote_path');
+
+    // Disable inappropriate mode transitions, if in standalone stay there.
+    var mode = share.getAttribute('mode');
+    for (var i = 0; i < form.editShare_mode.options.length; i++) {
+        var opt = form.editShare_mode.options[i];
+        if ('broadcast' == opt.value) {
+            opt.disabled = ('local' == mode) || ('standalone' == mode);
+        } else if ('local' == opt.value) {
+            opt.disabled = ('broadcast' == mode) || ('standalone' == mode);
+        }
+    }
+    msieSelectBugOnChange(form.editShare_mode);
+
+    var standalone = 'standalone' == form.editShare_mode.value;
+    var trulyStandalone = standalone && !remotePath;
+
+    // adjust which sections we see
+    enableElements('editShare_standaloneSync', (standalone && !trulyStandalone) || 'hide');
+    enableElements('editShare_broadcastLocalSync', (trulyStandalone) ? 'hide' : true);
+
+    // standalone mode tweaks some things
+    $('seo3').style.display = (standalone) ? 'inline' : 'none';
+    $('seo4').style.display = (standalone) ? 'inline' : 'none';
+    $('seo5').style.display = (standalone) ? 'inline' : 'none';
+
+    // sync enable
+    enableElements('editShare_syncItems', (trulyStandalone) ? 'hide' : true);
+
+    if (trulyStandalone) {
+        enableElements('editShare_v2Items', 'hide');
+        enableElements('editShare_v3Items', 'hide');
+    } else if (('2' == share.getAttribute('version')) && !(form.editShare_upgrade.checked)) {
+        enableElements('editShare_v2Items', true);
+        enableElements('editShare_v3Items', 'hide');
+    } else {
+        enableElements('editShare_v2Items', 'hide');
+        enableElements('editShare_v3Items', true);
+    }
+
+    enableElements('editShare_upgradeRemotePath', (form.editShare_upgrade.checked) ? true : 'hide');
+    enableElements('editShare_upgrade', ('2' == share.getAttribute('version')) ? true : 'hide');
+
+    disableableIntervalChange(form.editShare_incSyncUnits, 'editShare_incSyncInterval');
+    disableableIntervalChange(form.editShare_fullSyncUnits, 'editShare_fullSyncInterval');
+}
+
+// This performs the auto update.
+var pfsSharesUpdater = new AjaxUpdater('/mgmt/xmldata?p=pfsShares');
+pfsSharesUpdater.update = function(request) {
+    if (!request.responseXML) {
+        return;
+    }
+    var doc = request.responseXML.documentElement.firstChild;
+    if ('error' != doc.tagName) {
+        var status = doc.getAttribute('pfs-status');
+        var enabled = ('PFS stopped' == status) || ('PFS started' == status);
+        $('div_pfsSharesTable').style.display = (enabled) ? 'block' : 'none';
+        $('div_noPfsSharesTable').style.display = (enabled) ? 'none' : 'block';
+        if (enabled) {
+            if ('edit' == pfsSharesTable.editMode) {
+                updatePfsEditDialog();
+            } else {
+                pfsSharesTable.updateXMLData(doc);
+            }
+        }
+    }
+}
+
+// Update a share row from the received xml.
+pfsSharesTable.updateRow = function(oldEl, newEl, row) {
+    var tds = row.getElementsByTagName('td');
+    if (oldEl.getAttribute('local_name') != newEl.getAttribute('local_name')) {
+        return false;
+    }
+    var statusEl = newEl.getElementsByTagName('status').item(0);
+    tds.item(2).firstChild.data = newEl.getAttribute('sharing');
+    tds.item(3).firstChild.data = newEl.getAttribute('syncing');
+    tds.item(4).firstChild.data = statusEl.getAttribute('status');
+    tds.item(5).firstChild.data = statusEl.getAttribute('last_sync_time');
+    tds.item(6).firstChild.data = statusEl.getAttribute('last_sync_status');
+    return true;
+}
+
+// msie select bug
+var editShare_mode = $('pfsSharesForm').editShare_mode;
+editShare_mode.onfocus = function() {msieSelectBugOnFocus(editShare_mode);};
+
+// -->
+</script>
+
+

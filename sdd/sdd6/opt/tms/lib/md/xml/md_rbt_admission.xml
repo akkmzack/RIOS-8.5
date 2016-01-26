@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_admission                                           -->
+<!--   Module Root: /rbt/sport/admission                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_admission.c      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/admission/config/myconfig</name>               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_admission">
+     <config>
+        <name>/rbt/sport/admission/config/tcp_mem/enable</name>
+        <description>Admission control TCP memory</description>
+        <value type="bool">true</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/admission/config/cpu_util/enable</name>
+        <description>Admission control CPU utilization</description>
+        <value type="bool">false</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/admission/config/mapi/enable</name>
+        <description>MAPI admission control</description>
+        <value type="bool">false</value>
+        <role-primitive permission="read-write">/role_primitive/acceleration/service_protocols/mapi_admission</role-primitive>
+     </config>
+
+     <config>
+        <name>/rbt/sport/admission/config/mapi/threshold</name>
+        <description>MAPI admission control threshold</description>
+        <value type="uint32" min="0" max="100">85</value>
+        <role-primitive permission="read-write">/role_primitive/acceleration/service_protocols/mapi_admission</role-primitive>
+     </config>
+
+     <state-wildcard>
+        <name>/rbt/sport/admission/state/cbad/ip/*</name>
+        <description>This state records the Client Based Auto Discovery (cbad) table by intercept.</description>
+        <value type="string"/>
+        <get-func>mra_get_cbad_client_ip</get-func>
+        <iterate-func>mra_iterate_cbad_client_ip</iterate-func>
+    </state-wildcard>
+
+</node-list>

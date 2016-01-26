@@ -1,0 +1,362 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupHostSettings.psp
+##
+## Basic Host Settings for Network and Time
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, HostUtils, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#hostsTable_main {  width: 350px; }
+#ntpServerTable_main { width: 350px; }
+.table_ntp_version { text-align: center }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries" params="interface='primary'">
+    bobAppliance = RVBDUtils.isBOB()
+    return {
+        'hostname': NodeEntry(
+            path='/system/hostname',
+            type='hostname',
+            label=(bobAppliance and 'Hostname (RiOS)' or 'Hostname'),
+            labelClass='label-fixed-small'),
+        'hostHostname': NodeEntry(
+            path='/host/system/hostname',
+            type='hostname',
+            label='Hostname (Hypervisor)',
+            labelClass='label-fixed-small'),
+        'iqn': NodeEntry(
+            path='/rbt/rsp3/state/host_initiator_iqn',
+            name='iqn',
+            label='iSCSI Qualified Name',
+            labelClass='label-fixed',
+            widgetClass='wide3',
+            validate='iqn'),
+        # For RBM permissioning.
+        'changeIqnAction': NodeEntry(
+            path='/rbt/rsp3/action/iscsi/update_name'),
+        'dnsServer1': NodeEntry(
+            path='/resolver/nameserver/1/address',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            inputOptional=True,
+            label='Primary DNS Server',
+            labelClass='label-fixed-small'),
+        'dnsServer2': NodeEntry(
+            path='/resolver/nameserver/2/address',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            inputOptional=True,
+            label='Secondary DNS Server',
+            labelClass='label-fixed-small'),
+        'dnsServer3': NodeEntry(
+            path='/resolver/nameserver/3/address',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            inputOptional=True,
+            label='Tertiary DNS Server',
+            labelClass='label-fixed-small'),
+        'proxy_enable': NodeEntry(
+            path='/web/proxy/address',
+            name='proxy_enable',
+            widget='checkboxLeft',
+            label='Enable Web Proxy',
+            filter=lambda x: '0.0.0.0' == x and 'false' or 'true',
+            enableDiv='proxy_enableDiv'),
+        'proxy_host': NodeEntry(
+            path='/web/proxy/address',
+            name='proxy_host',
+            widgetClass='ipaddr',
+            validate='hostnameOrIp',
+            label='Web/FTP Proxy',
+            labelClass='label-fixed-small',
+            filter=lambda x: x != '0.0.0.0' and x or ''),
+        'proxy_port': NodeEntry(
+            path='/web/proxy/port',
+            name='proxy_port',
+            type='uint16',
+            label='Port',
+            widgetClass='port'),
+        'proxy_authEnable': NodeEntry(
+            path='/web/proxy/username',
+            name='proxy_authEnable',
+            widget='checkboxLeft',
+            label='Enable Authentication',
+            filter=lambda x: x and 'true' or 'false',
+            enableDiv='proxy_authDiv'),
+        'proxy_authUser': NodeEntry(
+            path='/web/proxy/username',
+            name='proxy_authUser',
+            label='User Name',
+            labelClass='label-fixed-small-indent',
+            validate='nonempty'),
+        'proxy_authPassword': NodeEntry(
+            path='/web/proxy/passwd',
+            name='proxy_authPassword',
+            widget='password',
+            label='Password',
+            labelClass='label-fixed-small-indent',
+            # use password validation when that works
+            validate='nonempty',
+            filter=lambda x: x and FormUtils.bogusPassword or ''),
+        'proxy_authType': NodeEntry(
+            path='/web/proxy/authtype',
+            name='proxy_authType',
+            selectOptions=(('basic', 'Basic'), ('ntlm', 'NTLM'), ('digest', 'Digest')),
+            label='Authentication Type'),
+        'ntpEnable': NodeEntry(
+            path='/ntp/enable',
+            type='bool',
+            widget='radio',
+            label={'true': 'Use NTP Time Synchronization',
+                   'false': 'Set Time Manually'},
+            enableDiv = {'true': 'settime_ntp',
+                         'false': 'settime_manual'}),
+        'timezone': NodeEntry(
+            name='timezone',
+            path='/time/zone',
+            widget='select',
+            action='return checkTZWarning(this)',
+            label='Time Zone'),
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    return {
+        'host_ip': NodeEntry(
+            name='host_ip',
+            validate='ipv4addr',
+            label='IP Address'),
+        'host_name': NodeEntry(
+            name='host_name',
+            validate='hostname',
+            label='Hostname'),
+        'dnsDomainList': NodeEntry(
+            name='dnsDomainList',
+            inputOptional=True,
+            validate='hostnameTextArea',
+            label='DNS Domain List',
+            widget='textarea',
+            widgetClass='dnsDomainList',
+            value='\n'.join(HostUtils.getDomainList(mgmt, self))),
+        'ntpServer_host': NodeEntry(
+            name='ntpServer_host',
+            validate='hostname',
+            label='Hostname or IP Address'),
+        'ntpServer_version': NodeEntry(
+            name='ntpServer_version',
+            selectOptions=('3', '4'),
+            label='Version',
+            value='4'),
+        'ntpServer_enable': NodeEntry(
+            name='ntpServer_enable',
+            selectOptions=(('true', 'Enabled'), ('false', 'Disabled')),
+            label='Enabled'),
+        'manual_date': NodeEntry(
+            name='date',
+            validate='date',
+            widgetClass='date',
+            label='Date'),
+        'manual_time': NodeEntry(
+            name='time',
+            validate='time',
+            widgetClass='time',
+            label='Time')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+bobAppliance = RVBDUtils.isBOB()
+
+# Set current date,time
+dialogEntries['manual_date'].value = Nodes.present(mgmt, '/time/now/date')
+dialogEntries['manual_time'].value = Nodes.present(mgmt, '/time/now/time')
+zone = Nodes.present(mgmt, '/time/zone')
+
+# populate timezone selector
+nodeEntries['timezone'].selectOptions = HostUtils.getTimezones()
+
+# hosts table
+hostsTable = ajaxentrytable.AjaxEntryTable('hosts',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=dnsHosts'),
+    headerSpec=('', 'IP Address', 'Hostname'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('ipv4', 'selectedHost_', '127.0.0.1'),
+ AjaxEntryTable.tdAttr('ipv4'),
+ AjaxEntryTable.tdChildAttr('hostname', 'name')]""",
+    emptyMessage='No hosts.',
+    removeName='removeHosts',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedHost_',
+    addButtonText='Add a New Host',
+    addButtonName='addHost')
+
+hostsTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['host_ip'].html(self),
+       dialogEntries['host_name'].html(self))
+
+# ESXi doesn't support versions for NTP servers, so we need to omit that
+# attribute when we're on BOB.
+if bobAppliance: {
+    headerSpec = ('', 'Server', 'Enabled')
+    rowSpecVersion = ''
+    addDivVersion = ''
+} else: {
+    headerSpec = ('', 'Server', ('Version', 'table_ntp_version'), 'Enabled')
+    rowSpecVersion = "AjaxEntryTable.tdAttr('version', 'table_ntp_version'),"
+    addDivVersion = dialogEntries['ntpServer_version'].html(self)
+}
+
+## ntp server table:
+ntpServerTable = ajaxentrytable.AjaxEntryTable('ntpServer',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=ntpServers'),
+    headerSpec=headerSpec,
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('host', 'selectedNtpServer_'),
+ AjaxEntryTable.tdAttr('host'),
+ %s
+ AjaxEntryTable.tdActiveSelect('enable', '_ntpServer_enable_', 'host', [['false', 'Disabled'], ['true', 'Enabled']], 'return ntpServerAction(this)')]""" % rowSpecVersion,
+    emptyMessage='No NTP Servers.',
+    removeName='removeNtpServers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedNtpServer_',
+    addButtonText='Add a New NTP Server',
+    addButtonName='addNtpServer')
+
+ntpServerTable.addDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['ntpServer_host'].html(self),
+       addDivVersion,
+       dialogEntries['ntpServer_enable'].html(self))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="hostForm">
+
+  <!-- Hostname -->
+  <fieldset>
+    <legend>Name</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['hostname'].html(self) %>
+        <%= bobAppliance and nodeEntries['hostHostname'].html(self) or '' %>
+        <%= bobAppliance and nodeEntries['iqn'].html(self) or '' %>
+      </table>
+    </div>
+  </fieldset>
+
+  <!-- DNS Settings -->
+  <fieldset>
+    <legend>DNS Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['dnsServer1'].html(self) %>
+        <%= nodeEntries['dnsServer2'].html(self) %>
+        <%= nodeEntries['dnsServer3'].html(self) %>
+        <%= dialogEntries['dnsDomainList'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+
+  <!-- Hosts -->
+  <fieldset>
+    <legend>Hosts</legend>
+    <div class="midLevel">
+      <%= hostsTable.html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Web/FTP Proxy</legend>
+    <div class="midLevel">
+      <%= nodeEntries['proxy_enable'].html(self) %>
+      <div id="proxy_enableDiv" class="indent">
+        <table>
+          <%= nodeEntries['proxy_host'].html(self,
+                                              more=(nodeEntries['proxy_port'],)) %>
+        </table>
+        <%= nodeEntries['proxy_authEnable'].html(self) %>
+        <div id = "proxy_authDiv" class="indent">
+          <table>
+            <%= nodeEntries['proxy_authUser'].html(self) %>
+            <%= nodeEntries['proxy_authPassword'].html(self) %>
+            <%= nodeEntries['proxy_authType'].html(self) %>
+          </table>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <!-- Date and Time -->
+  <fieldset id="dateAndTime">
+    <legend>Date and Time</legend>
+    <div class="midLevel">
+      <%= nodeEntries['ntpEnable'].html(self, value='true') %>
+      <div id="settime_ntp" class="midLevel indent">
+        <%= ntpServerTable.html(self) %>
+      </div>
+      <%= nodeEntries['ntpEnable'].html(self, value='false') %>
+      <div id="settime_manual" class="indent">
+        <%= dialogEntries['manual_date'].html(self, format='inline') %>
+        <%= dialogEntries['manual_time'].html(self, format='inline') %>
+      </div>
+    </div>
+    <div class="midLevel">
+      <%= nodeEntries['timezone'].html(self, format='block') %>
+      <p id="tzWarningMessage" class="textContainer warning hidden">
+        Changes to the Time Zone will end your current browser session and require you to log in again.
+      </p>
+    </div>
+  </fieldset>
+  <div>
+    <input type="hidden" name="_action_" value="setupHostSettings" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+function ntpServerAction(el) {
+    el.name = el.name.substr(1);
+    el.form.submit();
+    return false;
+}
+function checkTZWarning(select) {
+    if (select.value != '<%= zone %>') {
+        Y.one('#tzWarningMessage').removeClass('hidden');
+    } else {
+        Y.one('#tzWarningMessage').addClass('hidden');
+    }
+}
+// -->
+</script>

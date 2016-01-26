@@ -1,0 +1,484 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## Software Upgrade Manager for Steelhead EX
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="gclsession:NonZeroReturnCodeException, re, os, Nodes, FormUtils, PagePresentation:Pagelet, ajaxentrytable, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+fieldset#steelheadExVersions {
+  width: 476px;
+}
+
+div#imagesTable_main {
+  width: 800px;
+}
+
+div#exHistoryTable_main,
+div#esxiHistoryTable_main {
+  width: 500px;
+}
+
+div.normalWarning {
+  background-color: #FFFFDF;
+  border: 1px solid #E6E800;
+  margin-bottom: 10px;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+div.severeWarning {
+  background-color: #FCE0E0;
+  border: 1px solid #D98282;
+  margin-bottom: 10px;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+div.uploadFilename {
+  margin-bottom: 15px;
+  margin-top: 15px;
+}
+
+td.notValidFilename {
+  background: url('/images/aet_invalid.gif') no-repeat 7px center;
+  padding-left: 22px !important;
+}
+
+td.notValid {
+  color: #DD0000;
+  font-weight: bold;
+}
+
+div.ajaxEntryTable_editDivContent fieldset {
+  padding-bottom: 0px;
+}
+
+th.bootTime {
+  width: 170px;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    return [
+        '/image/boot_location/booted/location_id',
+        '/image/boot_location/nextboot/location_id',
+        '/image/info/image_file',
+        '/image/delete',
+        '/image/fetch',
+        '/image/install',
+        '/image/move',
+        '/image/boot_location/nextboot/set'
+    ]
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'installUpgradeUrl': FormUtils.NodeEntry(
+            name='installUpgradeUrl',
+            widgetClass='wide3',
+            validate='checkRiverbedSupportUrl'
+        ),
+        'installUpgradeFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('applianceUpgradesTmpDir', 'installUpgradeFile'),
+            widget='file',
+            validate='nonempty'
+        ),
+        'installUpgradeFrom': FormUtils.NodeEntry(
+            name='installUpgradeFrom',
+            value='url',
+            widget='radio',
+            label={'url': 'From URL',
+                   'file': 'From Local File'},
+            enableDiv={'url': 'fromURLDiv',
+                       'file': 'fromFileDiv'},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>https://host/path/to/file</li>
+                        <li>ftp://user:password@host/path/to/file</li>
+                        <li>scp://user:password@host/path/to/file</li>
+                      </ul>
+                    </p>'''
+            }
+        ),
+        'uploadFilename': FormUtils.NodeEntry(
+            name='uploadFilename',
+            value='upgrade.img',
+            label='Filename',
+            validate='restrictedPathElement'
+        ),
+        'renameFilename': FormUtils.NodeEntry(
+            name='renameFilename',
+            label='Filename',
+            validate='restrictedPathElement'
+        )
+    }
+</psp:method>
+
+<% self.hasHelp = True %>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+# Querying the boot info fails if the flash disk is down (bug 78299,
+# affects 5050, 6050, and 7050).  Actually, we're screwed if that's
+# the case so just show an error message instead of the normal page
+# contents.
+try: {
+    bootPartition = Nodes.present(mgmt, '/image/boot_location/booted/location_id')
+    nextPartition = Nodes.present(mgmt, '/image/boot_location/nextboot/location_id') or bootPartition
+    otherPartition = (bootPartition == '1') and '2' or '1'
+} except NonZeroReturnCodeException, e: {
+    self.getPagePresentationServlet().setFormError(str(e))
+    self.beginPagelet()
+    self.writeln('This page is currently unavailable.')
+    self.endPagelet()
+    return
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_upgradeEX">
+  <fieldset id="steelheadExVersions">
+    <legend>Steelhead EX Versions</legend>
+
+<%
+bootVersionNode = '/image/info/installed_image/curr_device/location_id/%s/build_prod_version' % bootPartition
+bootVersion = Nodes.present(mgmt, bootVersionNode)
+bootVersion = RVBDUtils.minimalizeVersionString(bootVersion)
+
+otherVersionNode = '/image/info/installed_image/curr_device/location_id/%s/build_prod_version' % otherPartition
+otherVersion = Nodes.present(mgmt, otherVersionNode)
+otherVersion = RVBDUtils.minimalizeVersionString(otherVersion)
+
+if bootPartition != nextPartition: {
+%>
+
+    <div class="normalWarning">
+      The backup version will be loaded after the appliance is
+      <a href="/mgmt/gui?p=setupAppliance_shutdown">rebooted</a>.
+    </div>
+
+<%
+    currentEsxiVersion = Nodes.present(mgmt, '/rbt/vsp/state/esxi/version/current')
+    validationState = Nodes.present(mgmt, '/image/validate/boot_location/nextboot')
+
+    if validationState == '1': {
+%>
+
+    <div class="severeWarning">
+      The version of ESXi on this appliance (<%= currentEsxiVersion %>) is
+      unsupported. ESXi will be replaced with the backup version. The ESXi
+      configuration may be lost during the switch and should be backed up before
+      proceeding.
+    </div>
+
+<%
+    } elif validationState == '2': {
+%>
+
+    <div class="severeWarning">
+      The version of ESXi on this appliance cannot be determined. ESXi will be
+      replaced with the backup version. The ESXi configuration may be lost
+      during the switch and should be backed up before proceeding.
+    </div>
+
+<%
+    } elif validationState == '3': {
+%>
+
+    <div class="severeWarning">
+      The version of ESXi on this appliance (<%= currentEsxiVersion %>) is
+      unsupported. ESXi will be replaced with the backup version. The ESXi
+      configuration may be lost during the switch and should be backed up before
+      proceeding. Switching to the backup version will cause ESXi to be
+      reinstalled. If ESXi is being managed from vCenter it may be necessary to
+      reconfigure some vCenter features.
+    </div>
+
+<%
+    } elif validationState == '4': {
+%>
+
+    <div class="normalWarning">
+      Switching to the backup version will cause ESXi to be reinstalled. If
+      ESXi is being managed from vCenter it may be necessary to reconfigure
+      some vCenter features.
+    </div>
+
+<%
+    }
+}
+%>
+
+    <table class="midLevel">
+      <tr>
+        <td class="label">Booted Version:</td>
+        <td><%= bootVersion %></td>
+      </tr>
+      <tr>
+        <td class="label">Backup Version:</td>
+        <td><%= otherVersion %></td>
+      </tr>
+    </table>
+
+<%
+if bootPartition == nextPartition: {
+%>
+
+    <div class="submitButtons">
+      <input type="submit" name="switch" value="Switch to Backup Version" />
+    </div>
+
+<%
+} else: {
+%>
+
+    <div class="submitButtons">
+      <input type="submit" name="cancelSwitch" value="Cancel Version Switch" />
+    </div>
+
+<%
+}
+%>
+
+    <input type="hidden" name="_action_" value="setupApplianceUpgradeEX" />
+  </fieldset>
+</form>
+
+<%
+upgradeMeter = FormUtils.Meter(self, 'upgradeMeter',
+                               buttonText='Add Image',
+                               unloadWarningMsg='There is a file transfer in progress.')
+
+imagesTable = ajaxentrytable.AjaxEntryTable('images',
+    titleText='Images',
+    url='/mgmt/xmldata?p=imagesEX',
+    headerSpec=(('', '', ''),
+                ('Filename', '', 'sortAttrib("filename")'),
+                ('Steelhead EX Version', '', 'sortAttrib("exVersion")'),
+                ('ESXi Version', '', 'sortAttrib("esxiVersion")'),
+                ('RiOS Version', '', 'sortAttrib("riosVersion")'),
+                ('Granite Version', '', 'sortAttrib("graniteVersion")')),
+    rowSpec="""
+        [AjaxEntryTable.tdSelectCheckbox('filename', 'image_'),
+         AjaxEntryTable.td([imageEditOrError()]),
+         AjaxEntryTable.tdAttrStyle('exVersion', 'exVersionClass'),
+         AjaxEntryTable.tdAttrStyle('esxiVersion', 'esxiVersionClass'),
+         AjaxEntryTable.tdAttrStyle('riosVersion', 'riosVersionClass'),
+         AjaxEntryTable.tdAttrStyle('graniteVersion', 'graniteVersionClass')]
+""",
+    emptyMessage='No images.',
+    addButtonText='Add Image',
+    removeButtonText='Remove Selected Images',
+    removeName='removeImages'
+)
+
+imagesTable.addDivContent = '''
+    %(urlRadioButton)s
+    <div id="fromURLDiv" class="indent">
+      %(installUpgradeUrl)s
+    </div>
+    %(fileRadioButton)s
+    <div id="fromFileDiv" class="indent">
+      %(installUpgradeFile)s
+    </div>
+    <div class="uploadFilename">
+      %(uploadFilename)s
+    </div>
+    %(upgradeMeter)s
+''' % {'urlRadioButton': dialogEntries['installUpgradeFrom'].html(self, value='url'),
+       'installUpgradeUrl': dialogEntries['installUpgradeUrl'].html(self, format='inline'),
+       'fileRadioButton': dialogEntries['installUpgradeFrom'].html(self, value='file'),
+       'installUpgradeFile': dialogEntries['installUpgradeFile'].html(self, format='inline'),
+       'uploadFilename': dialogEntries['uploadFilename'].html(self, format='block'),
+       'upgradeMeter': upgradeMeter.buttonHtml()}
+
+imagesTable.editDivContent = '''
+    <input type="hidden" name="editImageName" />
+    <fieldset>
+      <legend>Rename Image File</legend>
+      <div class="midLevel">
+        %(renameFilename)s
+        %(renameSubmit)s
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Install Image</legend>
+      <p>
+        The image installation will replace the current backup version.
+      </p>
+      <div id="editImageEsxiWarning">
+      </div>
+      %(installSubmit)s
+    </fieldset>
+''' % {'renameFilename': dialogEntries['renameFilename'].html(self, format='inline'),
+       'renameSubmit': FormUtils.renderButton(self, {'name': 'renameImage',
+                                                     'value': 'Rename'}),
+       'installSubmit': FormUtils.formSubmitButtons(self, {'name': 'installImage',
+                                                           'value': 'Install',
+                                                           'onclick': 'preventNavigation()'})}
+
+exHistoryTable = ajaxentrytable.AjaxEntryTable('exHistory',
+    titleText='Steelhead EX Version History',
+    url='/mgmt/xmldata?p=exHistory',
+    headerSpec=(('Version', '', 'sortAttrib("version")'),
+                ('First Boot', 'bootTime', 'sortAttrib("timestamp")')),
+    rowSpec="""
+        [AjaxEntryTable.tdAttr('version'),
+         AjaxEntryTable.tdAttr('timestamp')]
+""",
+    emptyMessage='No Steelhead EX history.'
+)
+
+esxiHistoryTable = ajaxentrytable.AjaxEntryTable('esxiHistory',
+    titleText='ESXi Version History',
+    url='/mgmt/xmldata?p=esxiHistory',
+    headerSpec=(('Version', '', 'sortAttrib("version")'),
+                ('First Boot', 'bootTime', 'sortAttrib("timestamp")')),
+    rowSpec="""
+        [AjaxEntryTable.tdAttr('version'),
+         AjaxEntryTable.tdAttr('timestamp')]
+""",
+    emptyMessage='No ESXi history.'
+)
+%>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_upgradeEX"
+      enctype="multipart/form-data"
+      accept-charset="UTF-8"
+      id="upgradeMeterForm">
+  <%= imagesTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupApplianceUpgradeEX" />
+  </div>
+</form>
+
+<%
+openEditImage = req.fields().get('openEditImage')
+if openEditImage: {
+    self.addPageletJavascript('imagesTable.editAfterLoad = ["filename", "%s"];' % openEditImage)
+}
+%>
+
+<%= exHistoryTable.html(self, 'topLevel') %>
+<%= esxiHistoryTable.html(self, 'topLevel') %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // Show a LiveStatus overlay when an image is installing.
+    Y.one('input[name="installImage"]').on('click', function() {
+        setTimeout(function() {
+            installLiveStatus = new LiveStatus({
+                attachPoint: 'div#contentBody'
+            }).render().show('Installing image.');
+        }, 0);
+    });
+
+    // Add a URL parameter when the "Add Image" button is clicked.
+    Y.one('input[name="upgradeMeterSubmit"]').on('click', addUrlParameter);
+});
+
+// An AET callback that either sets the table cell to an edit link (for a valid
+// image) or a text node (for a non-valid image).
+function imageEditOrError() {
+    var validImageEdit = AjaxEntryTable.edit('filename', 'filename');
+
+    return function(entryTable, parent, element) {
+        if (element.getAttribute('validExImage') == 'false') {
+            parent.appendChild(document.createTextNode(
+                element.getAttribute('filename')
+            ));
+        } else {
+            validImageEdit(entryTable, parent, element);
+        }
+    }
+}
+
+// Remember which edit div (if any) to open by adding a URL parameter.
+function addUrlParameter() {
+    var uploadFilename = Y.one('input[name="uploadFilename"]').get('value');
+    $('upgradeMeterForm').action += '&openEditImage=' + uploadFilename;
+}
+
+// Try to prevent the user from navigating away when an image is installing.
+function preventNavigation() {
+    setTimeout(function() {
+        setBeforeUnload(function() {
+            return 'An image installation is in progress.';
+        });
+    }, 1000);
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+imagesTable.editEntry = function(editName) {
+    Y.one('input[name="editImageName"]').set('value', editName);
+    Y.one('input[name="renameFilename"]').set('value', editName);
+
+    // Show/hide the unsupported ESXi version warning.
+    var imageEl = this.getEntryElement('filename', editName);
+    var esxiWarningMsg = imageEl.getAttribute('esxiWarningMsg');
+    var esxiWarningMsgClass = imageEl.getAttribute('esxiWarningMsgClass');
+    var esxiWarningNode = Y.one('div#editImageEsxiWarning');
+
+    if (esxiWarningMsg) {
+        esxiWarningNode.setContent(esxiWarningMsg);
+        esxiWarningNode.removeClass('normalWarning');
+        esxiWarningNode.removeClass('severeWarning');
+        esxiWarningNode.addClass(esxiWarningMsgClass);
+        esxiWarningNode.setStyle('display', 'block');
+    } else {
+        esxiWarningNode.setStyle('display', 'none');
+    }
+};
+
+// For each invalid image in the table, stylize the <td> in the Filename column
+// and add a tooltip explaining the problem.
+imagesTable.postHandleResponseHook = function() {
+    var invalidRowNodes = [];
+
+    Y.all('table#imagesTable_table td.notValid').each(function(node, i, nodeList) {
+        var trNode = node.ancestor('tr');
+        if (Y.Array.indexOf(invalidRowNodes, trNode) < 0) {
+            invalidRowNodes.push(trNode);
+        }
+    });
+
+    for (var i = 0; i < invalidRowNodes.length; i++) {
+        var tdNode = invalidRowNodes[i].get('children').item(1);
+
+        tdNode.setContent('<span>' + tdNode.getContent() + '</span>');
+        tdNode.addClass('notValidFilename');
+
+        new RBT.Tooltip({
+            triggerNode: tdNode.one('span'),
+            content: 'This file is not a valid Steelhead EX image.'
+        }).render();
+    }
+};
+
+// ]]>
+</script>

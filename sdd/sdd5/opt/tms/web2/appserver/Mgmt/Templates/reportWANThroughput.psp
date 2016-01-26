@@ -1,0 +1,107 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Ariel Katz
+##
+## Report WAN Throughput (displays peak and average bps)
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils, Nodes" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.relatedPages = ('setupAdvNet_netflow'), %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/totalwanbps',
+            '/stats/actions/generate_report/peaktotalwanbps']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<%
+if (Nodes.present(self.session().value('mgmt'), '/rbt/sport/netflow/config/totalwantxbps_enable') != 'true'): {
+%>
+    <div class="midLevel">
+      WAN Throughput reporting is currently disabled. This report can be enabled on the <a href="/mgmt/gui?p=setupAdvNet_netflow">Flow Statistics</a> page.
+    </div>
+<%
+}
+%>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(false);
+
+    highstockOptions.yAxis[0].title.text = 'Throughput (bps)';
+    highstockOptions.plotOptions.area.fillOpacity = 0.5;
+
+    highstockOptions.series = [
+        {name: 'Peak Throughput',
+         type: 'area',
+         dataGrouping: {approximation: 'high'},
+         color: RBT.Reports2.GRAY_DARK},
+        {name: 'Average Throughput',
+         type: 'area',
+         color: RBT.Reports2.PURPLE}
+    ];
+
+    // Make the navigator shadow the Peak Throughput series.
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        statsFn: throughputStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+function assembleDataUrl() {
+    return '<%= Reports2.constructDataUrl("reportWANThroughput") %>';
+}
+
+function throughputStats(allSeriesData) {
+    var allStats = [];
+
+    // Calculate maximum WAN throughput.
+    var maxWANThroughput = RBT.Reports2.max(allSeriesData[0]);
+    var maxWANThroughputText = 'Peak: ' + dataFormatter(maxWANThroughput);
+    allStats.push([maxWANThroughputText]);
+
+    // Calculate average WAN throughput.
+    var avgWANThroughput = RBT.Reports2.avg(allSeriesData[1]);
+    var avgWANThroughputText = 'Average: ' + dataFormatter(avgWANThroughput);
+    // Calculate total WAN bytes by integrating the average data.
+    var totalWAN = RBT.Reports2.integrate(allSeriesData[1]) / 8;
+    var totalWANText = 'Total: ' + RBT.Reports2.scale(totalWAN, 1, 'si', 'B');
+    allStats.push([avgWANThroughputText, totalWANText]);
+
+    return allStats;
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'bps');
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

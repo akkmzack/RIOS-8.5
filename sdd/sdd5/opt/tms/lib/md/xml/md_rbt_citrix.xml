@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_citrix                                              -->
+<!--   Module Root: /rbt/citrix                                       -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_citrix.c         -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/citrix/config/myconfig</name>                  -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_citrix">
+
+<config>
+   <name>/rbt/citrix/config/print_flags</name>
+   <description>Level of print optimizations</description>
+   <value type="uint8">1</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/rej_noncached_cgp_req</name>
+   <description>Drop all CGP re-connections with no cached key</description>
+   <value type="bool">false</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/cdm/enable</name>
+   <description>If Citrix Optimization for Client Device Mapping is Enabled</description>
+   <value type="bool">false</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/cdm/cgp/enable</name>
+   <description>If CDM Optimization for CGP connection is enabled</description>
+   <value type="bool">false</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/cdm/file_buffer_size</name>
+   <description>Citrix Client Device Mapping file buffer size</description>
+   <value type="uint16" min="4" max="64">4</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/secure_inner_channel/strict_drop</name>
+   <description>Drop Citrix Connections when SecureApp is on for SSL inner channel</description>
+   <value type="bool">false</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/small_pkts</name>
+   <description>Enable Citrix Small Packets optimization</description>
+   <value type="bool">false</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/small_pkts_threshold</name>
+   <description>Set/unset Citrix Small Packets optimization threshold</description>
+   <value type="uint32" min="1">64</value>
+</config>
+<config>
+   <name>/rbt/citrix/config/secure_peering/override</name>
+   <description>Enable override of secure inner channel for citrix</description>
+   <value type="bool">false</value>
+</config>
+
+
+
+<config-wildcard>
+    <name>/rbt/citrix/config/multiport/prio/*</name>
+    <description>Citrix priority in a citrix multiport connection</description>
+    <value type="uint8" min="0" max="3"/>
+</config-wildcard>
+<config>
+    <name>/rbt/citrix/config/multiport/prio/*/port</name>
+    <description>Ports carrying priority traffic in a citrix multiport connection</description>
+    <value type="uint16" min="1" max="65535">65535</value>
+</config>
+<event>
+    <name>/rbt/citrix/event/multiport/prio/port</name>
+    <description>Port and priority mapping in Citrix Multiport connection</description>
+    <parameter>priority</parameter>
+    <parameter>port</parameter>
+</event>
+<config>
+    <name>/rbt/citrix/config/multiport_enabled</name>
+    <description>Allow Citrix connections to configured ports</description>
+    <value type="bool">false</value>
+</config>
+<event>
+     <name>/rbt/citrix/event/multiport_enabled</name>
+     <description>Citrix Multiport ICA configured</description>
+     <parameter>multiport_enabled</parameter>
+</event>
+<event>
+    <name>/rbt/citrix/event/secure_inner_channel/strict_drop</name>
+    <description>Dynamic Secure Inner Channel Strict Drop Change</description>
+    <parameter>strict_drop_enabled</parameter>
+</event>
+<event>
+    <name>/rbt/citrix/event/cdm/cgp/enable</name>
+    <description>CDM Optimization for CGP Connection</description>
+    <parameter>cdm_cgp_enabled</parameter>
+</event>
+
+<event>
+   <name>/rbt/citrix/event/small_pkts/threshold</name>
+   <description>Small package threshold</description>
+   <parameter>threshold</parameter>
+</event>
+<event>
+    <name>/rbt/citrix/event/secure_peering/override</name>
+    <description>Enable override of secure inner channel for citrix</description>
+    <parameter>secure_inner_channel_override</parameter>
+</event>
+
+
+</node-list>

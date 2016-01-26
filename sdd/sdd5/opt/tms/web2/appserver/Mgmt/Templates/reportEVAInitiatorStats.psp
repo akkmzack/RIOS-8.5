@@ -1,0 +1,334 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Christine Wang
+##
+## Initiator Statistics
+%>
+
+<%@page imports="Nodes, PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, json, UserConfig, eva, ve" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="pageletNodes">
+    return [ '/rbt/eva/ext/*' ]
+</psp:method>
+
+<psp:method name="css">
+    return '''
+div.reports2LegendSeriesAlwaysOn {
+    visibility: hidden;
+}
+.clearRight, .clearRight > div { clear: right; }
+'''
+</psp:method>
+
+<psp:method name="getInitiatorOptions">
+    options = [('0', 'All')]
+    mgmt = self.session().value('mgmt')
+    basePath = eva.getStateNodePrefix(self.request().fields())
+    dcs = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state' % basePath)
+    for dc in dcs:
+        initiators = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator' % (basePath, dc))
+        for initiator in initiators:
+            initiatorId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/subclass_id' % (basePath, dc, initiator))
+            if initiatorId:
+                options.append((initiatorId, '%s (%s)' % (initiator, initiatorId)))
+    return options
+</psp:method>
+
+<psp:method name="getInitLunMappings">
+    mappingDict = {}
+    mgmt = self.session().value('mgmt')
+    basePath = eva.getStateNodePrefix(self.request().fields())
+    nonSnapLuns = set(Nodes.getMgmtLocalChildrenNames(mgmt,
+        '%s/rbt/eva/ext/lun-list/non-ss-lun' % basePath
+    ))
+    dcs = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state' % basePath)
+    for dc in dcs:
+        initiators = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator' % (basePath, dc))
+        for initiator in initiators:
+            initiatorId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/subclass_id' % (basePath, dc, initiator), None)
+            if initiatorId is None:
+                continue
+            lunOptions = []
+            luns = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/lun' % (basePath, dc, initiator))
+            for lun in (set(luns) & nonSnapLuns):
+                lunId = Nodes.present(mgmt, '%s/rbt/eva/ext/dc/state/%s/iscsi/initiator/%s/lun/%s/subclass_id' % (basePath, dc, initiator, lun))
+                if lunId:
+                    lun_serial = ve.unEscapeLUNSerial(lun)
+                    lunOptions.append((lunId, '%s (%s)' % (lun_serial, lunId)))
+            mappingDict[initiatorId] = lunOptions
+
+    return mappingDict
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'report': FormUtils.NodeEntry(
+            name='report',
+            label='Initiator Report',
+            userPath='eva/web/reports/initiator_graph',
+            userConfigAutoSave=True,
+            widget='select',
+            selectOptions=(('initiatorIO', 'I/O'),
+                           ('initiatorIOPS', 'I/O Operations Per Sec'),
+                           ('initiatorIOLatency', 'I/O Latency')),
+            action='paramChanged();',
+        )
+    }
+</psp:method>
+
+<psp:method name="dialogEntries" params="initLUNMap">
+    initiatorOptions = self.getInitiatorOptions()
+    initSelect = FormUtils.NodeEntry(
+        name='iid',
+        label='Initiator',
+        widget='select',
+        selectOptions=initiatorOptions,
+        userPath='eva/web/reports/initiator_graph_initiator',
+        userConfigAutoSave=True,
+        action='updateLUNSelect(); paramChanged();'
+    )
+    savedInitiator = UserConfig.get(
+        self.session(),
+        'eva/web/reports/initiator_graph_initiator'
+    )
+    lunOptions = [('0', 'All')]
+    if savedInitiator in initLUNMap:
+        lunOptions.extend(initLUNMap[savedInitiator])
+    lunSelect = FormUtils.NodeEntry(
+        name='lid',
+        label='LUN',
+        widget='select',
+        selectOptions=lunOptions,
+        userPath='eva/web/reports/initiator_graph_lun',
+        userConfigAutoSave=True,
+        action='paramChanged();'
+    )
+    return {
+        'iid': initSelect,
+        'lid': lunSelect
+    }
+</psp:method>
+
+<%
+self.beginPagelet()
+initLUNMap = self.getInitLunMappings()
+dialogEntries = self.dialogEntries(initLUNMap)
+nodeEntries = self.nodeEntries()
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+
+# only for EVA or Steelhead EX
+if not eva.isCMC: {
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('RBT.VE.refreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<psp:include path="/Templates/evaHAHeader.psp">
+
+<div class="horizReportControls clearRight">
+  <%= nodeEntries['report'].html(self, format='block') %>
+  <%= dialogEntries['iid'].html(self, format='block') %>
+  <%= dialogEntries['lid'].html(self, format='block') %>
+</div>
+
+<div id="timeSeriesChart" class="clearRight"></div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart,
+    seriesNames = <%= json.dumps(eva.REPORTS['INITIATOR']) %>,
+    initLUNMap = <%= json.dumps(initLUNMap) %>;
+
+Y.on('domready', function () {
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        dataFormatterFn: dataFormatter,
+        options: assembleChartOptions(),
+        statsFn: summaryData,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: [seriesNames.READ_OPS,
+                         seriesNames.WRITE_OPS,
+                         seriesNames.READ_TIMES,
+                         seriesNames.WRITE_TIMES]
+    });
+});
+
+function updateLUNSelect() {
+    var options = [['0', 'All']],
+        initiatorId = Y.one('select[name=iid]').get('value'),
+        lunId = Y.one('select[name=lid]').get('value'),
+        lunSelect = Y.one('select[name=lid]');
+
+    if (Y.Object.hasKey(initLUNMap, initiatorId)) {
+        options = options.concat(initLUNMap[initiatorId]);
+    }
+    RBT.VE.fillSelect(lunSelect, options);
+    // if the lunSelect doesn't have this value, it will go to the first value ('0')
+    lunSelect.set('value', lunId);
+    setUserConfig({
+        'eva/web/reports/initiator_graph_initiator': lunSelect.get('value')
+    });
+ }
+
+// Create a data url with user input as params.
+function assembleDataUrl() {
+    // Collect user input.
+    var report = Y.one('select[name="report"]').get('value'),
+        lunId = Y.one('select[name="lid"]').get('value'),
+        initiatorId = Y.one('select[name="iid"]').get('value'),
+        dataUrl;
+    dataUrl = '<%= Reports2.constructDataUrl("evaInitiatorStatsIO") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'displayGraph', report);
+    dataUrl = addQueryStringParameter(dataUrl, 'lunId', lunId);
+    dataUrl = addQueryStringParameter(dataUrl, 'initiatorId', initiatorId);
+    return dataUrl;
+}
+
+function assembleChartOptions() {
+    var options,
+        report = Y.one('select[name="report"]').get('value');
+
+    options = RBT.Reports2.defaultHighstockOptions();
+
+    switch (report) {
+    case 'initiatorIO':
+        options.yAxis[0].title.text = 'Throughput (B/s)';
+        options.series = [{name: seriesNames.READ_TPUT,
+                           color: RBT.Reports2.BLUE},
+                          {name: seriesNames.WRITE_TPUT,
+                           color: RBT.Reports2.AQUA}];
+        break;
+    case 'initiatorIOPS':
+        options.yAxis[0].title.text = 'Data (I/O per Second)';
+        options.series = [{name: seriesNames.READ_IOPS,
+                           color: RBT.Reports2.BLUE},
+                          {name: seriesNames.WRITE_IOPS,
+                           color: RBT.Reports2.AQUA}];
+        break;
+    case 'initiatorIOLatency':
+        options.yAxis[0].title.text = 'Latency (ms)';
+        options.series = [{name: seriesNames.READ_LATENCY,
+                           color: RBT.Reports2.BLUE},
+                          {name: seriesNames.WRITE_LATENCY,
+                           color: RBT.Reports2.AQUA},
+                          {name: seriesNames.READ_OPS,
+                           visible: false},
+                          {name: seriesNames.WRITE_OPS,
+                           visible: false},
+                          {name: seriesNames.READ_TIMES,
+                           visible: false},
+                          {name: seriesNames.WRITE_TIMES,
+                           visible: false}];
+        break;
+    }
+    options.navigator.baseSeries = 0;
+    options.navigator.series.lineColor = RBT.Reports2.BLUE;
+    return options;
+}
+
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl(),
+        options: assembleChartOptions()
+    });
+}
+
+// fix data formatters for each type of graph
+function dataFormatter(value, seriesName) {
+    if (seriesName === seriesNames.READ_TPUT ||
+            seriesName === seriesNames.WRITE_TPUT) {
+        return RBT.Reports2.scale(value, 1, 'si', 'B/s');
+    } else if (seriesName === seriesNames.READ_IOPS ||
+               seriesName === seriesNames.WRITE_IOPS) {
+        return RBT.Reports2.roundWithPadding(value, 1);
+    } else if (seriesName === seriesNames.READ_LATENCY ||
+               seriesName === seriesNames.WRITE_LATENCY) {
+        return RBT.Reports2.scale(value, 1, 'si', 'ms');
+    } else {
+        return RBT.Reports2.roundWithPadding(value, 1);
+    }
+}
+
+RBT.Reports2.latencyAvg = function (series1, series2) {
+    var avg = 0,
+        numSum = RBT.Reports2.sum(series2),
+        denomSum = RBT.Reports2.sum(series1);
+    if (denomSum > 0) {
+        avg = numSum / denomSum;
+    }
+    return avg;
+}
+
+function summaryData(allSeriesData) {
+    var report = Y.one('select[name="report"]').get('value'),
+        summary = [], readLatencyAvg, writeLatencyAvg;
+
+    switch (report) {
+    case 'initiatorIO':
+        summary = [
+            [   'Total: ' +
+                RBT.Reports2.scale(
+                    RBT.Reports2.integrate(allSeriesData[0]),
+                    1,
+                    'si',
+                    'B'
+                ),
+                'Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[0]), seriesNames.READ_TPUT)
+            ],
+            [   'Total: ' +
+                RBT.Reports2.scale(
+                    RBT.Reports2.integrate(allSeriesData[1]),
+                    1,
+                    'si',
+                    'B'
+                ),
+                'Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[1]), seriesNames.WRITE_TPUT)
+            ],
+            [], [], [], []
+        ];
+        break;
+    case 'initiatorIOPS':
+        summary = [
+            [   'Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[0]), seriesNames.READ_IOPS)
+            ],
+            [   'Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[1]), seriesNames.WRITE_IOPS)
+            ],
+            [], [], [], []
+        ];
+        break;
+    case 'initiatorIOLatency':
+        readLatencyAvg = RBT.Reports2.latencyAvg(allSeriesData[2], allSeriesData[4]);
+        writeLatencyAvg = RBT.Reports2.latencyAvg(allSeriesData[3], allSeriesData[5]);
+        summary = [ ['Average: ' +
+                     dataFormatter(readLatencyAvg, seriesNames.READ_LATENCY)],
+                    ['Average: ' +
+                     dataFormatter(writeLatencyAvg, seriesNames.WRITE_LATENCY)],
+                    [], [], [], []
+                  ];
+        break;
+    }
+    return summary;
+}
+
+// ]]>
+</script>

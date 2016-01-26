@@ -1,0 +1,115 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## reportInterfaces.psp
+## The Interface Statistics report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, FormUtils, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+return '''
+#ifTable_main {
+  width: 800px;
+}
+div.help {
+  width: 700px;
+}
+div.interfaceCountersTable_name {
+  font-weight: bold;
+  padding: 36px 0 8px;
+}
+div.interfaceCountersTable_lastCleared {
+  color: #A0A0A0;
+  text-align: right;
+  font-style: italic;
+}
+'''
+</psp:method>
+
+ <psp:method name="nodeEntries">
+    return {
+        'primaryRBA': FormUtils.NodeEntry(path='/net/interface/state/prihw')
+    }
+ </psp:method>
+
+<%
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+
+ifTable = ajaxentrytable.AjaxEntryTable('if',
+   url='/mgmt/xmldata?p=interfaceStats',
+   titleText='Interface Statistics',
+   headerSpec=('', 'Interface', 'IP', 'Ethernet', 'Link', 'Receive Packets', 'Transmit Packets'),
+   removeName='clearInterfaceCounters',
+   removeButtonText='Clear Selected Interface Statistics',
+   rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedInterface_'),
+ AjaxEntryTable.td([showInterfaceName()]),
+ AjaxEntryTable.tdLines('ip'),
+ AjaxEntryTable.tdLines('enet'),
+ AjaxEntryTable.tdAttr('link'),
+ AjaxEntryTable.tdLines('rx'),
+ AjaxEntryTable.tdLines('tx')]""",
+   emptyMessage='No current interfaces.')
+
+self.beginPagelet()
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" >
+  <div>
+    <input type="hidden" name="_action_" value="clearInterfaceStatistics" />
+  </div>
+  <%= ifTable.html(self) %>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Custom code to create the contents of the "Name" row in the table:
+function showInterfaceName() {
+    return function(entryTable, parent, element) {
+        var divNode;
+
+        // Name of this interface
+        var nameNode = document.createTextNode(element.getAttribute('namePretty'));
+        divNode = document.createElement('div');
+        divNode.appendChild(nameNode);
+        divNode.className = 'interfaceCountersTable_name';
+        parent.appendChild(divNode);
+
+        // Label saying 'Last Cleared'.
+        divNode = document.createElement('div');
+        divNode.appendChild(document.createTextNode('Last Cleared'));
+        divNode.className = 'interfaceCountersTable_lastCleared';
+        parent.appendChild(divNode);
+
+        // Show when the stats for this interface were last cleared.
+        var lastClearedDelta = (new Date().getTime() - parseInt(element.getAttribute('lastCleared'), 10)) / 1000;
+        lastClearedDelta = lastClearedDelta < 0 ? 0 : lastClearedDelta;
+        var ago = englishTimeInterval(lastClearedDelta, '', 'ago', true);
+
+        // Include a tooltip that shows the actual data/time.
+        var lastClearedPretty = element.getAttribute('lastClearedPretty');
+        var spanNode = document.createElement('span');
+        RBT.Tooltip.createPlaceholder({
+            triggerNode: spanNode,
+            content: lastClearedPretty
+        });
+        spanNode.appendChild(document.createTextNode(ago));
+
+        divNode = document.createElement('div');
+        divNode.appendChild(spanNode);
+        divNode.className = 'interfaceCountersTable_lastCleared';
+        parent.appendChild(divNode);
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

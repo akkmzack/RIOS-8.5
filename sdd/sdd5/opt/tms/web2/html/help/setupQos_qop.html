@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Quality of Path (QoP)</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#715919">Chapter 6	Configuring Network Integration Features</a> : Configuring Quality of Path (QoP)</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="715919">Configuring Quality of Path (QoP)</a></div>
+      <div class="Body"><a name="736172">You configure QoP in the Configure &gt; Networking &gt; QoP page. </a></div>
+      <div class="Body"><a name="715924">QoP chooses the best or most appropriate WAN path for a given application in real-time. A common use of </a>QoP is to route voice and video over an expensive, high-quality MPLS link, while offloading less time-sensitive business traffic over a less expensive Internet VPN link. This solution provides the right performance levels for your applications and saves on bandwidth costs by optimizing the use of available bandwidth. </div>
+      <div class="Body"><a name="721808">Using QoP, you can select a path for each packet based on the state of the links and your network </a>configuration. At a high level, you can configure multiple paths for each connection by specifying rules based on various parameters. The Steelhead appliance monitors the state of the path and, based on this, selects the appropriate path for a packet. Selecting appropriate paths for packets provides more control over network link use.</div>
+      <div class="Body"><a name="718001">You can define a path by the interface that the packet is sent out on, and you can enforce the next hop </a>downstream router for that packet or a path based on the DSCP mark on the packet. </div>
+      <div class="Body"><a name="740867">For each application, you also specify parameters to monitor path availability; you configure the latency of </a>the path (timeout) and the loss observed (threshold). QoP uses ICMP pings to monitor the path state dynamically. If the ping responses do not make it back within the probe timeout setting or the system loses the number of packets defined by the loss threshold, it considers the path to be down and triggers an alarm indicating that the path is unavailable. </div>
+      <div class="Body"><a name="736907">If one path fails, the Steelhead appliance directs traffic through another available path. When the original </a>path comes back up, the Steelhead appliance redirects the traffic back to it.</div>
+      <div class="Body"><a name="720848">By default, QoP is disabled.</a></div>
+      <div class="Heading2"><a name="718003">QoP Use Cases</a></div>
+      <div class="Body"><a name="719902">This section describes several different ways to configure QoP.</a></div>
+      <div class="Heading3"><a name="718005">Using PBR Routing on a Downstream Router to Select a Path</a></div>
+      <div class="Body"><a name="718007">In this configuration, the Steelhead appliance uses one path going out because there is just one in-path </a>interface. However, the downstream router uses Policy-Based Routing (PBR) based on the DSCP mark on the packet. PBR is a packet redirection mechanism that allows you to define policies to route packets instead of relying on routing protocols. PBR redirects packets to Steelhead appliances that are in a virtual in-path deployment. </div>
+      <div class="Body"><a name="720694">To monitor the path, you can configure a remote IP that is reachable only from the MPLS link and another </a>remote IP that is reachable only from the Internet link. You configure DSCP marks for each application in case the Steelhead appliance selects the primary path. Similarly, you configure a DSCP mark for the secondary path for each application.</div>
+      <div class="Body"><a name="720656">For details about PBR, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Body"><a name="718009">The Steelhead appliance monitors both remote IP addresses and selects the primary path if the remote IP </a>address associated with the primary path is reachable, and the secondary path if it is not reachable. The probes monitoring the remote IP address do not need to have a DSCP marking; however, you can configure a DSCP mark on the probe. This use case assumes that you configure the network so that the probes take the appropriate path.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;13. </span><a name="731894">QoP Path Selection by Downstream Router<img class="Default" src="images/QoP_by_downstream_router.gif" width="574" height="240" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Heading3"><a name="718011">Using an Interface and Next Hop IP Address to Select a Path</a></div>
+      <div class="Body"><a name="720341">In this configuration, you have multiple paths from the Steelhead appliance to the remote data center. The</a> Steelhead appliance selects which path to use. For each application, you define the primary path as a combination of the outgoing interface (wan0_0 or wan0_1) and the next hop IP address. QoP must send the probe packets over the exact path that the data packets take.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;14. </span><a name="730197">QoP Path Selection by Relay Interface and Next Hop IP Address<img class="Default" src="images/QoP_by_next_hop.gif" width="627" height="274" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Body"><a name="730198">You can define this type of configuration in one of these ways:</a></div>
+      <div class="Heading4"><a name="730199">Define the Paths Using Only the Relay Interface</a></div>
+      <div class="Body"><a name="718016">In this configuration, you define a primary path by specifying the wan0_0 interface and the secondary path </a>as the wan0_1 interface. Suppose that the Steelhead appliance selects the primary path for the application. In this case, it does not matter whether it sends the packet to path 1 or path 2. In both cases, the Steelhead appliance selects the MPLS path.</div>
+      <div class="Body"><a name="718018">To probe for the remote IP in this configuration, the Steelhead appliance first needs to learn the next hop to </a>use and only then send a probe over the correct interface. In case of the wan0_0 path, this next hop might be path 1 or path 2. To learn the next hop, the Steelhead appliance must first route the probe packet towards the remote IP. In most cases, it selects the default gateway as the next hop. This default gateway may be R4, which is on the LAN side. After sending the probe packet, the Steelhead appliance sees a ricochet for that packet and sends this packet towards path 1 or path 2. After learning from this ricochet, it stores the destination MAC address on the probe packet. This destination MAC is either the MAC address of path 1 or path 2.</div>
+      <div class="Body"><a name="718020">While probing for the remote IP address from wan0_0, the probe packets use either R1 or R2. The Steelhead </a>appliance cannot monitor both paths because it does not know about them. Since it monitors only one path, it ensures that all data packets are also sent over that path. Assuming that the probe packets are being sent to the remote IP through R1, it cannot use path 2 to send data packets towards the server, because this path might be down. The Steelhead appliance does not route data packets, but simply uses the next hop learnt by probing.</div>
+      <div class="Body"><a name="718022">In the case of the secondary path, all packets are sent through path 2 so there is no confusion.</a></div>
+      <div class="Heading4"><a name="718024">Define the Paths Using Only the Next Hop IP Address</a></div>
+      <div class="Body"><a name="718025">This configuration is possible when you do not care which interface the Steelhead appliance uses, as long </a>as the packets go through a certain router (which you preconfigure to use the correct path). Unlike the previous use case, the Steelhead appliance does not need to learn the next hop IP address to use to send packets over this path, nor need to learn which interface to use to send packets out.</div>
+      <div class="Body"><a name="718027">The Steelhead appliance learns the path during probing. The Steelhead appliance sends ARP requests for </a>the configured next hop from every relay, and if it can reach the next hop from that relay, it uses that relay. You do not need to route data packets, as they use the same next hop. The Steelhead appliance sends the packets out from the relay learnt during probing.</div>
+      <div class="Heading4"><a name="718029">Define the Paths Using an Interface and the Next Hop IP Address</a></div>
+      <div class="Body"><a name="717997">In this configuration, you specify the next hop as well as the relay interface to use for a given path. This is </a>the simplest case, because the Steelhead appliance does not need to learn anything during probing. The Steelhead appliance does not need to route data packets, as they use the next hop specified in the configuration. The Steelhead appliance sends the packets out of the configured relay. </div>
+      <div class="Heading3"><a name="740993">QoP with a Stateful Firewall</a></div>
+      <div class="Body"><a name="741029">This section describes a deployment with a stateful firewall on the Internet/VPN link, as shown in </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupQoS_qop.html#741075', '');" title="Configuring Quality of Path (QoP)">Figure&nbsp;6&#8209;15</a></span>. In this configuration, the path selection for the inner channels require special handling.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;15. </span><a name="741075">QoP Path Selection with a Stateful Firewall<img class="Default" src="images/qopTopologies.JPG" width="504" height="297" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Body"><a name="741064">QoP determines the path selection in this type of configuration as follows:</a></div>
+      <li class="Bullet"><a name="740994">The three-way handshake packets for all TCP flows always traverse the firewalled link. </a></li>
+      <li class="Bullet"><a name="741633">After looking up the rules, if the QoP needs to determine path information using DPI, all the initial </a>data packets for the flow traverse the firewalled link until DPI classification is complete. </li>
+      <li class="Bullet"><a name="741634">When DPI classification is complete, the flow might continue to send packets on the firewalled link or </a>might switch to the MPLS link. </li>
+      <li class="Bullet"><a name="741677">You can configure a list of default paths and use these paths until DPI is complete. Riverbed </a>recommends disabling probe caching to always use rule-based default paths for SYN/ACK. This applies to both optimized and pass-through traffic. </li>
+      <div class="Heading3"><a name="717325">QoP Limits</a></div>
+      <div class="Body"><a name="717326">These limits apply to QoP configuration:</a></div>
+      <li class="Bullet"><a name="720465">You can add a maximum of 128 paths.</a></li>
+      <li class="Bullet"><a name="735092">You cannot add more than 3 paths per rule.</a></li>
+      <li class="Bullet"><a name="720472">QoP is not compatible with RSP.</a></li>
+      <li class="Bullet"><a name="720473">You cannot base a path selection on VLANs.</a></li>
+      <li class="Bullet"><a name="717196">You cannot use a wildcard for the relay interface in the path definition. For example, you have to </a>specify a relay interface for a path if you are not using PBR QoP.</li>
+      <li class="Bullet"><a name="717197">You cannot use VLAN transparency for connections that have been rerouted by QoP.</a></li>
+      <li class="Bullet"><a name="717198">You cannot configure LAN-side QoP.</a></li>
+      <li class="Bullet"><a name="717188">QoP does not handle ricochet of probe packets across relay interfaces. </a></li>
+      <li class="Bullet"><a name="728566">QoP does not handle LAN/WAN link failures.</a></li>
+      <li class="Bullet"><a name="728614">QoP does not support L2 WANs.</a></li>
+      <li class="Bullet"><a name="729265">QoP does not support inbound QoS, because the traffic has already traversed the initial path.</a></li>
+      <li class="Bullet"><a name="728800">The return path might not be the same as the forward path; which might lead to asymmetry. Consider </a>enabling QoP on both Steelhead appliances. </li>
+      <li class="Bullet"><a name="737419">Fully transparent inner connections might require connection forwarding.</a></li>
+      <li class="Bullet"><a name="729018">QoP does not support IPv6.</a></li>
+      <li class="Bullet"><a name="729047">QoP supports virtual in-path PBR.</a></li>
+      <li class="Bullet"><a name="744203">You must not install any downstream appliance</a> that does source MAC learning a hop away from the WAN side of the Steelhead appliance. QoP updates a source MAC address of a packet to that of the relay being used to transmit it (ip_addrs are unchanged). If source MAC learning is enabled on a downstream appliance that is present at next hop, the packets destined to the original source are updated with the MAC address of the Steelhead appliance. When processing the packet, the Steelhead appliance sees that the destination MAC address is that of itself and sends the packet up its stack instead of relaying it forward.</li>
+      <li class="Bullet"><a name="738905">QoP does not support WCCP unless it is in DSCP-only mode.</a></li>
+      <div class="HeadingProcedure"><a name="715677">To configure QoP</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="716022">Choose Configure &gt; Networking &gt; QoP to display the QoP page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="747419">Under QoP Settings, select Enable Quality of Path. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="748410">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="748403">Under QoP Paths, define the available QoP paths and the</a> settings the Steelhead appliance uses while probing the path as described in this table. You configure the default QoP paths in step 6, after completing this step.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="727298">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="727300">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727302">Add a </a>New Path</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727304">Displays the controls to create a </a>QoP path. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727306">Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727308">Specify the path name. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727310">Gateway IP Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727312">Optionally, specify the IP address of the next hop gateway for the path. For </a>example, you can specify the primary path for a connection by the next hop IP address of router 2. The secondary path is next hop router 3. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727314">Interface</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727316">Select a relay interface over which the Steelhead appliance reaches the path.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727318">Remote Address IP</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727320">Specify the IP address of the remote host to ping when monitoring the path </a>status.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727322">DSCP</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="735270">Select the DSCP marking for the ping packet. The default marking is reflect. </a>Reflect specifies that the DSCP level or IP ToS value found on pass-through and optimized traffic is unchanged when it passes through the Steelhead appliance.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727326">Timeout</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727328">Specify how much time, in seconds, elapses before the system considers the </a>path to be unavailable. The default value is 2 seconds.</div>
+            <div class="CellBody"><a name="727329">QoP uses ICMP pings to probe the paths. If the ping responses do not make it </a>back within this timeout setting and the system loses the number of packets defined by the threshold value, it considers the path to be down and triggers an alarm. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727331">Threshold</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727333">Specify how many timed-out probes to count before the system considers the </a>path to be unavailable and triggers an alarm. The default is 3 packets. </div>
+            <div class="CellBody"><a name="727334">This value also determines the how many probes the system must receive to </a>consider the path to be available.</div>
+            <div class="CellBody"><a name="727335">QoP uses ICMP pings to monitor path availability. If the ping responses do not </a>make it back within the probe timeout and the system loses the number of packets defined by this threshold, it considers the path to be down and triggers an alarm. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727337">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727339">Adds the </a>path to the path table. The Management Console redisplays the path table and applies your changes to the running configuration, which is stored in memory.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727341">Remove S</a>elected Paths</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="727343">Select the check box next to the </a>path name and click <span style="font-weight: bold">Remove S</span><span style="font-weight: bold">elected Paths</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="748926">Click </a><span style="font-weight: bold">Save</span><span class="Bold"> </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="748927">The path and its status appears in the QoP path table.</a></div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="748319">Under QoP Settings, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="748323">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="748325">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellHeading"><a name="748331">Default QoP Paths</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748333">Select the global paths for connection setup packets</a> to use in environments using stateful firewalls. With a firewall, connection setup packets require more DPI because it might take up to a few data packets following the three-way handshake to determine the application associated with a flow. </div>
+            <div class="CellBody"><a name="748334">You must predefine the QoP paths as described in step 4 before they appear in </a>the drop-down list.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748336">Path 1</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748338">Select the first predefined path from the drop-down list to use when more DPI </a>is necessary. Selecting a path enables the corresponding DSCP setting. Setting a default path to "--" changes the DSCP setting to Reflect. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748340">Path 2</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748342">Select the second predefined path from the drop-down list to use when more </a>DPI is necessary.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748344">Path 3</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748900">Select the third predefined path from the drop-down list to use when more DPI </a>is necessary.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellHeading"><a name="748348">If no configured path is up</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748350">Optionally, select how QoP handles packets if the default paths go down. The </a>two radio buttons are available when any of the three default paths are set. When the default paths are not set, the radio buttons are dimmed and QoP relays traffic from the interface normally.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748352">Re</a>lay Traffic</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748354">Select to relay traffic from the interface. This is the default setting when the </a>default paths are not specified.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748356">Drop Traffic</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="748358">Select to drop the packets.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="717102">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="720938">The next step is to assign the QoP path names to QoS applications or rules. Choose Configure &gt; </a>Networking &gt; Outbound QoS (Basic) or Networking &gt; Outbound QoS (Advanced). Specify the paths in the order of priority.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">9.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="721548">Click </a><span style="font-weight: bold">Add Application</span> for basic QoS, or <span style="font-weight: bold">Add a Site or Rule</span> for advanced QoS, depending on your QoS configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">10.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="721130">Select the path name and the DSCP value from the drop-down list. You can define up to 3 paths in order </a>of priority and 3 DSCP values in basic QoS. In advanced QoS, you can define up to 3 paths for a rule and 3 DSCP values for a site. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">11.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="721319">Click </a><span class="Bold">Add</span> to save the QoP settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">12.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="721315">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">13.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="721302">Click </a><span style="font-weight: bold">Save</span><span class="Bold"> </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="738201">QoP processes new flows after you enable it</a> and does not process pre-existing flows.</div>
+      <div class="CellBody" style="color: #000000; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><a name="750257">If a QoP path for a connection becomes unavailable, the Steelhead appliance directs traffic through another </a>available path and triggers the QoP Path Down alarm. When the original path comes back up, the Steelhead appliance redirects the traffic back to it. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdminAlarms.html#1017444', '');" title="Configuring Alarm Settings">Configuring Alarm Settings</a></span>.</div>
+      <div class="Body"><a name="750345">To verify the traffic in a multi-interface deployment is exiting the correct interface, choose Reports &gt; </a>Networking &gt; Interface Counters.</div>
+      <div class="Heading4"><a name="738203">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'advanced-networking.08.07.html#280154', '');" title="Applying QoS Policies" name="715780">Applying QoS Policies</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_qosEasy.html#448345', '');" title="Configuring Outbound QoS (Basic)" name="721171">Configuring Outbound QoS (Basic)</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_qosClasses.html#395192', '');" title="Configuring Outbound QoS (Advanced)" name="721189">Configuring Outbound QoS (Advanced)</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

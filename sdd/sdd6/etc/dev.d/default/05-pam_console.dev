@@ -1,0 +1,47 @@
+#!/bin/sh
+
+[ "$ACTION" != "add" ] && exit 0
+
+# we do not have console users in rc.sysinit
+[ -n "$IN_INITLOG" ] && exit 0
+
+if [ -x /sbin/pam_console_setowner -a -f /var/run/console/console.lock \
+	-a -e "$DEVNAME" ]; then
+
+	if [ -x /usr/bin/logger ]; then
+	    LOGGER=/usr/bin/logger
+	elif [ -x /bin/logger ]; then
+	    LOGGER=/bin/logger
+	else
+	    unset LOGGER
+	fi
+	#
+	# for diagnostics
+	#
+	if [ -t 1 -o -z "$LOGGER" ]; then
+	    mesg () {
+	        echo "$@"
+	    }
+	else
+	    mesg () {
+	        $LOGGER -t $(basename $0)"[$$]" "$@"
+	    }
+	fi
+
+	debug_mesg () {
+	    test "$udev_log" = "" -o "$udev_log" = "no" && return
+	    mesg "$@"
+	}
+
+	if [ -f /etc/udev/udev.conf ]; then
+        	. /etc/udev/udev.conf
+	fi
+
+	SYMLINKS=""
+	for i in $(/usr/bin/udevinfo -q symlink -p "$DEVPATH"); do
+		[ $? -gt 0 ] && break
+		SYMLINKS="$SYMLINKS ${udev_root%%/}/$i"
+	done
+	debug_mesg "Restoring console permissions for $DEVNAME $SYMLINKS"
+	/sbin/pam_console_setowner "$DEVNAME" $SYMLINKS
+fi

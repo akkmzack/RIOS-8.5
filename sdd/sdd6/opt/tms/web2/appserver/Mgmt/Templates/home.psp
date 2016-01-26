@@ -1,0 +1,160 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## home.psp
+## This is the template for the home page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, time, FormUtils, Nodes, ajaxentrytable, OSUtils, commands, PagePresentation:Pagelet, GfxUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.floatGraphDivLeftmost {
+  float: left;
+  margin-right: 10px;
+}
+.floatGraphDiv {
+  float: left;
+}
+.floatGraphDivLeftmost fieldset, .floatGraphDiv fieldset {
+  height: 315px;
+}
+.floatGraphDiv .graphDiv img {
+  width: auto;
+  height: auto;
+}
+.floatGraphDivLeftmost .graphDiv img {
+  width: 320px;
+  height: 180px;
+}
+.floatGraphDiv .graphDiv img {
+  width: 351px;
+  height: 260px;
+}
+.floatGraphDiv table {
+  width: auto;
+}
+.floatGraphDivLeftmost table {
+  width: 320px;
+}
+.floatGraphDivLeftmost fieldset,
+.floatGraphDiv fieldset {
+  width: auto;
+  border: #bbb 1px solid;
+  padding: 8px 18px 8px 18px;
+}
+'''
+</psp:method>
+
+<%
+
+mgmt = self.session().value('mgmt')
+uagent = self.request().serverDictionary().get('HTTP_USER_AGENT', "No user agent string");
+hostname = commands.getoutput('hostname')
+
+serviceUptime = Nodes.present(mgmt, '/pm/monitor/process/sport/uptime', None)
+serviceUptimePretty = FormUtils.prettyTimeInterval(serviceUptime, 'Not Running')
+
+systemUptime = Nodes.present(mgmt, '/system/uptime', None)
+systemUptimePretty = FormUtils.prettyTimeInterval(systemUptime, 'Not Running')
+
+temperature = Nodes.present(mgmt, '/rbt/sensors/state/temperature', 'Unknown')
+
+cmc = Nodes.present(mgmt, '/cmc/state/cmc_hostname', 'Not Managed')
+
+try: {
+    motd = file('/etc/motd').read()
+    if len(motd) > 0: {
+        motd = '<p class="announcement">%s</p>' % cgi.escape(motd or '')
+    }
+}
+except: {
+    motd = ''
+}
+
+imgsrc = '/mgmt/gfx?p=bandwidthSummary&req=bws&amp;ct='
+
+now = int(time.time())
+lbField = GfxUtils.getLbForRange('week', now)
+ubField = GfxUtils.timestampToBound(now, 0)
+imgsrc2 = '/mgmt/gfx?p=throughputLan&amp;w=320&amp;h=180&amp;ub=%s&amp;lb=%s&amp;per=week&amp;dir=bi&amp;sc=0&amp;mini=true&amp;req=thlh&amp;ct=' % (
+ubField.replace(' ', '+'), lbField.replace(' ', '+'))
+ajaxurl = '/mgmt/xmldata?p=graphTableXML&req=thlh&ct='
+%>
+<script type="text/javascript">
+<!--
+var updateDate = new Date();
+var ct = updateDate.getTime();
+onloadScript += "fetchReport('bwSummaryGraphImg', '<%= imgsrc %>' + ct); ";
+onloadScript += "fetchReport('throughputLanGraphImg', '<%= imgsrc2 %>' + ct, 'homeThroughputLanTable', '<%= ajaxurl %>' + ct); ";
+//-->
+</script>
+
+<% self.beginPagelet() %>
+
+<p class="important topLevel">
+Welcome to the Management Console for <b><%= hostname %></b>!
+</p>
+<%= motd %>
+
+<fieldset id="homeStatusFieldSet" class="topLevel">
+  <legend>System Status</legend>
+  <div class="midLevel">
+    <table>
+      <tr>
+        <td class="statusHdr">System Up Time: </td>
+        <td class="statusData"><%= systemUptimePretty %></td>
+        <td class="statusHdr">Service Up Time: </td>
+        <td class="statusData"><%= serviceUptimePretty %> </td>
+<% if not Nodes.isVM(): { %>
+        <td class="statusHdr">Temperature: </td>
+        <td class="statusData"><%= temperature %>&#176;C</td>
+<% } %>
+        <td class="statusHdr">CMC: </td>
+        <td class="statusData"><%= cmc %></td>
+      </tr>
+    </table>
+  </div>
+</fieldset>
+
+<div class="floatGraphDivLeftmost">
+<fieldset>
+  <legend>Optimized LAN Throughput Over Last Week</legend>
+  <div id="throughputLanGraphDiv" class="graphDiv">
+    <img id="throughputLanGraphImg" class="graphImg"
+      alt="LAN Throughput Graph" src="" />
+  </div>
+<%
+homeThroughputLanTable = ajaxentrytable.AjaxEntryTable('homeThroughputLan',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about LAN Throughput.')
+%>
+<%= homeThroughputLanTable.html(self) %>
+</fieldset>
+</div>
+
+<div class="floatGraphDiv">
+<fieldset>
+  <legend>Bandwidth Summary Over Last Week</legend>
+  <div id="bwSummaryGraphDiv" class="graphDiv">
+    <img id="bwSummaryGraphImg" class="graphImg" alt="Traffic Summary Graph"
+      src="" />
+  </div>
+</fieldset>
+</div>
+
+<div style="clear: both">&nbsp;</div>
+
+<% self.endPagelet() %>
+

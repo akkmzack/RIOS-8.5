@@ -1,0 +1,212 @@
+<attach event="ondocumentready" handler="cssIe6fix" />
+<script language="JScript">
+/**
+ * FROM http://positioniseverything.net/sidepages/csshover.htc
+ *
+ *	Pseudos - V1.30.050121 - hover & active
+ *	---------------------------------------------
+ *	Peterned - http://www.xs4all.nl/~peterned/
+ *	(c) 2005 - Peter Nederlof
+ *
+ *	Credits  - Arnoud Berendsen 
+ *	         - Martin Reurings
+ *           - Robert Hanson
+ *
+ *	howto: body { behavior:url("csshover.htc"); }
+ *	---------------------------------------------
+ * USAGE
+<!--[if lte IE 6]>
+  <style type="text/css">
+	body {behavior: url(csshover.htc);}
+  </style>
+<![endif]-->
+ *
+ * Files with an .htc suffix are HTML Components.
+ * Make sure apache serves .htc files as text/x-component mime time.
+ * See http://www.w3.org/TR/1999/WD-becss-19990804 for documentation.
+ */
+
+var cssIe6 = {sheets: [], markerStyles: [], numMarkers: 0, numNewRules: 0};
+
+cssIe6.processSheet = function(sheet) { with (cssIe6) {
+    var i;
+    sheets.push(sheet);
+    // XXX/robin ought to check disabled and media here.
+    try {
+        for (i = 0; i < sheet.imports.length; i++) {
+            var underSheet = sheet.imports.item(i);
+            processSheet(underSheet);
+        }
+    } catch (securityException) { }
+    var ruleList = sheet.rules;
+    var ruleLength = ruleList.length;
+    try {
+        for (i = 0; i < ruleLength; i++) {
+            var rule = ruleList.item(i);
+            if (!rule.selectorText || !rule.style) continue;
+            processStyleRule(sheet, rule);
+            
+        }
+    } catch (securityException) { }
+} }
+
+cssIe6.processStyleRule = function(sheet, rule) { with (cssIe6) {
+    var selText = "" + rule.selectorText;
+    var newSel = getSelectorReplacement(selText);
+    if (selText == newSel) return;
+    var cssText = "" + rule.style.cssText;
+    sheet.addRule(newSel, cssText);
+    var markerSel = newSel.replace(/[._]iesix__hover/, "");
+    sheet.addRule(markerSel, 'color: #1e61e6;');
+    numNewRules++;
+    markerStyles.push({sheet: sheet, ix: sheet.rules.length - 1});
+} }
+
+cssIe6.getSelectorReplacement = function(selText) { with (cssIe6) {
+    var elSelArray = getElementSelectors(selText);
+    var selJoin = elSelArray.join("");
+    elSelArray = fixPseudos(elSelArray);
+    if (!elSelArray) return selText;
+    var newSel = elSelArray.join("");
+    return newSel;
+} }
+
+cssIe6.getElementSelectors = function(selText) { with (cssIe6) {
+    // IE6 does not include the separators in the array resulting from split()
+    // even if the separator pattern is a grouped RE!
+    var sepPat = /\s*[\s>+]\s*/;
+    var sepArray = selText.match(new RegExp(sepPat.source, 'g'));
+    if (null == sepArray) return [ selText ];
+    var splitArray = selText.split(sepPat);
+    var finalArray = [];
+    var i = 0, j = 0, lim = -1;
+    var mergeList = [splitArray, sepArray];
+    if (0 == selText.indexOf(sepArray[0])) {
+        mergeList.reverse();
+    }
+    lim = Math.min(mergeList[0].length, mergeList[1].length);
+    for (i = 0; i < lim; i++) {
+        finalArray.push(mergeList[0][i]);
+        finalArray.push(mergeList[1][i]);
+    }
+    if (i < mergeList[0].length) {
+        finalArray.push(mergeList[0][i]);
+    }
+    return finalArray;
+} }
+
+cssIe6.fixPseudos = function(elSelArray) { with (cssIe6) {
+    var i = 0;
+    var first = -1;
+    var x = -1;
+    if (null == elSelArray) {
+        return;
+    }
+    var oldSel = elSelArray.join("");
+    for (i = elSelArray.length - 1; i >= 0; i--) {
+        x = elementSelectorPseudoIndex(elSelArray[i]);
+        if (-1 == x) continue;
+        first = i;
+        elSelArray[i] = stripPseudo(elSelArray[i]);
+    }
+    if (-1 < first) {
+        var newSel = elSelArray.join("");
+        x = elSelArray[first].indexOf('.');
+        if (-1 == x) {
+            elSelArray[first] = elSelArray[first] + '.iesix__hover';
+        } else {
+            // onmouseover, a className of 'foo bar' becomes
+            // 'foo bar foo_iesix__hover bar_iesix__hover iesix__hover'.
+            elSelArray[first] = elSelArray[first].replace(
+                /\.\w+/, '$&_iesix__hover');
+        }
+        return elSelArray;
+    }
+    return null;
+} }
+
+cssIe6.elementSelectorPseudoIndex = function(elSel) { with (cssIe6) {
+    var x = -1;
+    if (0 == elSel.length) return x;
+    if (!/^[aA]\b/.test(elSel)) {
+        // Eventually should test for both hover and active,
+        // and use a regular expression to ensure followed by \b.
+        x = elSel.indexOf(':hover');
+    }
+    return x;
+} }
+
+cssIe6.stripPseudo = function(elSel) { with (cssIe6) {
+    return elSel.replace(/:hover\b/, "");
+} }
+
+cssIe6.ie6listen = function() { with (cssIe6) {
+    for (var i = 0; i < window.document.all.length; i++) {
+        var el = window.document.all[i];
+        if (!el) continue;
+        var cs = el.currentStyle;
+        if (!cs) continue;
+        var criteria = cs.color;
+        if (!criteria) continue;
+        if ('#1e61e6' != criteria) continue;
+        // el has a style in its style cascade with
+        // color set to #1e61e6.
+        // Therefore, it matches a :hover pseudo-style,
+        // and requires special mouseover/out treatment.
+        ie6elementListen(el);
+        numMarkers++;
+    }
+    while (0 < markerStyles.length) {
+        var marker = markerStyles.pop();
+        marker.sheet.removeRule(marker.ix);
+    }
+} }
+
+cssIe6.ie6elementListen = function(hoverTarget) { with (cssIe6) {
+    var suffix = 'iesix__hover';
+    function ie6hoverEnterHandler() {
+        var el = hoverTarget;
+        if (-1 < el.className.indexOf(suffix)) return;
+        var addClasses = el.className.replace(
+            /\w+\b/g, '$&_' + suffix);
+        addClasses = addClasses.replace(/\s+/g, ' ');
+        addClasses = addClasses.replace(/^\s*|\s*$/g, "");
+        var newClasses = [];
+        if (el.className) newClasses.push(el.className);
+        if (addClasses) newClasses.push(addClasses);
+        newClasses.push(suffix);
+        newClasses = newClasses.join(' ');
+        el.className = newClasses;
+    }
+    function ie6hoverExitHandler() {
+        var el = hoverTarget;
+        if (-1 == el.className.indexOf(suffix)) return;
+        if (!window.event) return;
+        for (var dest = window.event.toElement; dest; dest = dest.parentNode) {
+            if (el == dest) return;
+        }
+        var classList = el.className.replace(
+            new RegExp('\\w*_?' + suffix + '\\b', 'g'), "");
+        classList = classList.replace(/^\s*|\s*$/g, "");
+        el.className = classList;
+    }
+    hoverTarget.attachEvent('onmouseover', ie6hoverEnterHandler);
+    hoverTarget.attachEvent('onmouseout', ie6hoverExitHandler);
+} }
+
+function cssIe6fix() { with (cssIe6) {
+    window.document.body.style.cursor = 'wait';
+    for (var i = 0; i < window.document.styleSheets.length; i++) {
+        processSheet(window.document.styleSheets.item(i));
+    }
+    ie6listen();
+/*
+    alert("Processed " + sheets.length + " sheets, adding "
+    + numNewRules + " new rules.\n"
+    + 'document contains ' + window.document.all.length + ' elements\n'
+    + numMarkers + ' of which are marked.');
+ */
+    window.document.body.style.cursor = "";
+} }
+
+</script>

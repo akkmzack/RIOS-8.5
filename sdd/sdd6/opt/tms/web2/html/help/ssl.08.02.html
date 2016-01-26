@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring SSL Server Certificates and Certificate Authorities</title>
+    <link rel="StyleSheet" href="css/ssl.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="ssl.08.01.html#221259">Chapter 6	Configuring SSL and a Secure Inner Channel</a> : Configuring SSL Server Certificates and Certificate Authorities</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="221259">Configuring SSL Server Certificates and Certificate </a>Authorities</div>
+      <div class="Body"><a name="221260">The following section provides an overview of SSL support and describes how to configure SSL server </a>certificates and Certificate Authorities. It includes the following sections:</div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'ssl.08.02.html#221285', '');" title="Configuring SSL Server Certificates and Certificate Authorities" name="221265">How Does SSL Work?</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'ssl.08.02.html#221344', '');" title="Configuring SSL Server Certificates and Certificate Authorities" name="221269">Prerequisite Tasks</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLMain.html#244546', '');" title="Configuring SSL Main Settings" name="223505">Configuring SSL Main Settings</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLMain.html#221671', '');" title="Configuring SSL Main Settings" name="221277">Configuring SSL Server Certificates</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLCAs.html#221811', '');" title="Configuring SSL Certificate Authorities" name="221281">Configuring SSL Certificate Authorities</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLServer.html#221864', '');" title="Modifying SSL Server Certificate Settings" name="223519">Modifying SSL Server Certificate Settings</a></span></li>
+      <div class="Body"><a name="221282">SSL is a cryptographic protocol which provides secure communications between two parties over the </a>Internet. </div>
+      <div class="Body"><a name="221283">Typically in a Web-based application, it is the client that authenticates the server. To identify itself, an SSL </a>certificate is installed on a Web server and the client checks the credentials of the certificate to make sure it is valid and signed by a trusted third party. Trusted third parties that sign SSL certificates are called Certificate Authorities (CA). </div>
+      <div class="Heading2"><a name="221285">How Does SSL Work?</a></div>
+      <div class="Body"><a name="221292">With </a>Riverbed SSL, Steelhead appliances are configured to have a trust relationship, so they can exchange information securely over an SSL connection. SSL clients and servers communicate with each other exactly as they do without Steelhead appliances; no changes are required for the client and server application, nor are they required for the configuration of proxies. RiOS splits up the SSL handshake, the sequence of message exchanges at the start of an SSL connection.</div>
+      <div class="Body"><a name="221299">In an ordinary SSL handshake, the client and server first establish identity using public-key cryptography, </a>and then negotiate a symmetric session key to be used for data transfer. With Riverbed SSL acceleration, the initial SSL message exchanges take place between the client and the server-side Steelhead appliance.</div>
+      <div class="Body"><a name="221316">Prior to </a>RiOS v6.0, the SSL handshakes from the client are always handled by the server-side Steelhead appliance. RiOS v6.0 and later provides an alternative handshake, called distributed termination, which terminates full handshakes on the client-side Steelhead appliance. The master secret containing information that allows the computation of the session key for reusing the session is transported to the session cache of the client-side Steelhead appliance. The subsequent handshakes are reused and the client&#8217;s SSL connection is physically and logically terminated on the client-side Steelhead appliance. </div>
+      <div class="Body"><a name="221323">Distributed termination improves performance by lessening the CPU load because it eliminates expensive </a>asymmetric key operations. It also shortens the key negotiation process by avoiding WAN roundtrips to the server. You can find the setting to reuse a client-side session for distributed termination in the Configure &gt; Optimization &gt; Advanced Settings page. See <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'ssl.08.09.html#222812', '');" title="Setting Advanced SSL Options">Setting Advanced SSL Options</a></span>.</div>
+      <div class="Body"><a name="240580">In </a>RiOS v6.1 and earlier, SSL optimization intercepts and optimizes SSL connections where only the SSL server uses a certificate. RiOS v6.5 provides client-side authentication, used to optimize SSL connections where the SSL server challenges the SSL client to present its own certificate, in addition to authenticating servers using SSL certificates. See <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLAdvanced.html#222800', '');" title="Configuring Advanced and SSL Cipher Settings">Configuring Advanced and SSL Cipher Settings</a></span>.</div>
+      <div class="Body"><a name="240587">The </a>Steelhead appliance also contains a secure vault which stores all SSL server settings, other certificates (that is, the CA, peering trusts, and peering certificates), and the peering private key. The secure vault protects your SSL private keys and certificates when the Steelhead appliance is not powered on. You set a password for the secure vault which is used to unlock it when the Steelhead appliance is powered on. After rebooting the Steelhead appliance, SSL traffic is not optimized until the secure vault is unlocked with the correct password. See <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupVault.html#282498', '');" title="Unlocking the Secure Vault">Unlocking the Secure Vault</a></span>. </div>
+      <div class="Heading2"><a name="221344">Prerequisite Tasks</a></div>
+      <div class="Body"><a name="221345">Complete the following prerequisite tasks before you begin SSL configuration:</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="221349">Connect to the </a>Management Console using HTTPS to protect your SSL private keys and certificates.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="221354">On the client and server-side </a>Steelhead appliance, make sure you have a valid Enhanced Cryptography License Key. To verify your license, see <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupAppliance_license.html#281366', '');" title="Managing Licenses and Model Upgrades">Managing Licenses and Model Upgrades</a></span>. If you do not have a valid Enhanced Cryptography License Key file, go to https://sslcert.riverbed.com and follow the procedures documented there.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="221364">The SSL License in </a>RiOS v5.0.x and later is called the Enhanced Cryptographic License Key, because it also activates datastore encryption and creates secure channels while optimizing encrypted MAPI and SMB-signed traffic (even if the Steelhead appliances are not configured for optimizing SSL traffic). </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="221368">Back up your private keys and the CA-signed certificates before you begin the SSL configuration </a>process.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="ref_BasicSteps"><a name="221371">Basic Steps</a></div>
+      <div class="Body"><a name="221372">This section provides an overview of the basic steps to configure SSL, followed by detailed procedures.</a></div>
+      <table class="RegularTable" style="text-align: left; width: 468.23112000000003pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 307.24128pt">
+            <div class="CellHeading"><a name="221375">Task</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 160.98984pt">
+            <div class="CellHeading"><a name="221377">Reference</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep1_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep1_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">1.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep1_inner"><a name="221379">Enable SSL support on the server-side and client-side </a>Steelhead appliances.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLMain.html#244546', '');" title="Configuring SSL Main Settings" name="221383">Configuring SSL Main Settings</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">2.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221388">Set the SSL secure vault password on the client and server-side </a>Steelhead appliance.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupVault.html#282498', '');" title="Unlocking the Secure Vault" name="221393">Unlocking the Secure Vault</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">3.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221399">Optionally, enable the </a>Steelhead appliance to reuse the client-side SSL session. This is a client-side setting that improves connection setup performance. Both the client-side Steelhead appliance and the server-side Steelhead appliance must be running RiOS v6.0 or later. Enabling this option requires an optimization service restart. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'ssl.08.09.html#222812', '');" title="Setting Advanced SSL Options" name="221412">Setting Advanced SSL Options</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">4.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221419">On the server-side </a>Steelhead appliance, configure a proxy certificate and private key for the SSL back-end server. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><a name="221423">This step enables the server-side </a>Steelhead appliance to act as a proxy for the back-end server, which is necessary to intercept the SSL connection and to optimize it. </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLMain.html#221671', '');" title="Configuring SSL Main Settings" name="221427">Configuring SSL Server Certificates</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">5.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221433">Create a new in-path rule for the client-side </a>Steelhead appliance.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><span style="font-weight: bold"><a name="221434">In-path configurations</a></span><span class="Bold" style="font-weight: normal"> - </span>Create a client-side in-path rule with the Preoptimization Policy = SSL. If you want to enable the HTTP latency optimization module for connections to this server, you add a corresponding in-path rule with Latency Optimization Policy = HTTP.</div>
+            <div class="CellIndent1"><span style="font-weight: bold"><a name="221438">Out-of-path configurations</a></span><span class="Bold" style="font-weight: normal"> - </span>On the client-side Steelhead appliance, add a new in-path rule to identify which connections are to be intercepted and applied to SSL optimization. Use the following property values:</div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221439">Type</a><span class="Bold" style="font-weight: normal"> - </span>Fixed target</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221440">Destination Subnet/Port  - </a>Riverbed recommends you specify the exact SSL server IP address (for example, 10.11.41.14/32) and the default SSL port 443.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221441">VLAN Tag - All</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221442">Preoptimization Policy - SSL</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221443">Optimization Policy - Normal</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221444">Latency Optimization Policy - HTTP</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><a name="221445">Note: Latency optimization is not always HTTP, especially for </a>applications that use the SSL protocol but are not HTTP based. In such cases, specify None for the latency optimization.</div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221446">Neural Framing Mode - Always</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceInpathRules.html#187692', '');" title="Configuring In-Path Rules" name="221450">Configuring In-Path Rules</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">6.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221456">Configure mutual peering trusts so the server-side </a>Steelhead appliance trusts the client-side Steelhead appliance and vice versa. Use one of the following approaches:</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><span class="Bold"><a name="221460">Use the secure inner channel and peering lists</a></span>: </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221463">Configure the inner channel SSL settings as described in </a><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLPeering.html#237300', '');" title="Configuring Secure Peers">Configuring Secure Peers</a></span>. Both the client-side and server-side Steelhead appliances must be running RiOS v5.0 or later.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><span class="Bold" style="font-weight: normal"><a name="221475">To automatically discover </a></span>Steelhead appliance<span class="Bold" style="font-weight: normal">s using self-signed </span><span class="Bold" style="font-weight: normal">certificates, </span>open your secure application to send some traffic through the Steelhead appliances. The connection will be passed through to the server without optimization, but the Steelheads will automatically discover the peers and place them in the self-signed peer <span class="Emphasis">gray</span> list. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221482">Manually move the peers from the gray list to the trusted white list by </a>simply marking them as trusted. The connections are not optimized until after you move the peers to the white list. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221483">Reopen your secure application. </a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><a name="221484">&#8212;or&#8212;</a></div>
+            <div class="CellIndent1"><span class="Bold"><a name="221485">Add CA-signed peer certificates</a></span>: </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221486">Add the PEM certificate of the designated CA as a new trusted entity to </a>the peering trust list for each Steelhead appliance. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="221493">For production networks with multiple </a>Steelhead appliances, use the CMC or the bulk import and export feature to simplify configuring trusted peer relationships. For details, see the <span class="book_title">S</span><span class="book_title">teelhead Central </span><span class="book_title">Management Console User&#8217;s Guide</span> or <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'ssl.08.10.html#223060', '');" title="Configuring SSL Cipher Settings">Performing Bulk Imports and Exports</a></span>. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><span class="Bold"><a name="221503">Tip</a></span>: Your organization can choose to replace all of the default self-signed identity certificates and keys on their Steelhead appliances with those certificates signed by another CA (either internal to your organization or an external well-known CA). In such cases, every Steelhead appliance must simply have the certificate of the designated CA (that signed all those Steelhead appliance identity certificates) added as a new trusted entity.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLPeering.html#237300', '');" title="Configuring Secure Peers" name="221516">Configuring Secure Peers</a></span></div>
+            <div class="CellBody"><a name="221518">&nbsp;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">7.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221520">If your organization uses internal CAs to sign their SSL server certificates </a>you must import each of the certificates (in the chain) on to the server-side Steelhead appliance.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent2"><a name="221526">You must perform this step if you use internal CAs because the </a>Steelhead appliance default list of well-known CAs (trusted by our server-side Steelhead appliance) does not include your internal CA certificate. To identify the certificate of your internal CA (in some cases, the chain of certificate authorities) go to your Web browser repository of trusted-root or intermediate CAs. (For example, Internet Explorer &gt; Tools &gt; Internet Options &gt; Certificates.)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLCAs.html#221811', '');" title="Configuring SSL Certificate Authorities" name="221534">Configuring SSL Certificate Authorities</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">8.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="221543">On the client and server-side </a>Steelhead appliance, restart the Steelhead service. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupAppliance_service.html#281155', '');" title="Starting and Stopping the Optimization Service" name="221547">Starting and Stopping the Optimization Service</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Heading3"><a name="221551">Verifying SSL and Secure Inner Channel Optimization</a></div>
+      <div class="Body"><a name="252906">Use the following tools to verify that you have configured SSL support correctly.</a></div>
+      <li class="Bullet"><span class="Bold"><a name="252909">SSL Optimization</a></span><span style="font-size: 9.0pt"> - </span>After completing the SSL configuration on both Steelhead appliances and restarting the optimization service, access the secure server from the Web browser. The following events take place in a successful optimization:</li>
+      <li class="BulletSubDash"><a name="252913">If you specified a self-signed proxy certificate for the server on the server-side </a>Steelhead appliance, a pop-up window appears on the Web browser. View the certificate details to ensure that it is the same as the certificate on the server-side Steelhead appliance.</li>
+      <li class="BulletSubDash"><a name="252920">In the </a>Management Console, the Current Connections report lists the new connection as optimized without a <span class="Bold" style="font-weight: normal">Protocol Error</span> flag (new statistics appear every 60 seconds).</li>
+      <li class="BulletSubDash"><a name="252924">In the </a>Management Console, the Traffic Summary report displays encrypted traffic (typically, HTTPS). </li>
+      <li class="BulletSubDash"><a name="252926">Verify that the back-end server IP appears in the SSL Discovered Server Table (Optimizable) in the </a>SSL Main Settings page.</li>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="252929">Because all the SSL handshake operations are processed by the server-side </a>Steelhead appliance, all the SSL statistics are reported on the server-side Steelhead appliance. No SSL statistics are reported on the client-side Steelhead appliance.</div>
+      <li class="Bullet"><span class="Bold"><a name="252937">Monitoring SSL Connections</a></span><span style="font-size: 9.0pt"> - </span>Use the following tools to verify SSL optimization and to monitor SSL progress:</li>
+      <li class="BulletSubDash"><a name="252938">On the client Web browser, click the </a><span class="Bold">Lock</span> icon to obtain certificate details. The certificate must match the proxy certificate installed on server-side Steelhead appliance.</li>
+      <li class="BulletSubDash"><a name="252942">In the Current Connections report, verify the destination IP address, port </a><span class="Bold" style="font-weight: normal">443</span>, the Connection Count as <span class="Bold" style="font-weight: normal">Established</span> (three yellow arrows on the left side of the table), <span class="Bold" style="font-weight: normal">SDR Enabled</span> (three cascading yellow squares on the right side of the table), and that there is no <span class="Bold" style="font-weight: normal">Protocol Error</span> (a red triangle on the right side of the table). </li>
+      <li class="BulletSubDash"><a name="252945">In the SSL Statistics report (on the server-side </a>Steelhead appliance only) look for connection requests (established and failed connections), connection establishment rate, and concurrent connections. </li>
+      <li class="Bullet"><span class="Bold"><a name="252947">Monitoring Secure Inner Channel Connections</a></span><span style="font-size: 9.0pt"> - </span>Use the following tools to verify that secure inner channels are in use for the selected application traffic types:</li>
+      <li class="BulletSubDash"><a name="252948">Choose Reports &gt; Networking &gt; Current Connections. Look for the </a><span class="Bold">Lock</span> icon and three yellow arrows, which indicate the connection is encrypted and optimized. If the Lock icon is not visible or is dimmed, click the magnifying glass to view a failure reason that explains why the Steelhead appliance is not using the secure inner channel to encrypt the connection. If there is a red protocol error, click the magnifying glass to view the reason for the error.</li>
+      <li class="BulletSubDash"><a name="252954">Search the client-side and server-side </a>Steelhead appliance logs for <span class="Bold" style="font-weight: normal">ERR</span> and <span class="Bold" style="font-weight: normal">WARN</span>.</li>
+      <li class="BulletSubDash"><a name="252958">Check that both </a>Steelhead appliances appear in the white peering trust list on the client-side and server-side Steelhead appliances, indicating that they trust each other. </li>
+      <div class="Body"><a name="243682">For details on the secure inner channel, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsSSLPeering.html#222181', '');" title="Configuring Secure Peers">Secure Inner Channel Overview</a></span>.</div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="252800">SSL Issues with Internet Explorer 6 and Oracle R12</a></span> - Previously, RiOS fixed a vulnerability found in CBC-based ciphers prior to versions 0.9.6e by inserting an empty frame on the wire to avoid a Chosen Plaintext Attack on CBC ciphers. Some versions of client and server applications do not understand the insertion of empty frames into the encrypted stream and close the connection when they detect these frames. Therefore, RiOS no longer inserts empty frames by default. Examples of applications that close the connection when they detect these empty frames are IE6 and Oracle R12. Sharepoint under IIS has also exhibited this behavior. </li>
+      <div class="Indent1"><a name="252805">The failure occurs when the SSL application fails to understand the data payload when either the client </a>or server is using a block cipher using cipher-block chaining (CBC) mode as the chosen cipher.  This can be with DES, AES, or 3DES using CBC. Note that when Steelhead appliances are deployed, the chosen cipher can be different than when the client is negotiating directly with the SSL server.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="252811">Because current Web browsers do not protect themselves from this vulnerability, </a>Steelhead appliances are no less secure than other vendors. From a security perspective, fixing this vulnerability is the responsibility of a server, not a patched client.</div>
+      <div class="Indent1"><a name="252815">To determine if the </a>Steelhead appliances are inserting empty frames to avoid an attack, capture TCPdumps on the server-side Steelhead LAN interface and look at the Server Hello message where it displays the selected cipher.  Verify that DES, AES, or 3DES is the cipher.  Also, check for the existence of 32-byte length SSL application data (this is the empty frame) on the LAN traces followed by an SSL Alert. </div>
+      <div class="Indent1"><a name="252820">To change the default and insert empty frames, enter the CLI command </a><span style="font-weight: bold">no protocol ssl bug-work-</span><span style="font-weight: bold">around dnt-insrt-empty</span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="252821">For details on the vulnerability, see </a><br /><a href="http://www.openssl.org/~bodo/tls-cbc.txt" target="external_window">http://www.openssl.org/~bodo/tls-cbc.txt. </a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_with_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

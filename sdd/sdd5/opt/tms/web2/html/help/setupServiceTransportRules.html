@@ -1,0 +1,781 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring TCP, Satellite Optimization, and High-Speed TCP</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.06.01.html#313229">Chapter 4	Configuring Optimization Features</a> : Configuring TCP, Satellite Optimization, and High-Speed TCP </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="313229">Configuring TCP, Satellite Optimization, and High-Speed TCP </a></div>
+      <div class="Body"><a name="326888">This section describes how to configure TCP, satellite optimization, and high-speed TCP settings. It includes </a>these sections:</div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceTransportRules.html#396087', '');" title="Configuring TCP, Satellite Optimization, and High-Speed TCP" name="313231">Optimizing TCP and Satellite WANs</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceTransportRules.html#414004', '');" title="Configuring TCP, Satellite Optimization, and High-Speed TCP" name="414090">High-Speed TCP Optimization</a></span></li>
+      <div class="Body"><a name="396148">You configure TCP, high-speed TCP, and satellite optimization settings in the Configure &gt; Optimization &gt; </a>Transport Settings page.</div>
+      <div class="Heading2"><a name="396087">Optimizing TCP and Satellite WANs</a></div>
+      <div class="Body"><a name="396105">Riverbed provides satellite WAN optimization to overcome the common sources of performance loss </a>associated with space networking. Satellite optimization allows for more effective use of satellite channels, while providing improved user experiences and increased productivity. </div>
+      <div class="Body"><a name="396313">SkipWare, an exclusive technology in the Riverbed product family, senses increases and decreases in </a>bandwidth allocation and automatically adjusts its transmission window in response, without requiring user intervention.</div>
+      <div class="Heading3"><a name="395398">Optimizing SCPS with SkipWare </a></div>
+      <div class="Body"><a name="396159">RiOS v7.0 and later includes compatibility settings for the Space Communications Protocol Standards </a>(SCPS) protocol suite. SCPS is designed to allow communication over challenging environments. Originally, it was developed jointly by NASA and DOD&#8217;s USSPACECOM to meet their various needs and requirements. Through a collaborative, multiyear R&amp;D effort, the partnership created the Space Communications Protocol Standards-Transport Protocol (SCPS-TP, commonly referred to as &#8220;skips&#8221;). This protocol now meets the needs of the satellite and wireless communities. </div>
+      <div class="Body"><a name="396174">Unlike TCP, the SCPS protocol was designed to operate in an environment of high latency and limited </a>bandwidth. The first commercial implementation of the SCPS protocol was released under the brand name SkipWare. </div>
+      <div class="Body"><a name="439058">To use the SkipWare discovery mechanisms included in RiOS v7.0 and later, you must install a SkipWare </a>license. SkipWare is enabled automatically when the license is installed, regardless of which transport optimization method is selected (for example, standard TCP, high-speed TCP, or bandwidth estimation). After installing the SkipWare license, you must restart the optimization service.</div>
+      <div class="Body"><a name="439028">The basic RiOS v6.5.x and later license includes non-SkipWare options such as bandwidth estimation and </a>standard TCP.</div>
+      <div class="Body"><a name="479338">To change SkipWare settings, you must have role-based permission to use the Optimization Service role. </a>For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSecurityPermissions.html#282076', '');" title="Managing User Permissions">Managing User Permissions</a></span>.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="737941">Each Steelhead appliance supports and can interoperate with another Steelhead appliance running the SCPS </a>RSP package. For details, see the <span class="book_title">SCPS Installation Guide</span>. SCPS RSP package licenses are not valid for use as native RiOS SCPS licenses. Contact support or your sales team for assistance in converting SCPS RSP package licenses to native RiOS SCPS licenses.</div>
+      <div class="Body"><a name="479378">For details and example satellite deployments, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="479380">SCPS Connection Types</a></div>
+      <div class="Body"><a name="441015">You configure satellite optimization settings depending on the connection type. This section describes the </a>connection types. For details about the SCPS discovery process used in various device scenarios, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading4"><a name="395465">RiOS and SCPS Connection</a></div>
+      <div class="Body"><a name="395476">A RiOS and SCPS connection is established between two Steelhead appliances running RiOS v7.0 or later. </a>Because both Steelhead appliances are SCPS-compatible, this is a double-ended connection that benefits from traditional RiOS optimization (SDR and LZ). A RiOS and SCPS connection works with all RiOS features.</div>
+      <div class="Body"><a name="395490"> </a></div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;4&#8209;3. </span><a name="395495">RiOS and SCPS Connection<img class="Default" src="images/scps_and_RIOS_connection.gif" width="583" height="149" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Heading4"><a name="395533">Single-Ended Interception (SEI) Connection</a></div>
+      <div class="Body"><a name="620289">An SEI connection is established between a single Steelhead appliance running RiOS v7.0 or later paired </a>with a third-party device running TCP-PEP (Performance Enhancing Proxy). Both the Steelhead appliance and the TCP-PEP device are using the SCPS protocol to speed up the data transfer on a satellite link or other high-latency links. In the following figure, the Steelhead appliance replaces a third-party device running TCP-PEP in the data center, but the Steelhead appliance can also reside in the branch office. Because there is only one Steelhead appliance that intercepts the connection, this is called a single-ended interception (SEI).</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;4&#8209;4. </span><a name="395555"> Single-Ended Interception Connection<img class="Default" src="images/scps_single_ended_connection.gif" width="627" height="164" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Body"><a name="395559">Because a single-ended interception connection communicates with only one Steelhead appliance, it</a></div>
+      <li class="Bullet"><a name="395560">performs only sender-side TCP optimization.</a></li>
+      <li class="Bullet"><a name="395562">supports virtual in-path deployments such as WCCP and PBR.</a></li>
+      <li class="Bullet"><a name="395566">cannot initiate a SCPS connection on a server-side out-of-path Steelhead appliance.</a></li>
+      <li class="Bullet"><a name="395567">supports kickoff. </a></li>
+      <li class="Bullet"><a name="395568">supports auto-discovery failover (failover is compatible with IPv6).</a></li>
+      <li class="Bullet"><a name="395569">co-exists with high-speed TCP.</a></li>
+      <li class="Bullet"><a name="413523">does not work with connection forwarding.</a></li>
+      <div class="Body"><a name="414330">To configure satellite optimization for an SEI, you define SEI connection rules. The Steelhead appliance uses </a>SEI connection rules to determine whether to enable or pass-through SCPS connections.</div>
+      <div class="Body"><a name="413538">Riverbed recommends that for SEI configurations in which the Steelhead appliance initiates the SCPS </a>connection on the WAN, you add an in-path pass-through rule from the client to the server. While the pass-through rule is optional, without it the Steelhead appliance probes for another Steelhead appliance, and when it does not locate one, will failover. Adding the in-path pass-through rule speeds up setup by eliminating the auto-discovery probe and subsequent failover. </div>
+      <div class="Body"><a name="395584">The in-path pass-through rule is not necessary on SEI configurations in which the Steelhead appliance </a>terminates the SCPS connection on the WAN, because in this configuration the Steelhead appliance evaluates only the SEI connection rules table and ignores the in-path rules table.</div>
+      <div class="Body"><a name="395594">SEI connections count toward the connection count limit on the Steelhead appliance. </a></div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="395596">When server-side network asymmetry occurs in a SEI configuration, the server-side Steelhead appliance </a>creates a bad RST log entry in the asymmetric routing table. This differs from other configurations (non-SCPS) in that the client-side Steelhead appliance typically detects asymmetry because of the bad RST and creates an entry in the asymmetric routing table. In SEI configurations, the Steelhead appliance detects asymmetry and creates asymmetric routing table entries independent of other Steelhead appliances. This results in a TCP proxy only connection between the client-side Steelhead appliance and the server when auto-discovery is disabled. For details about the asymmetric routing table, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_asymmetric.html#279300', '');" title="Configuring Asymmetric Routing Features">Configuring Asymmetric Routing Features</a></span>.</div>
+      <div class="HeadingProcedure"><a name="397393">To configure TCP and SkipWare SCPS Optimization</a></div>
+      <div class="Body"><a name="439306">To properly configure transport settings for your environment, you must understand its characteristics. For </a>information on gathering performance characteristics for your environment, see the <span class="book_title">Steelhead Appliance </span><span class="book_title">Deployment Guide</span>.</div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="411781">Choose Configure &gt; Optimization &gt; Transport Settings to display the Transport Settings page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396387">Under TCP Optimization, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 148.93776pt">
+            <div class="CellHeading"><a name="741122">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 319.93848pt">
+            <div class="CellHeading"><a name="741124">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741126">Auto-Detect </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741128">Automatically detects the optimal TCP configuration by using the same mode </a>as the peer Steelhead appliance for inner connections, SkipWare when negotiated, or standard TCP for all other cases. This is the default setting.</div>
+            <div class="CellBody"><a name="741135">If you have a mixed environment where several different types of networks </a>terminate into a hub or server-side Steelhead appliance, enable this setting on your hub Steelhead appliance so it can reflect the various transport optimization mechanisms of your remote site Steelhead appliances. Otherwise, you can hard code your hub Steelhead appliance to the desired setting.</div>
+            <div class="CellBody"><a name="741150">RiOS advertises automatic detection of TCP optimization to a peer Steelhead </a>appliance through the OOB connection between the appliances.</div>
+            <div class="CellBody"><a name="741155">Both the client-side and the server-side Steelhead appliances must be running </a>RiOS v7.0 or later.</div>
+            <div class="CellBody"><a name="741162">For single-ended interception connections, use SkipWare per-connection TCP </a>optimization when possible; use standard TCP otherwise.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741164">Standard (RFC-Compliant)</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741169">Optimizes non-SCPS TCP connections by applying data and transport </a>streamlining for TCP traffic over the WAN. This control forces peers to use standard TCP as well. For details on data and transport streamlining, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>. This option clears any advanced bandwidth congestion control that was previously set.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741174">HighSpeed </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741176">Enables high-speed TCP optimization for more complete use of long fat pipes </a>(high-bandwidth, high-delay networks). Do not enable for satellite networks.</div>
+            <div class="CellBody"><a name="741177">Riverbed recommends that you enable high-speed TCP optimization only </a>after you have carefully evaluated whether it will benefit your network environment. For details about the trade-offs of enabling high-speed TCP, see <span style="font-weight: bold">tcp highspeed enable</span> in the <span class="book_title">Riverbed Command-Line Interface Reference Manual</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741182">Bandwidth Estimation </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741184">Uses an intelligent bandwidth estimation algorithm along with a modified </a>slow-start algorithm to optimize performance in long lossy networks. These networks typically include satellite and other wireless environments, such as cellular networks, longer microwave, or Wi-Max networks. </div>
+            <div class="CellBody"><a name="741185">Bandwidth estimation is a sender-side modification of TCP and is compatible </a>with the other TCP stacks in the RiOS system. The intelligent bandwidth estimation is based on analysis of both ACKs and latency measurements. The modified slow-start mechanism enables a flow to ramp up faster in high-latency environments than traditional TCP. The intelligent bandwidth estimation algorithm allows it to learn effective rates for use during modified slow start, and also to differentiate BER loss from congestion-derived loss and manage them accordingly. Bandwidth estimation has good fairness and friendliness qualities toward other traffic along the path.</div>
+            <div class="CellBody"><a name="741189">The default setting is off.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741194">SkipWare Per-Connection </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741199">Applies TCP congestion control to each SCPS-capable connection. The </a>congestion control uses </div>
+            <li class="CellBullet"><a name="741200">a pipe algorithm that gates when a packet should be sent after receipt of an </a>ACK. </li>
+            <li class="CellBullet"><a name="741201">the NewReno algorithm, which includes the sender's congestion window, </a>slow start, and congestion avoidance.</li>
+            <li class="CellBullet"><a name="741202">timestamps, window scaling, appropriate byte counting, and loss detection. </a></li>
+            <div class="CellBody"><a name="741203">This transport setting uses a modified slow-start algorithm and a modified </a>congestion-avoidance approach. This enables SCPS per-connection to ramp up flows faster in high-latency environments, and handle lossy scenarios, while remaining reasonably fair and friendly to other traffic. SCPS per-connection does a very good job of efficiently filling up satellite links of all sizes. SCPS per-connection is a high-performance option for satellite networks.</div>
+            <div class="CellBody"><a name="741207">Riverbed recommends enabling per-connection if the error rate in the link is </a>less than approximately 1%. </div>
+            <div class="CellBody"><a name="741214">The Management Console dims this setting until you install a SkipWare </a>license.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741216">SkipWare Error-Tolerant </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741218">Enables SkipWare optimization with the error-rate detection and recovery </a>mechanism on the Steelhead appliance. </div>
+            <div class="CellBody"><a name="741222">This setting allows the per-connection congestion control to tolerate some loss </a>due to corrupted packets (bit errors), without reducing the throughput, using a modified slow-start algorithm and a modified congestion-avoidance approach. It requires significantly more retransmitted packets to trigger this congestion-avoidance algorithm than the SkipWare per-connection setting.</div>
+            <div class="CellBody"><a name="741223">Error-tolerant TCP optimization assumes that the environment has a high BER </a>and that most retransmissions are due to poor signal quality instead of congestion. This maximizes performance in high-loss environments, without incurring the additional per-packet overhead of a FEC algorithm at the transport layer. </div>
+            <div class="CellBody"><a name="741224">SCPS error tolerance is a high-performance option for lossy satellite networks.</a></div>
+            <div class="CellBody"><a name="741225">Use caution when enabling error-tolerant TCP optimization, particularly in </a>channels with coexisting TCP traffic, because it can be quite aggressive and adversely affect channel congestion with competing TCP flows.</div>
+            <div class="CellBody"><a name="741229">Riverbed recommends enabling error tolerance if the error rate in the link is </a>more than approximately 1%.</div>
+            <div class="CellBody"><a name="741233">The Management Console dims this setting until you install a SkipWare </a>license.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741235">Enable Rate Pacing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741237">Imposes a global data-transmit limit on the link rate for all SCPS connections </a>between peer Steelhead appliances, or on the link rate for a Steelhead appliance paired with a third-party device running TCP-PEP (Performance Enhancing Proxy). </div>
+            <div class="CellBody"><a name="741245">Rate pacing combines MX-TCP and a congestion-control method of your </a>choice for connections between peer Steelhead appliances and SEI connections (on a per-rule basis). The congestion-control method runs as an overlay on top of MX-TCP and probes for the actual link rate. It then communicates the available bandwidth to MX-TCP. </div>
+            <div class="CellBody"><a name="741249">Enable rate pacing to prevent these problems:</a></div>
+            <li class="CellBullet"><a name="741250">Congestion loss while exiting the slow-start phase. The slow-start phase is </a>an important part of the TCP congestion-control mechanisms that starts slowly increasing its window size as it gains confidence about the network throughput. </li>
+            <li class="CellBullet"><a name="741251">Congestion collapse </a></li>
+            <li class="CellBullet"><a name="741252">Packet bursts </a></li>
+            <div class="CellBody"><a name="741253">Rate pacing is disabled by default.</a></div>
+            <div class="CellBody"><a name="741254">With no congestion, the slow-start phase ramps up to the MX-TCP rate and </a>settles there. When RiOS detects congestion (either due to other sources of traffic, a bottleneck other than the satellite modem, or because of a variable modem rate), the congestion-control method kicks in to avoid congestion loss and exit the slow-start phase faster. </div>
+            <div class="CellBody"><a name="741261">Enable rate pacing on the client-side Steelhead appliance along with a </a>congestion-control method. The client-side Steelhead appliance communicates to the server-side Steelhead appliance that rate pacing is in effect. You must also:</div>
+            <li class="CellBullet"><a name="741270">Enable Auto-Detect TCP Optimization on the server-side Steelhead </a>appliance to negotiate the configuration with the client-side Steelhead appliance. </li>
+            <li class="CellBullet"><a name="741275">Configure an MX-TCP QoS rule to set the appropriate rate cap. If an MX-</a>TCP QoS rule is not in place, the system does not apply rate pacing and the congestion-control method takes effect. You cannot delete the MX-TCP QoS rule when rate pacing is enabled.</li>
+            <div class="CellBody"><a name="741282">The Management Console dims this feature until you install a SkipWare </a>license.</div>
+            <div class="CellBody"><a name="741283">Rate pacing does not support IPv6.</a></div>
+            <div class="CellBody"><a name="741284">You can also enable rate pacing for SEI connections by defining a SEI rule for </a>each connection. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741286">Enable Single-Ended Connection </a>Rules Table</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741288">Enables transport optimization for single-ended interception connections with </a>no Steelhead appliance peer. These connections appear in the rules table. </div>
+            <div class="CellBody"><a name="741295">In RiOS v8.5, you can impose rate pacing for single-ended interception </a>connections with no peer Steelhead appliance. By defining an SEI connection rule, you can enforce rate pacing even when the Steelhead appliance is not peered with a SCPS device and SCPS is not negotiated.</div>
+            <div class="CellBody"><a name="741302">To enforce rate pacing for a single-ended interception connection, create an </a>SEI connection rule for use as a transport-optimization proxy, select a congestion method for the rule, and then configure a QoS rule (with the same client/server subnet) to use MX-TCP. RiOS v8.5 accelerates the WAN or LAN-originated proxied connection using MX-TCP.</div>
+            <div class="CellBody"><a name="741306">By default, the SEI connection rules table is disabled. When enabled, two </a>default rules appear in the rules table. The first default rule matches all traffic with the destination port set to the interactive port label and bypasses the connection for SCPS optimization.</div>
+            <div class="CellBody"><a name="741307">The second default rule matches all traffic with the destination port set to the </a>RBT-Proto port label and bypasses the connection for SCPS optimization. </div>
+            <div class="CellBody"><a name="741308">This option does not affect the optimization of SCPS connections between </a>Steelhead appliances.</div>
+            <div class="CellBody"><a name="741312">When you disable the table, you can still add, move, or remove rules, but the </a>changes do not take effect until you reenable the table.</div>
+            <div class="CellBody"><a name="741316">The Management Console dims the SEI rules table until you install a SkipWare </a>license.</div>
+            <div class="CellBody"><span style="font-weight: bold"><a name="741317">Enable SkipWare Legacy Compression</a></span> - Enables negotiation of SCPS-TP TCP header and data compression with a remote SCPS-TP device. This feature enables interoperation with RSP SkipWare packages and TurboIP devices that have also been configured to negotiate TCP header and data compression. </div>
+            <div class="CellBody"><a name="741324">Legacy compression is disabled by default.</a></div>
+            <div class="CellBody"><a name="741325">After enabling or disabling legacy compression, you must restart the </a>optimization service. </div>
+            <div class="CellBody"><a name="741329">The Management Console dims legacy compression until you install a </a>SkipWare license and enable the SEI rules table.</div>
+            <div class="CellBody"><a name="741330">Legacy compression also works with non-SCPS TCP algorithms.</a></div>
+            <div class="CellBody"><a name="741331">These limits apply to legacy compression:</a></div>
+            <li class="CellBullet"><a name="741332">This feature is not compatible with IPv6.</a></li>
+            <li class="CellBullet"><a name="741333">Packets with a compressed TCP header use IP protocol 105 in the </a>encapsulating IP header; this might require changes to intervening firewalls to permit protocol 105 packets to pass.</li>
+            <li class="CellBullet"><a name="741334">This feature supports a maximum of 255 connections between any pair of </a>end-host IP addresses. The connection limit for legacy SkipWare connections is the same as the appliance-connection limit.</li>
+            <li class="CellBullet"><a name="741338">QoS limits for the Steelhead appliance apply to the legacy SkipWare </a>connections.</li>
+            <div class="CellBody"><a name="741341">To view SCPS connections, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'reportConnections.html#296976', '');" title="Viewing Current Connection Reports">Viewing Current Connection Reports</a></span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="414289">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="395637">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="395638">Click </a><span style="font-weight: bold">Restart</span> to restart the optimization service. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="582568">Configuring Buffer Settings</a></div>
+      <div class="Body"><a name="582569">The buffer settings in the Transport Settings page support high-speed TCP and are also used in data </a>protection scenarios to improve performance. For details about data protection deployments, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>. </div>
+      <div class="Body"><a name="582573">To properly configure buffer settings for a satellite environment, you must understand its characteristics. </a>For information on gathering performance characteristics for your environment, see the <span class="book_title">Steelhead Appliance </span><span class="book_title">Deployment Guide</span>.</div>
+      <div class="HeadingProcedure"><a name="582578">To configure buffer settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="582579">Choose Configure &gt; Optimization &gt; Transport Settings to display the Transport Settings page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="582580">Under Buffer Settings, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="738961">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="738963">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738965">LAN Send Buffer Size</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738967">Specify the send buffer size used to send data out of the LAN. The default value </a>is <span class="Bold" style="font-weight: normal">81920</span>. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738969">LAN Receive Buffer Size</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738971">Specify the receive buffer size used to receive data from the LAN. The default </a>value is <span class="Bold" style="font-weight: normal">32768</span>. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738973">WAN Default Send Buffer Size</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738975">Specify the send buffer size used to send data out of the WAN. The default </a>value is <span class="Bold" style="font-weight: normal">262140</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738977">WAN Default Receive Buffer Size</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738979">Specify the receive buffer size used to receive data from the WAN. The default </a>value is <span class="Bold" style="font-weight: normal">262140</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="582606">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="582607">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="395639">Adding Single-Ended Connection Rules</a></div>
+      <div class="Body"><a name="395643">You can optionally add rules to control single-ended SCPS connections. The Steelhead appliance uses these </a>rules to determine whether to enable or pass through SCPS connections.</div>
+      <div class="Body"><a name="395650">A Steelhead appliance receiving a SCPS connection on the WAN evaluates only the single-ended connection </a>rules table.</div>
+      <div class="Body"><a name="395672">To pass through a SCPS connection, Riverbed recommends setting both an in-path rule and a single-ended </a>connection rule.</div>
+      <div class="HeadingProcedure"><a name="395673">To add a single-ended connection rule</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="602538">Choose Configure &gt; Optimization &gt; Transport Settings to display the Transport Settings page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="398131">Under Single-Ended Connection Rules, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.12528pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 145.23264pt">
+            <div class="CellHeading"><a name="741467">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 322.89264pt">
+            <div class="CellHeading"><a name="741469">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741471">Add New Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741473">Displays the controls for adding a new rule.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741475">Position</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741477">Select Start, End, or a rule number from the drop-down list. Steelhead </a>appliances evaluate rules in numerical order starting with rule 1. If the conditions set in the rule match, then the rule is applied, and the system moves on to the next packet. If the conditions set in the rule do not match, the system consults the next rule. As an example, if the conditions of rule 1 do not match, rule 2 is consulted. If rule 2 matches the conditions, it is applied, and no further rules are consulted.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741479">Source Subnet</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741481">Specify an IPv4 or IPv6 address and mask for the traffic source; otherwise, </a>specify All-IP for all IPv4 and IPv6 traffic.</div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="741482">Use these formats:</a></span></div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="741483">XXX.XXX.XXX.XXX/XX (IPv4)</a></span></div>
+            <div class="CellBody"><a name="741484">X:X:X::X/XXX (IPv6)</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741486">Destination Subnet</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741488">Specify an IPv4 or IPv6 address and mask pattern for the traffic destination; </a>otherwise, specify All-IP for all traffic.</div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="741489">Use these formats:</a></span></div>
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="741490">XXX.XXX.XXX.XXX/XX (IPv4)</a></span></div>
+            <div class="CellBody"><a name="741491">X:X:X::X/XXX (IPv6)</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741493">Port or Port Label</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741495">Specify the destination port number, port label, or all.</a></div>
+            <div class="CellBody"><a name="741496">Click Port Label to go to the Configure &gt; Networking &gt; Port Labels page for </a>reference.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741498">VLAN Tag ID</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741502">Specify one of the following: a VLAN identification number from 1 to 4094; all </a>to specify that the rule applies to all VLANs; or untagged to specify the rule applies to untagged connections.</div>
+            <div class="CellBody"><a name="741506">RiOS supports VLAN v802.1Q. To configure VLAN tagging, configure SCPS </a>rules to apply to all VLANs or to a specific VLAN. By default, rules apply to all VLAN values unless you specify a particular VLAN ID. Pass-through traffic maintains any preexisting VLAN tagging between the LAN and WAN interfaces.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="color: #000000; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><span style="color: #000000; font-family: &quot;Microsoft Sans Serif&quot;; font-size: 10.0pt; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><a name="741508">Traffic</a></span></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741514">Specifies the action that the rule takes on a </a><span style="font-size: 10.0pt">SCPS</span> connection. To allow single-ended interception SCPS connections to pass through the Steelhead appliance unoptimized, disable SCPS Discover and TCP Proxy. </div>
+            <div class="CellBody"><a name="741518">Select one of these options:</a></div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="741519"> </a><span style="font-weight: bold">SCPS Discover</span> - Turns SCPS on and TCP proxy off.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="741520"> </a><span style="font-weight: bold">TCP Proxy</span> - Turns SCPS off and TCP proxy on.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741523">Congestion Control Algorithm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741525">Select a method for congestion control from the drop-down list.</a></div>
+            <li class="CellBullet"><span class="Bold"><a name="741529">S</a></span><span style="font-weight: bold">tandard (RFC-Compliant)</span> - Optimizes non-SCPS TCP connections by applying data and transport streamlining for TCP traffic over the WAN. This control forces peers to use standard TCP as well. For details on data and transport streamlining, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>. This option clears any advanced bandwidth congestion control that was previously set.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="741533">HighSpeed </a></span>- Enables high-speed TCP optimization for more complete use of long fat pipes (high-bandwidth, high-delay networks). Do not enable for satellite networks.</li>
+            <div class="CellIndent1"><a name="741534">Riverbed recommends that you enable high-speed TCP optimization only </a>after you have carefully evaluated whether it will benefit your network environment. For details about the trade-offs of enabling high-speed TCP, see <span style="font-weight: bold">tcp highspeed enable</span> in the <span class="book_title">Riverbed Command-Line Interface Reference </span><span class="book_title">Manual</span>.</div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="741539">Bandwidth Estimation </a></span>- Uses an intelligent bandwidth estimation algorithm along with a modified slow-start algorithm to optimize performance in long lossy networks. These networks typically include satellite and other wireless environments, such as cellular networks, longer microwave, or Wi-Max networks. </li>
+            <div class="CellIndent1"><a name="741540">Bandwidth estimation is a sender-side modification of TCP and is </a>compatible with the other TCP stacks in the RiOS system. The intelligent bandwidth estimation is based on analysis of both ACKs and latency measurements. The modified slow-start mechanism enables a flow to ramp up faster in high latency environments than traditional TCP. The intelligent bandwidth estimation algorithm allows it to learn effective rates for use during modified slow start, and also to differentiate BER loss from congestion-derived loss and deal with them accordingly. Bandwidth estimation has good fairness and friendliness qualities toward other traffic along the path.</div>
+            <li class="CellBullet"><span class="Bold"><a name="741546">SkipWare Per-Connection </a></span>- Applies TCP congestion control to each SCPS-capable connection. This method is compatible with IPv6. The congestion control uses </li>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="741547">a pipe algorithm that gates when a packet should be sent after receipt of an </a>ACK. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="741548">the NewReno algorithm, which includes the sender's congestion window, </a>slow start, and congestion avoidance.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="741549">timestamps, window scaling, appropriate byte counting, and loss </a>detection. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent1"><a name="741550">This transport setting uses a modified slow-start algorithm and a modified </a>congestion-avoidance approach. This enables SCPS per connection to ramp up flows faster in high-latency environments, and handle lossy scenarios, while remaining reasonably fair and friendly to other traffic. SCPS per connection does a very good job of efficiently filling up satellite links of all sizes. SkipWare per connection is a high-performance option for satellite networks.</div>
+            <div class="CellIndent1"><a name="741554">The Management Console dims this setting until you install a SkipWare </a>license.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741556">&nbsp;</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <li class="CellBullet"><span style="font-weight: bold"><a name="741558">SkipWare Error-Tolerant</a></span> - Enables SkipWare optimization with the error-rate detection and recovery mechanism on the Steelhead appliance. This method is compatible with IPv6.</li>
+            <div class="CellIndent1"><a name="741562">This method tolerates some loss due to corrupted packets (bit errors), </a>without reducing the throughput, using a modified slow-start algorithm and a modified congestion avoidance approach. It requires significantly more retransmitted packets to trigger this congestion-avoidance algorithm than the SkipWare per-connection setting. Error-tolerant TCP optimization assumes that the environment has a high BER and most retransmissions are due to poor signal quality instead of congestion. This maximizes performance in high-loss environments, without incurring the additional per-packet overhead of a FEC algorithm at the transport layer. </div>
+            <div class="CellIndent1"><a name="741563">Use caution when enabling error-tolerant TCP optimization, particularly in </a>channels with coexisting TCP traffic, because it can be quite aggressive and adversely affect channel congestion with competing TCP flows.</div>
+            <div class="CellIndent1"><a name="741567">The Management Console dims this setting until you install a SkipWare </a>license.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741570">Enable Rate Pacing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741572">Imposes a global data transmit limit on the link rate for all SCPS connections </a>between peer Steelhead appliances or on the link rate for a Steelhead appliance paired with a third-party device running TCP-PEP (Performance Enhancing Proxy). </div>
+            <div class="CellBody"><a name="741581">Rate pacing combines MX-TCP and a congestion-control method of your </a>choice for connections between peer Steelhead appliances and SEI connections (on a per-rule basis). The congestion-control method runs as an overlay on top of MX-TCP and probes for the actual link rate. It then communicates the available bandwidth to MX-TCP. </div>
+            <div class="CellBody"><a name="741585">Enable rate pacing to prevent these problems:</a></div>
+            <li class="CellBullet"><a name="741586">Congestion loss while exiting the slow start phase. The slow-start phase is </a>an important part of the TCP congestion-control mechanisms that starts slowly increasing its window size as it gains confidence about the network throughput. </li>
+            <li class="CellBullet"><a name="741587">Congestion collapse </a></li>
+            <li class="CellBullet"><a name="741588">Packet bursts </a></li>
+            <div class="CellBody"><a name="741589">Rate pacing is disabled by default.</a></div>
+            <div class="CellBody"><a name="741590">With no congestion, the slow start ramps up to the MX-TCP rate and settles </a>there. When RiOS detects congestion (either due to other sources of traffic, a bottleneck other than the satellite modem, or because of a variable modem rate), the congestion-control method kicks in to avoid congestion loss and exit the slow start phase faster. </div>
+            <div class="CellBody"><a name="741597">Enable rate pacing on the client-side Steelhead appliance along with a </a>congestion-control method. The client-side Steelhead appliance communicates to the server-side Steelhead appliance that rate pacing is in effect. You must also:</div>
+            <li class="CellBullet"><a name="741607">Enable Auto-Detect TCP Optimization on the server-side Steelhead </a>appliance to negotiate the configuration with the client-side Steelhead appliance. </li>
+            <li class="CellBullet"><a name="741613">Configure an MX-TCP QoS rule to set the appropriate rate cap. If an MX-</a>TCP QoS rule is not in place, rate pacing is not applied and the congestion-control method takes effect. You cannot delete the MX-TCP QoS rule when rate pacing is enabled.</li>
+            <div class="CellBody"><a name="741620">The Management Console dims this setting until you install a SkipWare </a>license.</div>
+            <div class="CellBody"><a name="741621">Rate pacing does not support IPv6.</a></div>
+            <div class="CellBody"><a name="741622">You can also enable rate pacing for SEI connections by defining a SEI rule for </a>each connection. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741624">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741632">Adds the rule to the list. The Management Console redisplays the </a><span style="font-size: 10.0pt">SCPS</span> Rules table and applies your modifications to the running configuration, which is stored in memory. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741634">Remove Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741636">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741638">Move Selected Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="741640">Moves the selected rules. Click the arrow next to the desired rule position; the </a>rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="398226">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="398227">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="581950">&nbsp;</a></div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="395772">After you apply your settings, you can verify whether changes have had the desired effect by viewing the Current </a>Connections report. The report summarizes the optimized established connections for SCPS. SCPS connections appear as typical established, optimized or established, or single-ended optimized connections. Click the connection to view details. SCPS connection detail reports display SCPS Initiate or SCPS Terminate under Connection Information. Under Congestion Control, the report displays the congestion control method that the connection is using.</div>
+      <div class="Heading2"><a name="414004">High-Speed TCP Optimization</a></div>
+      <div class="Body"><a name="414005">The high-speed TCP feature provides acceleration and high throughput for high-bandwidth links (also </a>known as long fat networks, or LFNs) for which the WAN pipe is large but latency is high. High-speed TCP is activated for all connections that have a BDP larger than 100 packets. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="414009">For details about using HS-TCP in data protection scenarios, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="414010">HS-TCP Basic Steps</a></div>
+      <div class="Body"><a name="414011">This table describes the basic steps needed to configure high-speed TCP.</a></div>
+      <table class="RegularTable" style="text-align: left; width: 468.2268pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 261.98064pt">
+            <div class="CellHeading"><a name="414014">Task</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 206.24616pt">
+            <div class="CellHeading"><a name="414016">Reference</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep1_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep1_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">1.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep1_inner"><a name="414018">Enable high-speed TCP support.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceTransportRules.html#396087', '');" title="Configuring TCP, Satellite Optimization, and High-Speed TCP" name="414023">Optimizing TCP and Satellite WANs</a></span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">2.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="414026">Increase the WAN buffers to 2 * Bandwidth Delay Product </a>(BDP). </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent2"><a name="414027">You can calculate the BDP WAN buffer size:</a></div>
+            <div class="CellIndent2"><a name="414028">Buffer size in bytes = 2 * bandwidth (in bits per sec) * delay </a>(in sec) / 8 (bits per byte)</div>
+            <div class="CellIndent2"><a name="414029">Example: For a link of 155 Mbps and 100 ms round-trip </a>delay.</div>
+            <div class="CellIndent2"><a name="414030">Bandwidth = 155 Mbps = 155000000 bps</a></div>
+            <div class="CellIndent2"><a name="414031">Delay = 100 ms = 0.1 sec</a></div>
+            <div class="CellIndent2"><a name="414032">BDP = 155 000 000 * 0.1 / 8 = 1937500 bytes Buffer size in </a>bytes = 2 * BDP = 2 * 1937500 = 3 875 000 bytes.</div>
+            <div class="CellIndent2"><a name="414033">If this number is greater than the default (256 KB), enable </a>HS-TCP with the correct buffer size.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="414038"> </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceTransportRules.html#582578', '');" title="Configuring TCP, Satellite Optimization, and High-Speed TCP">To configure buffer settings</a></span>.</div>
+            <div class="CellBody"><a name="414039">&nbsp;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">3.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="414041">Increase the LAN buffers to 1 MB.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="414046"> </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceTransportRules.html#582578', '');" title="Configuring TCP, Satellite Optimization, and High-Speed TCP">To configure buffer settings</a></span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">4.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="414048">Enable in-path support.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="414052"> </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceGeneral.html#249507', '');" title="Configuring General Service Settings">Configuring General Service Settings</a></span>.</div>
+          </td>
+        </tr>
+      </table>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

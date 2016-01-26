@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--
+  This fixes transparent PNGs on MSIE6.  The code is based loosely on:
+
+    http://webfx.eae.net/dhtml/pngbehavior/pngbehavior.html
+
+  Note that this simplified implementation, unlike the original,
+  doesn't handle changing SRC on the fly.
+-->
+
+<PUBLIC:COMPONENT>
+
+<SCRIPT type="text/javascript">
+//<![CDATA[
+
+var src = element.src;
+var blankSrc = '/images/bgfix.gif';
+
+// We only apply the filter to PNGs.
+if (src.substr(src.length - 3, 3) == 'png') {
+    element.src = blankSrc;
+    element.runtimeStyle.filter =
+        'progid:DXImageTransform.Microsoft.AlphaImageLoader(' +
+        'src="' + src + '",sizingMethod="scale")';
+}
+
+//]]>
+</SCRIPT>
+</PUBLIC:COMPONENT>

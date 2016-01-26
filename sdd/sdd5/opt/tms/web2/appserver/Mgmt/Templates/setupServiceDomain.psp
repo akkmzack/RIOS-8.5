@@ -1,0 +1,564 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceDomain.psp
+##
+## Windows Domain Settings
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="time, Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, domainHealthCheck" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.logWarning {
+  color: #bb7700;
+  font-weight: bold;
+  font-style: normal;
+}
+.logError {
+  color: #DD0000;
+  font-weight: bold;
+  font-style: normal;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    nodes = ['/rbt/rcu/manage_user',
+             '/rbt/rcu/action/smb_global_config',
+             '/rbt/rcu/samba/config/server_signing',
+             '/rbt/rcu/samba/config/deadtime']
+    nodes.extend(domainHealthCheck.getPageletNodes())
+    return nodes
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'domain_required': NodeEntry(
+            name='domain_required',
+            path='/rbt/rcu/domain/config/domain_required',
+            widget='radio',
+            label={'true': 'Domain Settings', 'false': 'Local Workgroup Settings'},
+            action='domainLocalFormButtonAdjustor()'),
+        'domain_name': NodeEntry(
+            name='domain_name',
+            path='/rbt/rcu/domain/config/realm',
+            label='Active Directory Domain Name / Realm',
+            hint='(Example: eng.example.com, example.com)',
+            validate='nonempty'),
+        'domain_login': NodeEntry(
+            name='domain_login',
+            path='/rbt/rcu/domain/config/login',
+            widgetClass='account',
+            label='Domain Login',
+            hint='(must have domain join privileges)',
+            validate='nonempty'),
+        'domain_password': NodeEntry(
+            name='domain_password',
+            widget='password',
+            label='Password',
+            validate='nonempty',
+            hint='(not stored; used only for this domain operation)'),
+        'domain_controllers': NodeEntry(
+            name='domain_controllers',
+            path='/rbt/rcu/domain/config/dc_list',
+            label='Domain Controller Name(s)',
+            tooltip='If the account type is Windows 2008 and later, the Domain Controller Names list is required.',
+            hint='(comma delimited)'),
+        'domain_shortName': NodeEntry(
+            name='domain_shortName',
+            label='Short Domain Name',
+            hint='(optional)'),
+        'domain_joinAcctType': NodeEntry(
+            name='domain_joinAcctType',
+            path='/rbt/rcu/domain/config/join_type',
+            label='Join Account Type',
+            selectOptions=[('workstation', 'Workstation'), ('bdc', 'Active Directory integrated (Windows 2003)'), ('rodc', 'Active Directory integrated (Windows 2008 and later)')],
+            filter=lambda x: x == '' and 'workstation' or x), # for a blank string, use 'workstation'
+
+        'workgroupName': NodeEntry(
+            name='workgroupName',
+            path='/rbt/rcu/domain/config/workgroup',
+            label='Workgroup Name',
+            validate='name'),
+        'addUser_user': NodeEntry(
+            name='addUser_user',
+            widgetClass='account',
+            label='User',
+            validate='nonempty'),
+        'addUser_password': NodeEntry(
+            name='addUser_password',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'addUser_passwordConfirm': NodeEntry(
+            name='addUser_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password')
+    }
+</psp:method>
+
+
+<%
+self.relatedPages = ('setupServiceProtocolsCIFS',
+                     'setupServiceProtocolsSMB2',
+                     'setupServiceProtocolsMAPI',
+                     'setupPFS_settings',
+                     'setupPFS_shares')
+
+mgmt = self.session().value('mgmt')
+
+dialogEntries = self.dialogEntries()
+
+primaryDnsIp = Nodes.present(mgmt, '/resolver/nameserver/1/address')
+rcudStatus = Nodes.present(mgmt, '/pm/monitor/process/rcud/state')
+
+# check if the rcud is terminated
+if rcudStatus != 'running': {
+    self.getPagePresentationServlet().setFormError('Internal Error. Unable to communicate with process rcud.')
+    self.beginPagelet()
+    self.endPagelet() # end the page here because the nodes won't work without rcud
+    return
+}
+
+self.beginPagelet()
+
+# these nodes can crash the ui when rcud is stopped
+shortDomainName = Nodes.present(mgmt, '/rbt/rcu/domain/config/workgroup')
+domainMode = 'true' == Nodes.present(mgmt, '/rbt/rcu/domain/config/domain_required')
+domainStatus = Nodes.present(mgmt, '/rbt/rcu/domain/status')
+domainStatusMore = '<br />'
+if 'true' == Nodes.present(mgmt,
+                       r'/stats/state/alarm/domain_join_error/node/\/rbt\/rcu\/state\/domain_join_error/rising/error'): {
+    domainStatusMore = '<br /><br /><span class="logError">' + \
+                   Nodes.present(mgmt, '/rbt/rcu/state/domain_join_error_msg') + \
+                   '</span>'
+}
+
+# dialogEntries['workgroupName'].value = shortDomainName
+dialogEntries['domain_shortName'].value = shortDomainName
+
+%>
+
+<form method="post"
+      action="/mgmt/gui?p=setupServiceDomain"
+      id="domainLocalForm">
+  <fieldset>
+    <legend>Domain / Local</legend>
+    <div class="midLevel">
+      <%= dialogEntries['domain_required'].html(self, value='true') %>
+      <%= dialogEntries['domain_required'].html(self, value='false') %>
+    </div>
+    <%= FormUtils.formSubmitButtons(self, {
+            'name': 'domainLocalSelect',
+            'value': 'Select',
+            'onclick': 'return domainLocalSwitch(this)',
+            'filter': 'domainLocalFormButtonAdjustor' }) %>
+    <div class="midLevel">
+      <span id="domainLocalStatusDisplay">
+<%= (domainMode and 'In Domain Mode' or 'In Local Workgroup Mode') +
+    ', status: ' + domainStatus + domainStatusMore %>
+      </span>
+    </div>
+  </fieldset>
+</form>
+
+<form method="post"
+      action="/mgmt/gui?p=setupServiceDomain"
+      id="settingsForm">
+
+<% if domainMode: { %>
+
+  <fieldset>
+    <legend>Domain Settings</legend>
+
+    <div id="domainSettings" class="topLevel">
+      <div class="midLevel">
+        <table>
+          <%= dialogEntries['domain_name'].html(self) %>
+          <tr>
+            <td class="label">Primary DNS IP Address:</td>
+            <td><a href="/mgmt/gui?p=setupHostSettings"><%= primaryDnsIp %></a></td>
+          </tr>
+          <%= dialogEntries['domain_joinAcctType'].html(self) %>
+          <%= dialogEntries['domain_login'].html(self) %>
+          <%= dialogEntries['domain_password'].html(self) %>
+          <%= dialogEntries['domain_controllers'].html(self) %>
+          <%= dialogEntries['domain_shortName'].html(self) %>
+        </table>
+      </div>
+      <div class="midLevel">
+        <p>
+        Note: The Short Domain Name is required if the NetBIOS domain
+        name does not match the first portion of the Active Directory
+        Domain Name.
+        </p>
+      </div>
+      <p>
+        Kerberos authentication requires that time difference between
+        the Steelhead and Domain Controller clocks be less than 30
+        seconds.  The <a href="/mgmt/gui?p=setupHostSettings#dateAndTime">
+        current time</a> on this Steelhead is:
+      </p>
+      <p class="indent">
+        <tt id="currentUtcTime"></tt>
+        <br />
+        <tt id="currentLocalTime"></tt>
+      </p>
+      <%= FormUtils.formSubmitButtons(self,
+              {
+                  'name': 'domainJoin',
+                  'value': ('In a domain' == domainStatus) and 'Rejoin' or 'Join',
+                  'onclick': 'return domainControlClick(this)',
+              },
+              {
+                  'name': 'domainLeave',
+                  'value': 'Leave',
+                  'onclick': 'return domainControlClick(this)',
+              },
+              {
+                  'name': 'domainCancel',
+                  'value': 'Cancel',
+                  'onclick': 'return domainControlClick(this)',
+                  'filter': 'settingsFormButtonAdjustor',
+              }) %>
+      <div class="midLevel">
+        <span id="domainStatusDisplay"><br /></span>
+      </div>
+    </div>
+  </fieldset>
+
+<%
+}
+else: {
+
+userTable = ajaxentrytable.AjaxEntryTable('user',
+    url='/mgmt/xmldata?p=pfsWorkgroupUsers',
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'),
+                'Users'),
+    rowSpec="[AjaxEntryTable.tdSelectCheckbox('id', 'selectedUser_'), AjaxEntryTable.tdAttr('id')]",
+    emptyMessage='No current users.',
+    addButtonText='Add a New User',
+    addButtonName='addWorkgroupUser',
+    removeName='removeUsers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedUser_')
+
+userTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['addUser_user'].html(self),
+       dialogEntries['addUser_password'].html(self),
+       dialogEntries['addUser_passwordConfirm'].html(self))
+%>
+
+  <fieldset>
+    <legend>Local Workgroup Settings</legend>
+
+    <div id="workgroupSettings" class="topLevel">
+      <%= dialogEntries['workgroupName'].html(self, format='block') %>
+      <%= FormUtils.formSubmitButtons(self, {'name': 'workgroupJoin',
+                                       'value': 'Join',
+                                       'onclick': 'return workgroupClick(this)'},
+                                      {'name': 'workgroupLeave',
+                                       'value': 'Leave',
+                                       'onclick': 'return workgroupClick(this)'}) %>
+      <div class="midLevel">
+        <span id="workgroupStatusDisplay"> </span>
+      </div>
+    </div>
+    <div class="topLevel">
+      <%= userTable.html(self, 'midLevel') %>
+    </div>
+    <input type="hidden" name="_action_" value="pfsSettings" />
+  </fieldset>
+
+<% } %>
+
+</form>
+
+<%= domainHealthCheck.DomainHealthCheck.makeSections(self, [("test_section", "testdns testjoin authtest")], False) %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+// Updates the button in the Domain/Local section.
+function domainLocalFormButtonAdjustor(buttonEl, isValid) {
+    var form = $('domainLocalForm');
+    var enable = radioValue(form, 'domain_required') != <%= domainMode and "'true'" or "'false'" %>;
+    enableElements(form.domainLocalSelect, enable);
+    return enable;
+}
+
+<% if not domainMode: { %>
+
+userTable.updateHook = function() {
+    var form = $('settingsForm');
+    // disable workgroup name if the user is focused on this table
+    form.workgroupName.disabled = (false != this.editMode);
+}
+
+<% } %>
+
+// Updates the buttons on the Settings form, either mode.
+// (hack: old-style adjustor attached to Domain Cancel button -hkao)
+function settingsFormButtonAdjustor(buttonEl, isValid) {
+    var form = $('settingsForm');
+    var domainMode = <%= domainMode and 'true' or 'false' %>;
+    var domainStatus = '<%= domainStatus %>';
+    if (domainMode) {
+        var inDomain = 'In a domain' == domainStatus;
+        enableElements(form.domainJoin, isValid && (('Rejoin' == form.domainJoin.value) || !inDomain));
+        enableElements(form.domainLeave, inDomain);
+        enableElements(form.domainCancel, false);
+    } else {
+        var inWorkgroup = 'In a workgroup' == domainStatus;
+        enableElements(form.workgroupJoin, isValid && !inWorkgroup);
+        enableElements(form.workgroupLeave, isValid && inWorkgroup);
+    }
+    // this adjustor function usurps the regular submit button adjustment
+    // so we need to attend to that
+    if (form.addWorkgroupUser) {
+        form.addWorkgroupUser.disabled = !isValid;
+    }
+
+    // the Domain Cancel button is always disabled by this function
+    return false;
+}
+
+//Validator.addFormButtonAdjustor('settingsForm', settingsFormButtonAdjustor);
+
+// This updater is used by botton clicks to follow the status, wait
+// for a goal (or decide it's not going to happen), and refresh the
+// screen.
+
+var controlError = false;
+
+function follow(section, op, progressMessage) {
+    var count = 0;
+    var statusFollower = new AjaxUpdater('/mgmt/xmldata?p=pfsStatus', true);
+    var done = false;
+    statusFollower.repeatTime = 1000;
+    statusFollower.update = function(request) {
+        if (controlError) {
+            statusFollower.cancel();
+            return;
+        }
+        if (!request.responseXML) {
+            return;
+        }
+        var el = request.responseXML.documentElement.firstChild;
+        var status = el.getAttribute('domain-status');
+        count++;
+
+        if ('domainlocal' == section) {
+        // domain / local switch
+            var domainRequired = el.getAttribute('domain-required');
+            if (op == domainRequired) {
+                // made it... might take this out
+                if ('true' == op) {
+                    setElementText('domainLocalStatusDisplay', 'Now in Domain mode.');
+                } else {
+                    setElementText('domainLocalStatusDisplay', 'Now in Local mode.');
+                }
+                done = true;
+            } else {
+                setElementText('domainLocalStatusDisplay', progressMessage);
+            }
+        } else if ('domain' == section) {
+            // domain operation, done for any of these cases
+            var domainName = el.getAttribute('domain-name');
+            if ((('join' == op) &&
+                 // join goal:  (we have to wait for the domain name also)
+                 // (for rejoining we need to wait also)
+                 ((('In a domain' == status) && domainName && (8 <= count)) ||
+
+                  // join fail: (went back to 'Not configured')
+                  (('Not configured' == status) && (8 <= count)))) ||
+
+                (('leave' == op) &&
+                 // leave goal:
+                 (('Not configured' == status) ||
+
+                  // leave fail: (went back to 'In a domain')
+                  (('In a domain' == status) && (4 <= count)))) ||
+
+                (('cancel' == op) &&
+                 // cancel timeout
+                 (4 <= count)))  {
+                setElementText('domainStatusDisplay', status);
+                done = true;
+            } else {
+                setElementText('domainStatusDisplay', progressMessage);
+            }
+        } else if ('local' == section) {
+            // local workgroup operation, done for any of these cases
+            var workgroupName = el.getAttribute('workgroup-name');
+            if ((('join' == op) &&
+                 // join goal: (we have to wait for the workgroup name also)
+                 ((('In a workgroup' == status) && workgroupName) ||
+
+                  // join fail: (went back to 'Not configured')
+                  (('Not configured' == status) && (4 <= count)))) ||
+
+                (('leave' == op) &&
+                 // leave goal:
+                 (('Not configured' == status) ||
+
+                  // leave fail: (went back to 'In a workgroup')
+                  (('In a workgroup' == status) && (4 <= count)))))  {
+                setElementText('workgroupStatusDisplay', status);
+                done = true;
+            } else {
+                setElementText('workgroupStatusDisplay', progressMessage);
+            }
+        }
+        if (done) {
+            // cancel the updater and refresh the page
+            statusFollower.cancel();
+            $('domainLocalForm').submit();
+        } else {
+            progressMessage += '.';
+        }
+    }
+    statusFollower.sendRequest();
+}
+
+// Respond to the Domain / Local Select switch.
+function domainLocalSwitch() {
+    // 'true' (domain) or 'false' (local workgroup)
+    var toDomainMode = radioValue('domainLocalForm', 'domain_required');
+    sendControl('domainLocalStatusDisplay', 'setRequireDomain', toDomainMode);
+    var msg = ('true' == toDomainMode) ? 'Changing to Domain Settings..' : 'Changing to Local Settings..';
+    follow('domainlocal', toDomainMode, msg);
+    return false;
+}
+
+// Handle the Domain Settings buttons (join, leave, cancel).
+function domainControlClick(el) {
+    var form = el.form;
+    enableElements(form.domainJoin, false);
+    enableElements(form.domainLeave, false);
+    enableElements(form.domainCancel, true);
+    switch (el.name) {
+    case 'domainJoin':
+        if ('Join' == form.domainJoin.value) {
+            follow('domain', 'join', 'Joining domain...');
+        sendControl('domainStatusDisplay',
+               'domain', 'join',
+               'domain_realm', form.domain_name.value,
+               'domain_login', form.domain_login.value,
+               'domain_password', form.domain_password.value,
+               'domain_controllers', form.domain_controllers.value,
+               'domain_shortname', form.domain_shortName.value,
+               'domain_jointype', form.domain_joinAcctType.value);
+        } else {
+            follow('domain', 'join', 'Rejoining domain...');
+        sendControl('domainStatusDisplay',
+               'domain', 'rejoin',
+               'domain_login', form.domain_login.value,
+               'domain_password', form.domain_password.value,
+               'domain_controllers', form.domain_controllers.value,
+               'domain_shortname', form.domain_shortName.value,
+               'domain_jointype', form.domain_joinAcctType.value);
+        }
+        break;
+
+    case 'domainLeave':
+        follow('domain', 'leave', 'Leaving domain...');
+        sendControl('domainStatusDisplay',
+                    'domain', 'leave',
+                    'domain_login', form.domain_login.value,
+                    'domain_password', form.domain_password.value);
+        break;
+
+    case 'domainCancel':
+    enableElements(form.domainCancel, false);
+        setElementText('domainStatusDisplay', 'Cancelling...');
+        sendControl('domainStatusDisplay', 'domain', 'cancel');
+        follow('domain', 'cancel', 'Cancelling...');
+        break;
+    }
+    return false;
+}
+
+// Handle the Local Workgroup Settings buttons (join/rejoin leave).
+function workgroupClick(el) {
+    switch (el.name) {
+        case 'workgroupJoin':
+            sendControl('workgroupStatusDisplay',
+                           'workgroup', 'join',
+                           'workgroupName', el.form.workgroupName.value);
+            follow('local', 'join', 'Joining local workgroup...');
+            break;
+        case 'workgroupLeave':
+            sendControl('workgroupStatusDisplay',
+                           'workgroup', 'leave');
+            follow('local', 'leave', 'Leaving local workgroup...');
+            break;
+        }
+    return false;
+}
+
+// Send out a control command.
+// If there's a response, place it in the responseDiv.
+function sendControl(responseDiv, nameValuePairs) {
+    var req = newAjaxRequest('/mgmt/xmldata?p=pfsControl');
+    var params = [];
+    for (var i = 1; i < arguments.length; ) {
+        params.push(encodeURIComponent(arguments[i++]) + '=' + encodeURIComponent(arguments[i++]));
+    }
+    if (responseDiv) {
+        setReadyStateChangeFunc(req,
+            function() {sendControlReply(req, responseDiv);});
+    }
+    req.send(params.join('&'));
+}
+
+function sendControlReply(req, responseDiv) {
+    if ((4 == req.readyState) && req.responseXML) {
+        var el = req.responseXML.documentElement.firstChild;
+        controlError = ('error' == el.tagName);
+        if (el.childNodes && el.childNodes.length) {
+            setElementText(responseDiv, el.firstChild.data);
+        }
+        if (controlError) {
+            adjustElementClass(responseDiv, 'logWarning', null);
+        } else {
+            adjustElementClass(responseDiv, null, 'logWarning');
+        }
+    }
+}
+
+// update the system time every 5 seconds
+Y.on('domready', function() {
+
+    function performTimeUpdate() {
+        performRemoteCall('domainTime', {}, function(responseEl) {
+            setElementText(
+                'currentUtcTime', responseEl.getAttribute('utcTime'));
+            setElementText(
+                'currentLocalTime', responseEl.getAttribute('localTime'));
+            Y.later(5000, null, performTimeUpdate);
+        });
+    }
+
+    performTimeUpdate();
+});
+
+// -->
+</script>
+

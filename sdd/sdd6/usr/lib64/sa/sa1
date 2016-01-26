@@ -1,0 +1,23 @@
+#!/bin/sh
+# PREFIX/lib64/sa/sa1
+# (C) 1999-2004 Sebastien Godard (sysstat <at> wanadoo.fr)
+#
+umask 0022
+DATE=`date +%d`
+ENDIR=/usr/lib64/sa
+DFILE=/var/log/sa/sa${DATE}
+
+# Clean old log files (cwong@riverbed.com)
+# Remove tomorrow's sa file.
+TOMORROW=`date -d "tomorrow" "+%d"`
+OLDDATE=/var/log/sa/sa${TOMORROW}
+rm -f $OLDDATE
+
+cd ${ENDIR}
+if [ $# = 0 ]
+then
+       exec ${ENDIR}/sadc -F -L 1 1 ${DFILE}
+else
+       exec ${ENDIR}/sadc -F -L $* ${DFILE}
+fi
+

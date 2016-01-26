@@ -1,0 +1,145 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceDatastore.psp
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupVault', 'reportDatastore') %>
+
+<psp:method name="css">
+    return '''
+.warningIcon {
+ border: none;
+ vertical-align: text-bottom;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'encType': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/config/encryption_type',
+            selectOptions= (('NONE', 'None'),
+                             'AES_128',
+                             'AES_192',
+                             'AES_256'),
+            label='Data Store Encryption Type'),
+        'enableSync': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Automated Data Store Synchronization',
+            enableDiv='syncSubsection'),
+        'enableBranchWarming': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/config/branch_warm',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Branch Warming for Steelhead Mobile Clients'),
+        'master': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/master',
+            type='bool',
+            selectOptions=(('true', 'Master'), ('false', 'Backup')),
+            label='Current Appliance'),
+        'peerIp': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/peer',
+            # The node for the peer IP address is of type ipv4addr, so it must
+            # always hold a valid IP address, even if datastore syncing hasn't
+            # been configured yet.  Rather than display 0.0.0.0 (the default
+            # value) in the UI, show an empty text field instead.
+            filter=(lambda x: (x != '0.0.0.0') and x or ''),
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='Peer IP Address',
+            # Datastore syncing actually does work over any interface, but it
+            # hasn't been fully tested and its performance consequences are
+            # unknown.  As such, the UI and all our customer-facing docs tell
+            # the user that primary or aux must be used.  See bug 99985.
+            tooltip="Use the IP address of the peer's primary or aux interface."),
+        'syncPort': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/port',
+            type='uint16',
+            validate='port',
+            widgetClass='port',
+            label='Synchronization Port'),
+        'recon': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/reconnect_seconds',
+            type='uint32',
+            validate=('intInRange', '[5, null]'),
+            widgetClass='small',
+            label='Reconnection Interval (seconds)'),
+        'dataStore': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/notification/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Data Store Wrap Notifications',
+            enableDiv='dataStoreSubsection'),
+        'dataStoreWrap': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/notification/config/expected_wrap_time',
+            type='uint32',
+            widgetClass='small',
+            label='Threshold',
+            units='days'),
+}
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+
+  <fieldset>
+    <legend>General Settings</legend>
+    <div class="midLevel">
+      <table>
+        <% policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+           if policyType: { %>
+               <%= nodeEntries['encType'].html(self, hint='<img class="popupTitle warningIcon" title="For this change to take effect, the optimization service on the appliance must be restarted with the &quot;Clear Data Store&quot; option. Once the data store is cleared, client performance will be degraded until the data store is repopulated." width="16" height="16" alt="warning" src="/images/exclamation_warning_transparent.png" />')%>
+        <% } else: { %>
+               <%= nodeEntries['encType'].html(self, hint='<img class="popupTitle warningIcon" title="For this change to take effect, the optimization service must be restarted with the &quot;Clear Data Store&quot; option. Once the data store is cleared, client performance will be degraded until the data store is repopulated." width="16" height="16" alt="warning" src="/images/exclamation_warning_transparent.png" />')%>
+        <% } %>
+      </table>
+    </div>
+
+    <div class="midLevel">
+      <%= nodeEntries['enableSync'].html(self) %>
+      <div id="syncSubsection" class="indent">
+        <table>
+          <%= nodeEntries['master'].html(self) %>
+          <%= nodeEntries['peerIp'].html(self) %>
+          <%= nodeEntries['syncPort'].html(self) %>
+          <%= nodeEntries['recon'].html(self) %>
+       </table>
+      </div>
+      <%= nodeEntries['enableBranchWarming'].html(self) %>
+    </div>
+
+    <div class="midLevel">
+      <%= nodeEntries['dataStore'].html(self) %>
+      <div id="dataStoreSubsection" class="indent">
+        <table>
+          <%= nodeEntries['dataStoreWrap'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+<% self.endPagelet() %>

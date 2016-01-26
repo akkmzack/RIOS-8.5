@@ -1,0 +1,328 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc.  All rights reserverd.
+##
+## Quality of Path config page (known externally as Path Selection).
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils, qos" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.addEditTopHeader, .addEditHeader {
+    font-weight: bold;
+    padding-bottom: 0.5em;
+    vertical-align: bottom;
+}
+.addEditTopHeader {
+    height: 0em;
+}
+.addEditHeader {
+    height: 3em;
+}
+.pathUp {
+    /* No style for now. Reserved for future styling if needed. */
+}
+.pathDown {
+    color: red;
+}
+.qopSettingsMessage {
+    font-style: italic;
+    padding-bottom: 2px;
+    padding-top: 5px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    mgmt = self.session().value('mgmt')
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(self.request().fields())
+
+    entries = {
+        'enableQoP': NodeEntry(
+            path='/rbt/pathmon/qop/config/global/enable',
+            type='bool',
+            name='enableQoP',
+            widget='checkboxLeft',
+            label='Enable Path Selection'),
+    }
+
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries" params="mgmt">
+    inpathIfaces = [x for x in
+                    Nodes.getMgmtLocalChildrenNames(mgmt, '/net/interface/state')
+                    if x.startswith('inpath')]
+    return {
+        'pathName': NodeEntry(name='pathName',
+            label='Name',
+            validate='qosName'),
+        'pathRemoteIpAddr': NodeEntry(name='pathRemoteIpAddr',
+            label='Remote IP Address',
+            validate='ipv4addr',
+            tooltip='Address probed to determine if the path is reachable.'),
+        'pathGatewayIpAddr': NodeEntry(name='pathGatewayIpAddr',
+            label='Gateway IP Address',
+            validate='ipv4addr',
+            inputOptional=True,
+            tooltip='Address of the "next hop" gateway for the path.'),
+        'pathIface': NodeEntry(name='pathIface',
+            label='Interface',
+            selectOptions=inpathIfaces),
+        'pathProbeDSCP': NodeEntry(name='pathProbeDSCP',
+            label='DSCP',
+            tooltip='DSCP mark set for the probe packet.',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([], True)),
+        'pathProbeTimeout': NodeEntry(name='pathProbeTimeout',
+            label='Timeout',
+            widgetClass='xsmall',
+            validate=('intInRange', '[1, 4294967295]'),
+            units='seconds',
+            value='2'),
+        'pathProbeThreshold': NodeEntry(name='pathProbeThreshold',
+            label='Threshold',
+            widgetClass='xsmall',
+            tooltip='Number of timed out probes before a path is considered down, and number of received probes before a path is considered up.',
+            units='packets',
+            validate=('intInRange', '[1, 65535]'),
+            value='3'),
+
+    }
+</psp:method>
+
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(mgmt)
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+%>
+
+<% self.beginPagelet() %>
+
+<!-- Start of QoP Global Settings -->
+<form id="qopSettingsForm" method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupQoPDefaults" />
+  </div>
+  <fieldset>
+    <legend>Path Selection Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableQoP'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<!-- End of QoP Global Settings -->
+
+<%
+
+# CMC policy has a different header and row info
+if policyType: {
+    # table header
+    qopPathHeaderSpec = ('',
+                         ('Name', '', "sortAttrib('pathname')"),
+                         ('Remote IP', '', "sortAttrib('remoteip')"),
+                         ('Probe DSCP', '', "sortAttrib('prettyprobedscp')"))
+
+    # table row
+    qopPathRowSpec ="""
+[AjaxEntryTable.tdSelectCheckbox('pathid', 'selectedPath_'),
+ AjaxEntryTable.tdAttrTreeEdit('pathname', 'pathname'),
+ AjaxEntryTable.tdAttr('remoteip'),
+ AjaxEntryTable.tdAttr('prettyprobedscp')]"""
+
+    # add div html
+    qopPathAddHtml = """
+<div class="midLevel">
+  <table>
+    <tr><td colspan="3" class="addEditTopHeader">Path Definition:</td></tr>
+    %(pathName)s
+    <tr><td colspan="3" class="addEditHeader">Probe Packet Settings:</td></tr>
+    %(pathRemoteIpAddr)s
+    %(pathProbeDSCP)s
+    %(pathProbeTimeout)s
+    %(pathProbeThreshold)s
+  </table>
+</div>
+""" % {
+         'pathName':           dialogEntries['pathName'          ].html(self, namePrefix='add_'),
+         'pathRemoteIpAddr':   dialogEntries['pathRemoteIpAddr'  ].html(self, namePrefix='add_'),
+         'pathProbeDSCP':      dialogEntries['pathProbeDSCP'     ].html(self, namePrefix='add_'),
+         'pathProbeTimeout':   dialogEntries['pathProbeTimeout'  ].html(self, namePrefix='add_'),
+         'pathProbeThreshold': dialogEntries['pathProbeThreshold'].html(self, namePrefix='add_'),}
+
+    # edit div html
+    qopPathEditHtml = """
+<div class="midLevel">
+  <table>
+    <tr><td colspan="3" class="addEditTopHeader">Path Settings:</td></tr>
+    %(pathName)s
+    <tr><td colspan="3" class="addEditHeader">Probe Packet Settings:</td></tr>
+    %(pathRemoteIpAddr)s
+    %(pathProbeDSCP)s
+    %(pathProbeTimeout)s
+    %(pathProbeThreshold)s
+  </table>
+</div>
+""" % {
+         'pathName':           dialogEntries['pathName'          ].html(self, namePrefix='edit_'),
+         'pathRemoteIpAddr':   dialogEntries['pathRemoteIpAddr'  ].html(self, namePrefix='edit_'),
+         'pathProbeDSCP':      dialogEntries['pathProbeDSCP'     ].html(self, namePrefix='edit_'),
+         'pathProbeTimeout':   dialogEntries['pathProbeTimeout'  ].html(self, namePrefix='edit_'),
+         'pathProbeThreshold': dialogEntries['pathProbeThreshold'].html(self, namePrefix='edit_'),}
+} else: {
+    # table header
+    qopPathHeaderSpec = ('',
+                         ('Name', '', "sortAttrib('pathname')"),
+                         ('Remote IP', '', "sortAttrib('remoteip')"),
+                         ('Gateway IP', '', "sortAttrib('gatewayip')"),
+                         ('Interface', '', "sortAttrib('iface')"),
+                         ('Status', '', "sortAttrib('status')"),
+                         ('Probe DSCP', '', "sortAttrib('prettyprobedscp')"))
+
+    # table row
+    qopPathRowSpec ="""
+[AjaxEntryTable.tdSelectCheckbox('pathid', 'selectedPath_'),
+ AjaxEntryTable.tdAttrTreeEdit('pathname', 'pathname'),
+ AjaxEntryTable.tdAttr('remoteip'),
+ AjaxEntryTable.tdAttr('gatewayip'),
+ AjaxEntryTable.tdAttr('iface'),
+ AjaxEntryTable.tdAttrStyle('status', 'statusCss'),
+ AjaxEntryTable.tdAttr('prettyprobedscp')]"""
+
+    # add div html
+    qopPathAddHtml = """
+<div class="midLevel">
+  <table>
+    <tr><td colspan="3" class="addEditTopHeader">Path Definition:</td></tr>
+    %(pathName)s
+    %(pathGatewayIpAddr)s
+    %(pathIface)s
+    <tr><td colspan="3" class="addEditHeader">Probe Packet Settings:</td></tr>
+    %(pathRemoteIpAddr)s
+    %(pathProbeDSCP)s
+    %(pathProbeTimeout)s
+    %(pathProbeThreshold)s
+  </table>
+</div>
+""" % {
+         'pathName':           dialogEntries['pathName'          ].html(self, namePrefix='add_'),
+         'pathRemoteIpAddr':   dialogEntries['pathRemoteIpAddr'  ].html(self, namePrefix='add_'),
+         'pathGatewayIpAddr':  dialogEntries['pathGatewayIpAddr' ].html(self, namePrefix='add_'),
+         'pathIface':          dialogEntries['pathIface'         ].html(self, namePrefix='add_'),
+         'pathProbeDSCP':      dialogEntries['pathProbeDSCP'     ].html(self, namePrefix='add_'),
+         'pathProbeTimeout':   dialogEntries['pathProbeTimeout'  ].html(self, namePrefix='add_'),
+         'pathProbeThreshold': dialogEntries['pathProbeThreshold'].html(self, namePrefix='add_'),}
+
+    # edit div html
+    qopPathEditHtml = """
+<div class="midLevel">
+  <table>
+    <tr><td colspan="3" class="addEditTopHeader">Path Settings:</td></tr>
+    %(pathName)s
+    %(pathGatewayIpAddr)s
+    %(pathIface)s
+    <tr><td colspan="3" class="addEditHeader">Probe Packet Settings:</td></tr>
+    %(pathRemoteIpAddr)s
+    %(pathProbeDSCP)s
+    %(pathProbeTimeout)s
+    %(pathProbeThreshold)s
+  </table>
+</div>
+""" % {
+         'pathName':           dialogEntries['pathName'          ].html(self, namePrefix='edit_'),
+         'pathRemoteIpAddr':   dialogEntries['pathRemoteIpAddr'  ].html(self, namePrefix='edit_'),
+         'pathGatewayIpAddr':  dialogEntries['pathGatewayIpAddr' ].html(self, namePrefix='edit_'),
+         'pathIface':          dialogEntries['pathIface'         ].html(self, namePrefix='edit_'),
+         'pathProbeDSCP':      dialogEntries['pathProbeDSCP'     ].html(self, namePrefix='edit_'),
+         'pathProbeTimeout':   dialogEntries['pathProbeTimeout'  ].html(self, namePrefix='edit_'),
+         'pathProbeThreshold': dialogEntries['pathProbeThreshold'].html(self, namePrefix='edit_'),}
+}
+
+qopPathTable = ajaxentrytable.AjaxEntryTable('qopPath',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=qopPaths'),
+    titleText='Path Selections',
+    headerSpec=qopPathHeaderSpec,
+    rowSpec=qopPathRowSpec,
+    emptyMessage='No paths configured.',
+    addButtonText='Add a New Path',
+    addButtonName='addQoPPath',
+    removeButtonText='Remove Selected Paths',
+    removeName='removeQoPPath',
+    removePrefix='selectedPaths_',
+    editButtonName='editQoPPath')
+
+qopPathTable.addDivContent = qopPathAddHtml
+
+qopPathTable.editDivContent = qopPathEditHtml
+%>
+
+<!-- Start of AET for QoP Paths -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="qopForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupQoPPaths" />
+    <input type="hidden" name="edit_pathId" value="" />
+    <input type="hidden" name="edit_oldPathName" value="" />
+    <%= qopPathTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<!-- End of AET for QoP Paths -->
+
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+function uint16_csv(val) {
+    var valueList = val.split(',');
+
+    if (valueList.length == 0) {
+        throw 'Must contain at least 1 port number.';
+    }
+
+    for (var i = 0; i < valueList.length; i++) {
+        valueList[i] = valueList[i].trim();
+        if (!valueList[i].match(/^\d+$/) ||
+                (parseInt(valueList[i], 10) == 0) ||
+                !(parseInt(valueList[i], 10) < (1 << 16))) {
+            throw 'Comma separated integers between 1 and 65535 required.';
+        }
+    }
+}
+
+
+qopPathTable.editEntry = function(id) {
+    var formEl = $('qopForm');
+    var el = qopPathTable.editXMLElement;
+
+    var gatewayVal = el.getAttribute('gatewayip');
+    if (gatewayVal == '--') {
+        gatewayVal = '';
+    }
+
+    setFormValue(formEl, 'edit_pathId',             el.getAttribute('pathid'));
+    setFormValue(formEl, 'edit_oldPathName',        el.getAttribute('pathname'));
+    setFormValue(formEl, 'edit_pathName',           el.getAttribute('pathname'));
+    setFormValue(formEl, 'edit_pathRemoteIpAddr',   el.getAttribute('remoteip'));
+    <% if not policyType: { %>
+        setFormValue(formEl, 'edit_pathGatewayIpAddr',  gatewayVal);
+        setFormValue(formEl, 'edit_pathIface',          el.getAttribute('iface'));
+    <% } %>
+    setFormValue(formEl, 'edit_pathProbeDSCP',      el.getAttribute('probedscp'));
+    setFormValue(formEl, 'edit_pathProbeTimeout',   el.getAttribute('probetimeout'));
+    setFormValue(formEl, 'edit_pathProbeThreshold', el.getAttribute('probethreshold'));
+}
+
+// ]]>
+</script>

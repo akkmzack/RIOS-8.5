@@ -1,0 +1,689 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsSSLAdvanced.psp
+## SSL Ciphers Page
+##
+##
+## Cipher Reveal
+##
+## Client Ciphers Table
+##
+## Cipher Reveal
+##
+## Server Ciphers
+##
+## Cipher Reveal
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupServiceProtocolsHTTP',
+        'setupVault',
+        'reportSSLStatistics',
+        'reportSSLCerts',
+    )
+%>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableSslChain': NodeEntry(
+            path='/rbt/sport/ssl/config/backend/chain_cert/cache/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SSL Server Certificate Chain Discovery',
+            tooltip='Applies only to the server-side Steelhead.'),
+        'sfeMode': NodeEntry(
+            path='/rbt/sport/ssl/config/global/sfe_mode',
+            widget='radio',
+            label={'Advanced_Only': 'High Security Mode',
+                   'Mixed' : 'Mixed Security Mode'}),
+
+        'peerCipherTable': NodeEntry(
+            path='/rbt/sport/ssl/config/tunnel/ciphers/*'),
+        'clientCipherTable': NodeEntry(
+            path='/rbt/sport/ssl/config/backend/client_ciphers/*'),
+        'serverCipherTable': NodeEntry(
+            path='/rbt/sport/ssl/config/backend/server_ciphers/*'),
+        'peerCipherTableVerboseList' : NodeEntry(
+            path='/rbt/sport/ssl/state/ciphers/peering/verbose_list'),
+        'clientCipherTableVerboseList' : NodeEntry(
+            path='/rbt/sport/ssl/state/ciphers/client/verbose_list'),
+        'serverCipherTableVerboseList' : NodeEntry(
+            path='/rbt/sport/ssl/state/ciphers/server/verbose_list'),
+
+        'dsslt_enable': NodeEntry(
+            path='/rbt/sport/ssl/config/global/client_side/session_reuse/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Distributed SSL Termination',
+            enableDiv='dsslt_enableSection',
+            tooltip='Applies only to the client-side Steelhead.'),
+        'dsslt_timeout': NodeEntry(
+            path='/rbt/sport/ssl/config/global/client_side/session_reuse/timeout',
+            name='dsslt_timeout',
+            type='uint32',
+            widgetClass='small',
+            label='Timeout',
+            units='Hours',
+            hint='(0.1 to 24 hours)',
+            filter=lambda a: a and ('%.1f' % (int(a) / 3600.0)) or '',
+            validate=('floatInRange', '[0.1, 24]')),
+
+        'clientCertificateSupport': NodeEntry(
+            path='/rbt/sport/ssl/config/global/passive_key_derivation_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Client Certificate Support',
+            tooltip='Applies only to the server-side Steelhead.'),
+
+        'enableSSLProxies': NodeEntry(
+            path='/rbt/sport/ssl/config/global/proxy_support',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Applies to both the client-side and server-side Steelhead.',
+            label='Enable SSL Proxy Support'),
+
+        'enableLateStart': NodeEntry(
+            path='/rbt/sport/ssl/config/global/late_start',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Applies to both the client-side and server-side Steelhead.',
+            label='Enable Midsession SSL'),
+
+        'enableSni': NodeEntry(
+            path='/rbt/sport/ssl/config/backend/sni_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SNI',
+            tooltip='Applies only to the server-side Steelhead.'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    return {
+        'addPeerCipher_cipher': NodeEntry(
+            name='addPeerCipher_cipher',
+            widget='select',
+            action='updateCipherHint(\'peerCipherForm\', this)',
+            enableKeyNav=True,
+            label='Cipher'),
+        'addPeerCipher_at': NodeEntry(
+            name='addPeerCipher_at',
+            widget='select',
+            label='Insert Cipher At'),
+        'addClientCipher_cipher': NodeEntry(
+            name='addClientCipher_cipher',
+            widget='select',
+            action='updateCipherHint(\'clientCipherForm\', this)',
+            enableKeyNav=True,
+            label='Cipher'),
+        'addClientCipher_at': NodeEntry(
+            name='addClientCipher_at',
+            widget='select',
+            label='Insert Cipher At'),
+        'addServerCipher_cipher': NodeEntry(
+            name='addServerCipher_cipher',
+            widget='select',
+            action='updateCipherHint(\'serverCipherForm\', this)',
+            enableKeyNav=True,
+            label='Cipher'),
+        'addServerCipher_at': NodeEntry(
+            name='addServerCipher_at',
+            widget='select',
+            label='Insert Cipher At'),
+
+        'import_file': NodeEntry(
+            name='importFile',
+            widget='file',
+            label='Upload File',
+            validate='nonempty'),
+        'import_password': NodeEntry(
+            name='importPassword',
+            widget='password',
+            label='Password to Decrypt',
+            validate='nonempty'),
+
+        'export_includeServers': NodeEntry(
+            name='exportIncludeServers',
+            widget='checkboxLeft',
+            label='Include Server Certificates and Private Keys'),
+        'export_includeAltCfg': NodeEntry(
+            name='exportIncludeAltCfg',
+            widget='checkboxLeft',
+            label='Include SCEP/CRL Configuration'),
+        'export_password': NodeEntry(
+            name='exportPassword',
+            widget='password',
+            label='Password',
+            validate=('password', '[4]')),
+        'export_passwordConfirm': NodeEntry(
+            name='exportPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[4]'))
+    }
+</psp:method>
+
+<%
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+cmc = policyType
+
+def cmcEffectiveCipher(path): {
+    ciphers = Nodes.getMgmtSetEntries(mgmt, pathPrefix + path)
+    if ciphers: {
+        cipherlist = ':'.join([c.get('cipher_string', 'DEFAULT') for k,c in ciphers.iteritems()])
+        return Nodes.present(mgmt, '/rbt/sport/ssl/state/ciphers/%s/verbose_list' % cipherlist)
+    } else: {
+        return ''
+    }
+}
+
+if cmc: {
+    effectivePeerCipher = cmcEffectiveCipher('/rbt/sport/ssl/config/tunnel/ciphers')
+    effectiveClientCipher = cmcEffectiveCipher('/rbt/sport/ssl/config/backend/client_ciphers')
+    effectiveServerCipher = cmcEffectiveCipher('/rbt/sport/ssl/config/backend/server_ciphers')
+} else:{
+    effectivePeerCipher = Nodes.present(mgmt,'/rbt/sport/ssl/state/ciphers/peering/verbose_list')
+    effectiveClientCipher = Nodes.present(mgmt, '/rbt/sport/ssl/state/ciphers/client/verbose_list')
+    effectiveServerCipher = Nodes.present(mgmt, '/rbt/sport/ssl/state/ciphers/server/verbose_list')
+}
+
+###
+# When modifying ciphers, these 3 cipher lists should be kept in sync:
+# cli_rbt_ssl_cmds.py: cipher_options (available cli options)
+# setupServiceProtocolsSSLAdvanced.psp: ciphers (available web UI options)
+# md_ssl.inc.c: cipher_string_choices (strings database will accept)
+
+ciphers = ['DEFAULT', 'HIGH', 'MEDIUM', 'LOW',
+           'EXP', 'EXPORT', 'EXPORT40', 'eNULL',
+           'NULL', 'kRSA', 'RSA', 'aRSA', 'TLSv1.2', 'TLSv1',
+           'SSLv3', 'AES128', 'AES256', 'AESGCM', 'AES', '3DES', 'DES', 'RC4',
+           'RC2', 'MD5', 'SHA1', 'SHA', 'SHA256', 'SHA384',
+
+           'NULL-MD5', 'NULL-SHA', 'EXP-RC4-MD5',
+           'RC4-MD5', 'RC4-SHA', 'EXP-RC2-CBC-MD5',
+           'EXP-DES-CBC-SHA', 'DES-CBC-SHA',
+           'DES-CBC3-SHA',
+
+           'AES128-SHA', 'AES256-SHA']
+
+# Cipher select lists
+cipherNames = [(c)  for c in ciphers]
+
+
+# Peer Ciphers
+dialogEntries['addPeerCipher_cipher'].selectOptions = cipherNames
+peers = Nodes.getMgmtSetEntries(mgmt,
+          pathPrefix + '/rbt/sport/ssl/config/tunnel/ciphers')
+dialogEntries['addPeerCipher_at'].selectOptions = map(str, range(1, len(peers) + 2))
+dialogEntries['addPeerCipher_at'].value = str(len(peers)+1)
+
+# Client Ciphers
+dialogEntries['addClientCipher_cipher'].selectOptions = cipherNames
+clients = Nodes.getMgmtSetEntries(mgmt,
+           pathPrefix + '/rbt/sport/ssl/config/backend/client_ciphers')
+dialogEntries['addClientCipher_at'].selectOptions = map(str, range(1, len(clients) + 2))
+dialogEntries['addClientCipher_at'].value = str(len(clients)+1)
+
+# Server Ciphers
+dialogEntries['addServerCipher_cipher'].selectOptions = cipherNames
+servers = Nodes.getMgmtSetEntries(mgmt,
+            pathPrefix + '/rbt/sport/ssl/config/backend/server_ciphers')
+dialogEntries['addServerCipher_at'].selectOptions = map(str, range(1, len(servers) + 2))
+dialogEntries['addServerCipher_at'].value = str(len(servers)+1)
+
+# Used for javascript below, returns a true/false string.
+def hasDefaultCipher(ciphers): {
+    for cipher in ciphers.itervalues(): {
+        if 'DEFAULT' == cipher.get('cipher_string'): {
+            return 'true'
+        }
+    }
+    return 'false'
+}
+
+self.beginPagelet()
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="sslEnable">
+  <fieldset>
+    <input type="hidden" name="_action_" value="sslAdvanced" />
+    <legend>Chain Discovery</legend>
+    <div class="midLevel">
+        <%= nodeEntries['enableSslChain'].html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend class="popupTitle" title="Applies only to the server-side Steelhead.">Steelhead Mobile Security Mode</legend>
+    <div class="midLevel">
+      <%= nodeEntries['sfeMode'].html(self, value='Advanced_Only', format='inline') %>
+      <div class="midLevel">
+        <div class="indent">
+           Enforce the new Advanced SSL protocol onto SH Mobile clients.
+           This option does not affect SH-to-SH operation.
+        </div>
+      </div>
+      <%= nodeEntries['sfeMode'].html(self, value='Mixed', format='inline') %>
+      <div class="midLevel">
+        <div class="indent">
+          Allow SH Mobile clients to run in any mode.
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Client Side Session Reuse</legend>
+    <div class="midLevel">
+      <%= nodeEntries['dsslt_enable'].html(self) %>
+      <div id="dsslt_enableSection" class="indent">
+        <table>
+          <%= nodeEntries['dsslt_timeout'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Client Authentication</legend>
+    <div class="midLevel">
+      <%= nodeEntries['clientCertificateSupport'].html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Proxies</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableSSLProxies'].html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Midsession SSL</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableLateStart'].html(self) %>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>TLS Extensions</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableSni'].html(self) %>
+    </div>
+  </fieldset>
+
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+peerCipherTable = ajaxentrytable.AjaxEntryTable('peerCipher',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslPeerCiphers'),
+    titleText='<span class="popupTitle" title="Should be configured on both the client-side and server-side Steelheads.">Peer Ciphers</span>',
+    headerSpec=('', 'Rank', 'Cipher String / Suite Name'),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('index', 'selectedPeerCipher_'),
+ AjaxEntryTable.tdEdit('index', 'index'),
+ AjaxEntryTable.tdAttr('name', 'name', 'table_portlabels_name')]""",
+    emptyMessage='No current Peer Ciphers.',
+    addButtonText='Add a New Peer Cipher',
+    addButtonName='addPeerCipher',
+    addButtonOnclick="return validateCipherAdd(this, 'peer') &amp;&amp; submitPrep(this)",
+    removeName='removePeerCiphers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedPeerCipher_',
+    editDivTitle='Cipher List')
+
+peerCipherTable.addDivContent='''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    <tr>
+      <td class="nodeEntry labelPaddedRight">Hint:</td>
+      <td class="nodeEntry">
+        <textarea class="cipherHint" name="cipherHintText" rows="2" cols="50"
+          readonly="readonly">The default cipher list. If specified, must be at number 1.
+        </textarea>
+      </td>
+    </tr>
+  </table>
+</div>
+''' % (dialogEntries['addPeerCipher_cipher'].html(self),
+       dialogEntries['addPeerCipher_at'].html(self))
+
+peerCipherTable.editDivContent='''
+<div class="midLevel">
+  <span class="cipher_text" id="editPeerCipher_verbose"></span>
+</div>
+'''
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      enctype="multipart/form-data" id="peerCipherForm">
+  <div class="ajaxEntryTable_sslCiphers">
+    <input type="hidden" name="_action_" value="sslCiphers" />
+    <%= peerCipherTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<%= FormUtils.revealBegin(self, 'Show Effective Overall Cipher List', 500) %>
+    <div class="cipher_text"><%= effectivePeerCipher %></div>
+<%= FormUtils.revealEnd() %>
+
+<%
+clientCipherTable = ajaxentrytable.AjaxEntryTable('clientCipher',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslClientCiphers'),
+    titleText='<span class="popupTitle" title="Should be configured on the server-side Steelhead.">Client Ciphers</span>',
+    headerSpec=('', 'Rank', 'Cipher String / Suite Name'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('index', 'selectedClientCipher_'),
+ AjaxEntryTable.tdEdit('index', 'index'),
+ AjaxEntryTable.tdAttr('name', 'name', 'table_portlabels_name')]""",
+    emptyMessage='No current Client Ciphers.',
+    addButtonText='Add a New Client Cipher',
+    addButtonName='addClientCipher',
+    addButtonOnclick="return validateCipherAdd(this, 'client') &amp;&amp; submitPrep(this)",
+    removeName='removeClientCiphers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedClientCipher_',
+    editDivTitle='Cipher List',)
+clientCipherTable.addDivContent='''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    <tr>
+      <td class="nodeEntry labelPaddedRight">Hint:</td>
+      <td class="nodeEntry">
+        <textarea class="cipherHint" name="cipherHintText" rows="2" cols="50"
+          readonly="readonly">The default cipher list. If specified, must be at number 1.
+        </textarea>
+      </td>
+    </tr>
+  </table>
+</div>
+''' % (dialogEntries['addClientCipher_cipher'].html(self),
+       dialogEntries['addClientCipher_at'].html(self))
+
+clientCipherTable.editDivContent='''
+<div class="midLevel">
+  <span class="cipher_text" id="editClientCipher_verbose"></span>
+</div>
+'''
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      enctype="multipart/form-data" id="clientCipherForm">
+  <div>
+    <input type="hidden" name="_action_" value="sslCiphers" />
+    <%= clientCipherTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<%= FormUtils.revealBegin(self, 'Show Effective Overall Cipher List', 500) %>
+    <div class="cipher_text"><%= effectiveClientCipher %></div>
+<%= FormUtils.revealEnd() %>
+
+<%
+serverCipherTable = ajaxentrytable.AjaxEntryTable('serverCipher',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslServerCiphers'),
+    titleText='<span class="popupTitle" title="Should be configured on the server-side Steelhead.">Server Ciphers</span>',
+    headerSpec=('', 'Rank', 'Cipher String / Suite Name'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('index', 'selectedServerCipher_'),
+ AjaxEntryTable.tdEdit('index', 'index'),
+ AjaxEntryTable.tdAttr('name', 'name', 'table_portlabels_name')]""",
+  emptyMessage='No current Server Ciphers.',
+  addButtonText='Add a New Server Cipher',
+  addButtonName='addServerCipher',
+  addButtonOnclick="return validateCipherAdd(this, 'server') &amp;&amp; submitPrep(this)",
+  removeName='removeServerCiphers',
+  removeButtonText='Remove Selected',
+  removePrefix='selectedServerCipher_',
+  editDivTitle='Cipher List',)
+serverCipherTable.addDivContent='''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    <tr>
+      <td class="nodeEntry labelPaddedRight">Hint:</td>
+      <td class="nodeEntry">
+        <textarea class="cipherHint" name="cipherHintText" rows="2" cols="50"
+          readonly="readonly">The default cipher list. If specified, must be at number 1.
+        </textarea>
+      </td>
+    </tr>
+  </table>
+</div>
+''' % (dialogEntries['addServerCipher_cipher'].html(self),
+       dialogEntries['addServerCipher_at'].html(self))
+
+serverCipherTable.editDivContent='''
+<div class="midLevel">
+  <span class="cipher_text" id="editServerCipher_verbose"></span>
+</div>
+'''
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      enctype="multipart/form-data" id="serverCipherForm">
+  <div>
+    <input type="hidden" name="_action_" value="sslCiphers" />
+    <%= serverCipherTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<%= FormUtils.revealBegin(self, 'Show Effective Overall Cipher List', 500) %>
+    <div class="cipher_text"><%= effectiveServerCipher %></div>
+<%= FormUtils.revealEnd() %>
+
+<% if not cmc: { %>
+
+<div class="topLevel">
+  <form method="post"
+        enctype="multipart/form-data"
+        action="<%= self.thisPageletRequest() %>"
+        id="importForm">
+    <fieldset>
+      <legend>Bulk Import</legend>
+        <div class="midLevel">
+          <table>
+            <%= dialogEntries['import_file'].html(self) %>
+            <%= dialogEntries['import_password'].html(self) %>
+          </table>
+        </div>
+        <input type="hidden" name="_action_" value="sslImport" />
+        <%= FormUtils.formSubmitButtons(self, { 'name': 'import', 'value': 'Import' }) %>
+    </fieldset>
+  </form>
+</div>
+
+<div class="topLevel">
+  <form method="post"
+        enctype="multipart/form-data"
+        action="/mgmt/ssldata"
+        id="exportForm">
+    <fieldset>
+      <legend>Bulk Export</legend>
+      <% # The rest of this page requires the secure vault to be unlocked.
+           vaultUnlocked = 'true' == Nodes.present(mgmt, '/secure_vault/state/unlocked')
+           if vaultUnlocked: { %>
+        <div class="midLevel">
+          <% if 'true' == Nodes.present(mgmt, '/rbt/sport/ssl/state/server_certs/global_exportable', 'false'): { %>
+            <%= dialogEntries['export_includeServers'].html(self) %>
+          <% } %>
+          <%= dialogEntries['export_includeAltCfg'].html(self) %>
+          <table>
+            <%= dialogEntries['export_password'].html(self) %>
+            <%= dialogEntries['export_passwordConfirm'].html(self) %>
+          </table>
+        </div>
+        <input type="hidden" name="action" value="exportBulkSSLData" />
+        <%= FormUtils.formSubmitButtons(self, { 'name': 'export', 'value': 'Export' }) %>
+    <% } else: { %>
+          <p class="topLevel">This feature is not available when the Secure Vault is locked.</p>
+    <% } #Close the vaultUnlocked condition.
+    %>
+    </fieldset>
+  </form>
+</div>
+
+<% } #Close the cmc check.
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+var cipherHintMap = new Object();
+cipherHintMap['DEFAULT'] = 'The default cipher list. If specified, must be at number 1.';
+cipherHintMap['HIGH'] = 'Those with key lengths larger than 128 bits, and some ' +
+                  'cipher suites with 128-bit keys.';
+cipherHintMap['MEDIUM'] = 'Some of those using 128 bit encryption.';
+cipherHintMap['LOW'] = 'Those using 64 or 56 bit encryption algorithms ' +
+                 'but excluding export cipher suites.';
+cipherHintMap['EXP'] = 'Export encryption algorithms. ' +
+                 'Including 40 and 56 bits algorithms.';
+cipherHintMap['EXPORT'] = 'Export encryption algorithms. ' +
+                    'Including 40 and 56 bits algorithms.';
+cipherHintMap['EXPORT40'] = '40 bit export encryption algorithms.';
+cipherHintMap['eNULL'] = 'Ciphers that offer no encryption. Because these offer no ' +
+                   'encryption at all and are a security risk they are ' +
+                   'disabled unless explicitly included.';
+cipherHintMap['NULL'] = 'Ciphers that offer no encryption. Because these offer no ' +
+                  'encryption at all and are a security risk they are ' +
+                  'disabled unless explicitly included.';
+cipherHintMap['kRSA'] = 'Cipher suites using RSA key exchange.';
+cipherHintMap['RSA'] = 'Cipher suites using RSA key exchange.';
+cipherHintMap['aRSA'] = 'Cipher suites using RSA authentication, ' +
+                  'i.e. the certificates carry RSA keys.';
+cipherHintMap['TLSv1.2'] = 'TLSv1.2 cipher suites.';
+cipherHintMap['TLSv1'] = 'TLSv1 cipher suites.';
+cipherHintMap['SSLv3'] = 'SSLv3 cipher suites.';
+cipherHintMap['AES128'] = 'Cipher suites using AES128.';
+cipherHintMap['AES256'] = 'Cipher suites using AES256.';
+cipherHintMap['AES'] = 'Cipher suites using AES.';
+cipherHintMap['AESGCM'] = 'Cipher suites using AESGCM.';
+cipherHintMap['3DES'] = 'Cipher suites using triple DES.';
+cipherHintMap['DES'] = 'Cipher suites using DES (not triple DES).';
+cipherHintMap['RC4'] = 'Cipher suites using RC4.';
+cipherHintMap['RC2'] = 'Cipher suites using RC2.';
+cipherHintMap['MD5'] = 'Cipher suites using MD5.';
+cipherHintMap['SHA1'] = 'Cipher suites using SHA1.';
+cipherHintMap['SHA'] = 'Cipher suites using SHA1.';
+cipherHintMap['SHA256'] = 'Cipher suites using SHA256.';
+cipherHintMap['SHA384'] = 'Cipher suites using SHA384.';
+
+cipherHintMap['NULL-MD5'] = 'RSA_WITH_NULL_MD5';
+cipherHintMap['NULL-SHA'] = 'RSA_WITH_NULL_SHA';
+cipherHintMap['EXP-RC4-MD5'] = 'RSA_EXPORT_WITH_RC4_40_MD5';
+cipherHintMap['RC4-MD5'] = 'RSA_WITH_RC4_128_MD5';
+cipherHintMap['RC4-SHA'] = 'RSA_WITH_RC4_128_SHA';
+cipherHintMap['EXP-RC2-CBC-MD5'] = 'RSA_EXPORT_WITH_RC2_CBC_40_MD5';
+cipherHintMap['EXP-DES-CBC-SHA'] = 'RSA_EXPORT_WITH_DES40_CBC_SHA';
+cipherHintMap['DES-CBC-SHA'] = 'RSA_WITH_DES_CBC_SHA';
+cipherHintMap['DES-CBC3-SHA'] = 'RSA_WITH_3DES_EDE_CBC_SHA';
+
+cipherHintMap['AES128-SHA'] = 'RSA_WITH_AES_128_CBC_SHA';
+cipherHintMap['AES256-SHA'] = 'RSA_WITH_AES_256_CBC_SHA';
+
+function updateCipherHint(formId, elementName) {
+    var form = $(formId);
+    form.cipherHintText.value = cipherHintMap[elementName.value];
+}
+
+peerCipherTable.editEntry = function(editName) {
+    //editName here is the index in the table
+    var form = document.getElementById('peerCipherForm');
+    var el = this.getEntryElement('index', editName);
+    var verbose = el.getAttribute('verbose');
+
+    // IE6 and IE7 need the full \r\n to display a newline, or else it won't render a newline.
+    newlineChar = '\r\n';
+    if (Y.UA.ie == 8) {
+        // IE8 considers \r\n to be two newlines, so it requires just \n.
+        newlineChar = '\n';
+    }
+    verbose = verbose.replace(/<br>/g, newlineChar);
+
+    setElementText('editPeerCipher_verbose', verbose);
+}
+
+clientCipherTable.editEntry = function(editName) {
+    //editName here is the index in the table
+    var form = document.getElementById('clientCipherForm');
+    var el = this.getEntryElement('index', editName);
+    var verbose = el.getAttribute('verbose');
+
+    // IE6 and IE7 need the full \r\n to display a newline, or else it won't render a newline.
+    newlineChar = '\r\n';
+    if (Y.UA.ie == 8) {
+        // IE8 considers \r\n to be two newlines, so it requires just \n.
+        newlineChar = '\n';
+    }
+    verbose = verbose.replace(/<br>/g, newlineChar);
+
+    setElementText('editClientCipher_verbose', verbose);
+}
+serverCipherTable.editEntry = function(editName) {
+    //editName here is the index in the table
+    var form = document.getElementById('serverCipherForm');
+    var el = this.getEntryElement('index', editName);
+    var verbose = el.getAttribute('verbose');
+
+    // IE6 and IE7 need the full \r\n to display a newline, or else it won't render a newline.
+    newlineChar = '\r\n';
+    if (Y.UA.ie == 8) {
+        // IE8 considers \r\n to be two newlines, so it requires just \n.
+        newlineChar = '\n';
+    }
+    verbose = verbose.replace(/<br>/g, newlineChar);
+
+    setElementText('editServerCipher_verbose', verbose);
+}
+
+function validateCipherAdd(submitEl, cipherType) {
+    var form = submitEl.form;
+    var cipherSelect = getFormElement(form, submitEl.name + '_cipher');
+    var atSelect = getFormElement(form, submitEl.name + '_at');
+    var hasDefault = ((('peer' == cipherType) && <%= hasDefaultCipher(peers) %>) ||
+                      (('client' == cipherType) && <%= hasDefaultCipher(clients) %>) ||
+                      (('server' == cipherType) && <%= hasDefaultCipher(servers) %>))
+
+    if ('DEFAULT' == cipherSelect.value) {
+        if (hasDefault) {
+            alert('Can only have one DEFAULT cipher');
+            return false;
+        }
+        if ('1' != atSelect.value) {
+            alert('Can only place DEFAULT cipher at position 1');
+            return false;
+        }
+    } else {
+        if (hasDefault && ('1' == atSelect.value)) {
+            alert('DEFAULT cipher cannot be in a position other than 1');
+            return false;
+        }
+    }
+    return true;
+}
+// -->
+</script>

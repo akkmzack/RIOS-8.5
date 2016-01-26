@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2010 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sport_sanpmirror                                    -->
+<!--   Module Root: /rbt/sport/snapmirror/                                  -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--   .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_snapmirror.c        -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/snapmirror/config/port</name>                  -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_snapmirror">
+
+    <config>
+        <name>/rbt/sport/snapmirror/config/enable</name>
+        <description>enable/disable snapmirror</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config-wildcard>
+        <name>/rbt/sport/snapmirror/config/global/port/*</name>
+        <description>set snapmirror port </description>
+        <value type="uint16"/>
+    </config-wildcard>
+
+    <config-wildcard>
+       <name>/rbt/sport/snapmirror/config/filer/*</name>
+       <description>Unique identifier for a filer</description>
+       <value type="string"/>
+    </config-wildcard>
+
+    <config>
+       <name>/rbt/sport/snapmirror/config/filer/*/user_config</name>
+       <description>the filer is configured by user or not</description>
+       <value type="bool">true</value>
+    </config>
+
+     <config-wildcard>
+       <name>/rbt/sport/snapmirror/config/filer/*/addr/*</name>
+       <description>one or more source addresses are bound to each filer</description>
+       <value type="ipv4addr"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/sport/snapmirror/config/filer/*/base_hash</name>
+        <description>multiple of 1000</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config-wildcard>
+       <name>/rbt/sport/snapmirror/config/filer/*/volume/*</name>
+       <description>volume name under a filer</description> 
+       <value type="string"/>
+    </config-wildcard>
+
+    <config>
+       <name>/rbt/sport/snapmirror/config/filer/*/volume/*/subclass_id</name>
+       <description>filer base_subclassid + [0...999]</description>
+       <value type="uint32">0</value>
+    </config>
+
+    <config>
+       <name>/rbt/sport/snapmirror/config/filer/*/volume/*/user_config</name>
+       <description>the valuem is configured by user or not</description>
+       <value type="bool">false</value>
+    </config>
+
+    <config>
+       <name>/rbt/sport/snapmirror/config/filer/*/volume/*/optpolicy</name>
+       <description>optimization policy used</description>
+       <value type="string">sdr-default</value>
+       <value-choices>
+          <choice>sdr-default</choice>
+          <choice>lz-only</choice>
+          <choice>none</choice>
+       </value-choices>
+    </config>
+
+    <config>
+       <name>/rbt/sport/snapmirror/config/filer/*/volume/*/description</name>
+       <description>Description</description>
+       <value type="string"></value>
+    </config>
+
+    <external-state>
+         <name>/rbt/sport/snapmirror/state/filer</name>
+         <description>List of Unique identifier for a filer</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state-wildcard>
+         <name>/rbt/sport/snapmirror/state/filer/*</name>
+         <description>Unique identifier for a filer</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+
+    <external-state>
+         <name>/rbt/sport/snapmirror/state/filer/*/volume</name>
+         <description>List of volume name under a filer</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state-wildcard>
+         <name>/rbt/sport/snapmirror/state/filer/*/volume/*</name>
+         <description>volume name under a filer</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+
+    <external-state>
+         <name>/rbt/sport/snapmirror/state/filer/*/volume/*/optpolicy</name>
+         <description>optimization policy used</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/snapmirror/state/filer/*/volume/*/bytes_in</name>
+         <description>unoptimized input data size</description>
+         <value type="uint64"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/snapmirror/state/filer/*/volume/*/bytes_out</name>
+         <description>optimized output data size</description>
+         <value type="uint64"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <action>
+        <name>/rbt/sport/snapmirror/action/pull_subclassid</name>
+        <description>pull all known filer/volume stats id</description>
+        <action-func>md_rbt_sm_pull_subclassid</action-func>
+        <parameter type="bool">pull_flag</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/sport/snapmirror/action/query_subclassid</name>
+        <description>query the stats id for filer/volume</description>
+        <action-func>md_rbt_sm_query_subclassid</action-func>
+        <parameter type="string">filer</parameter>
+        <parameter type="string">volume</parameter>
+    </action>
+
+    <event>
+        <name>/rbt/sport/snapmirror/event/filer_volume_subclassid_map</name>
+        <description>all_known_filer_volume_subclassid_map_event</description>
+        <parameter>filer_volume_subclassid_map</parameter>
+    </event>
+
+     <event>
+        <name>/rbt/sport/snapmirror/event/filer_volume_subclassid_update</name>
+        <description>filer_volume_subclassid_event</description>
+        <parameter>filer_volume_subclassid_update</parameter>
+    </event>
+
+
+</node-list>
+

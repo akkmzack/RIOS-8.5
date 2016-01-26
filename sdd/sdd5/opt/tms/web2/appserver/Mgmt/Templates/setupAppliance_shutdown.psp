@@ -1,0 +1,269 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_services.psp
+##
+## Start and stop services.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, RVBDUtils, time" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdministrationJobs',) %>
+
+<psp:method name="css">
+    return '''
+#buttonsDiv {
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+
+#buttonsDiv img {
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+#rebootButton {
+  margin-right: 6px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+nodeEntries = {
+    'actionReboot': FormUtils.NodeEntry(
+        path='/pm/actions/reboot'),
+    'actionShutDown': FormUtils.NodeEntry(
+        path='/pm/actions/shutdown')
+}
+
+if RVBDUtils.isEXVSP():
+    nodeEntries['esxiInstalled'] = FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/disk_created')
+    nodeEntries['safeToRestartCode'] = FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/safe_to_restart_code')
+
+return nodeEntries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'applianceClean': FormUtils.NodeEntry(
+            name='applianceClean',
+            widget='checkboxLeft',
+            label='Clear Data Store'),
+        'scheduleForLater': FormUtils.NodeEntry(
+            name='scheduleForLater',
+            widget='checkboxLeft',
+            label='Schedule for Later',
+            enableDiv='scheduleForLaterTimeDiv'),
+        'scheduleForLaterTime': FormUtils.NodeEntry(
+            name='scheduleForLaterTime',
+            widgetClass='datetime',
+            value=time.strftime('%Y/%m/%d %H:%M:%S', time.localtime()),
+            label='Time',
+            validate='datetime')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+sportState = Nodes.present(mgmt, '/pm/monitor/process/sport/state', 'Not Running')
+dialogEntries = self.dialogEntries()
+
+esxiInstalled = Nodes.present(mgmt, '/rbt/vsp/state/esxi/disk_created') == 'true'
+
+reloadNeeded = Nodes.getBoolean(mgmt, '/rbt/sport/status/reload_needed')
+if reloadNeeded: {
+    self.getPagePresentationServlet().setFormError('The appliance must be rebooted due to a configuration change.')
+}
+
+sdrPolicy = Nodes.present(mgmt, '/rbt/sport/datastore/config/sdr_policy', '')
+
+if sdrPolicy == 'sdr-m': {
+    dialogEntries['applianceClean'].tooltip = 'This option is not available in SDR-M mode.'
+} else: {
+    dialogEntries['applianceClean'].tooltip = 'Client performance will be degraded until the data store is repopulated.'
+}
+
+hasUnsavedChanges = Nodes.present(mgmt, \
+    '/mgmtd/db/info/running/unsaved_changes') == 'true'
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_shutdown"
+      id="serviceControlForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupApplianceControl" />
+    <legend>Reboot or Shut Down</legend>
+    <div class="midLevel">
+      <p>
+        Rebooting or shutting down will disrupt existing network
+        connections being proxied through this appliance.
+        Reboot and shut down operations may take a few minutes.
+      </p>
+      <div class="midLevel" id="clearDataStoreDiv">
+        <%= dialogEntries['applianceClean'].html(self) %>
+      </div>
+      <div class="midLevel">
+        <%= dialogEntries['scheduleForLater'].html(self) %>
+        <div class="indent" id="scheduleForLaterTimeDiv">
+          <%= dialogEntries['scheduleForLaterTime'].html(self, format='block') %>
+        </div>
+      </div>
+      <div id="buttonsDiv">
+        <%= FormUtils.renderButton(self, {
+                'id': 'rebootButton',
+                'name': 'applianceReboot',
+                'value': 'Reboot',
+                'onclick': 'buttonClicked(this); return false;'
+            }) %>
+        <%= FormUtils.renderButton(self, {
+                'id': 'shutdownButton',
+                'name': 'applianceShutdown',
+                'value': 'Shut Down',
+                'onclick': 'buttonClicked(this); return false;'
+            }) %>
+        <img src="/images/icon_test_running.gif" alt="" style="display: none" />
+      </div>
+    </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var confirmationDialog = null;
+var dbDirtyResponse = null;
+var esxiResponse = null;
+
+Y.on('domready', function() {
+    enableElements('clearDataStoreDiv', '<%= sdrPolicy %>' != 'sdr-m');
+});
+
+// This is invoked whenever the user clicks either Reboot or Shut Down.
+function buttonClicked(button) {
+    // Make it clear that something important is happening.
+    Y.one('div#buttonsDiv img').setStyle('display', 'inline');
+    Y.all('div#buttonsDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', 'disabled');
+    });
+
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=dbDirty',
+        successFn: function(response) { checkResponses(button, response, 'dbDirty'); }
+    });
+
+    <% if RVBDUtils.isEXVSP() and esxiInstalled: { %>
+
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkIfSafeToShutDownESXi',
+        successFn: function(response) { checkResponses(button, response, 'esxi'); }
+    });
+
+    <% } else: { %>
+
+    esxiResponse = '';
+
+    <% } %>
+}
+
+function checkResponses(button, response, check) {
+    // Save the response in the appropriate place.
+    if (check == 'dbDirty') {
+        dbDirtyResponse = response;
+    } else if (check == 'esxi') {
+        esxiResponse = response;
+    }
+
+    // If both responses are empty strings and the user is trying to restart,
+    // we can restart without displaying a confirmation.
+    if (dbDirtyResponse && dbDirtyResponse.dirty == false && esxiResponse == '' && button.value == 'Reboot') {
+        submitForm(button);
+
+    // Otherwise, if both responses have been received we can continue by
+    // by displaying a warning.
+    } else if (dbDirtyResponse != null && esxiResponse != null) {
+        displayWarning(button);
+    }
+}
+
+// Construct the warning text (which may contain several different warnings) and
+// display it in a dialog.
+function displayWarning(button) {
+    var dialogContent = '';
+
+    if (dbDirtyResponse.dirty) {
+        dialogContent += '<p>Your unsaved configuration changes will be lost.</p>';
+    }
+
+    if (esxiResponse) {
+        dialogContent += '<p>' + esxiResponse + '</p>';
+    }
+
+    if (button.value == 'Shut Down') {
+        dialogContent += '<p>If you shut down the appliance, you may not be ' +
+                         'able to power it back on without physical access.</p>';
+    }
+
+    dialogContent += '<p>Are you sure you wish to continue?</p>';
+
+    confirmationDialog = new RBT.Dialog({
+        alignNode: button,
+        content: dialogContent,
+        buttons: [
+            {
+                label: button.value,
+                clickFn: function() { submitForm(button); }
+            },
+            {
+                label: 'Cancel',
+                clickFn: cancelAction
+            }
+        ]
+    }).render();
+}
+
+// Reset everything back to the way it was before the user clicked a button.
+function cancelAction() {
+    confirmationDialog.hide();
+    dbDirtyResponse = null;
+    esxiResponse = null;
+    Y.one('div#buttonsDiv img').setStyle('display', 'none');
+    Y.all('div#buttonsDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', '');
+    });
+}
+
+// We need to manually add the element before submitting the form, because the
+// information of what button the user clicked is lost when buttonClicked() is
+// called.
+function submitForm(button) {
+    var buttonEl = document.createElement('input');
+    buttonEl.type = 'hidden';
+    buttonEl.name = button.name;
+    buttonEl.value = button.value;
+    $('serviceControlForm').appendChild(buttonEl);
+
+    if (esxiResponse) {
+        var responseEl = document.createElement('input');
+        responseEl.type = 'hidden';
+        responseEl.name = 'esxiResponse';
+        responseEl.value = 'esxiResponse';
+        $('serviceControlForm').appendChild(responseEl);
+    }
+
+    $('serviceControlForm').submit();
+    return;
+}
+
+// ]]>
+</script>

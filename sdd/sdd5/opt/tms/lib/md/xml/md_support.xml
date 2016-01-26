@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_support                                             -->
+<!--   Module Root: /rbt/support                                            -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_support.c                  -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/support/config/myconfig</name>                       -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_support" so-file-stem="md_support">
+
+     <config>
+        <name>/rbt/support/healthcheck/enable</name>
+        <description>Enable the healthcheck service</description>
+        <value type="bool">false</value>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/level</name>
+        <description>Choose the level of detail in healthcheck messages</description>
+        <value type="string">normal</value>
+        <value-choices>
+          <choice>quiet</choice>
+          <choice>normal</choice>
+          <choice>verbose</choice>
+        </value-choices>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/transport</name>
+        <description>How the system health data is sent</description>
+        <value type="string">autosupport_gw</value>
+        <value-choices>
+          <choice>autosupport_gw</choice>
+          <choice>ssmtp</choice>
+          <choice>http</choice>
+        </value-choices>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/url</name>
+        <description>The URL for HTTP POSTs</description>
+        <value type="string">http://autosupport.riverbed.com/</value>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/proxy</name>
+        <description>Send HTTP POSTs through a proxy server. e.g. 1.2.3.4 or 1.2.3.4:8888</description>
+        <value type="string"></value>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/recipient</name>
+        <description>Send healthcheck supports to this email address</description>
+        <value type="string">autosupport@riverbed.com</value>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/min_interval</name>
+        <description>Choose when minimal detail healthcheck messages are sent</description>
+        <value type="string">every 6 hours</value>
+        <value-choices>
+          <choice>hourly</choice>
+          <choice>every 6 hours</choice>
+          <choice>daily</choice>
+          <choice>weekly</choice>
+        </value-choices>
+     </config>
+
+     <config>
+        <name>/rbt/support/healthcheck/full_interval</name>
+        <description>Choose when complete healthcheck messages are sent</description>
+        <value type="string">weekly</value>
+        <value-choices>
+          <choice>daily</choice>
+          <choice>weekly</choice>
+          <choice>monthly</choice>
+        </value-choices>
+     </config>
+
+    <config>
+        <name>/rbt/support/config/kexec/enable</name>
+        <description>Enable Kexec based kernel crashdump collection</description>
+        <value type="bool">false</value>
+	<db-policy>localdb</db-policy>
+	<role-primitive>none</role-primitive>
+     </config>
+
+     <config>
+        <name>/rbt/support/config/credential/username</name>
+        <description>Set Riverbed support account username</description>
+        <value type="string"></value>
+        <role-primitive permission="read-write">/role_primitive/system_control/software_upgrade</role-primitive>
+     </config>
+
+     <config>
+        <name>/rbt/support/config/credential/password</name>
+        <description>Set Riverbed support account password</description>
+        <value type="string"></value>
+        <role-primitive permission="read-write">/role_primitive/system_control/software_upgrade</role-primitive>
+        <commit-descriptor>
+            <side-effects-func>md_support_encrypt_credential_password</side-effects-func>
+        </commit-descriptor>
+     </config>
+
+     <config>
+        <name>/rbt/support/config/credential/enc_password</name>
+        <description>Set Riverbed support account encrypted password</description>
+        <value type="string"></value>
+        <role-primitive permission="read-write">/role_primitive/system_control/software_upgrade</role-primitive>
+     </config>
+
+     <config>
+        <name>/rbt/support/config/credential/serial_number</name>
+        <description>Set fake serial number for testing</description>
+        <value type="string"></value>
+        <role-primitive permission="read-write">/role_primitive/system_control/software_upgrade</role-primitive>
+     </config>
+
+     <state>
+        <name>/rbt/support/state/credential/username</name>
+        <description>Get Riverbed support account username</description>
+        <value type="string"></value>
+        <role-primitive permission="read-only">/role_primitive/system_control/software_upgrade</role-primitive>
+        <get-func>md_support_get_credential_username</get-func>
+     </state>
+
+     <state>
+        <name>/rbt/support/state/credential/password</name>
+        <description>Get Riverbed support account password</description>
+        <value type="string"></value>
+        <role-primitive permission="read-only">/role_primitive/system_control/software_upgrade</role-primitive>
+        <get-func>md_support_get_credential_password</get-func>
+     </state>
+
+     <state>
+        <name>/rbt/support/state/credential/enc_password</name>
+        <description>Get Riverbed support account encrypted password</description>
+        <value type="string"></value>
+        <role-primitive permission="read-only">/role_primitive/system_control/software_upgrade</role-primitive>
+        <get-func>md_support_get_credential_password</get-func>
+     </state>
+
+     <state>
+        <name>/rbt/support/state/credential/serial_number</name>
+        <description>Get fake serial number set for testing</description>
+        <value type="string"></value>
+        <role-primitive permission="read-only">/role_primitive/system_control/software_upgrade</role-primitive>
+        <get-func>md_support_get_credential_serial_number</get-func>
+     </state>
+
+     <config>
+        <name>/rbt/support/config/site_url</name>
+        <description>Set support site for testing</description>
+        <value type='string'>https://api.licensing.riverbed.com</value>
+        <role-primitive permission="read-write">/role_primitive/system_control/software_upgrade</role-primitive>
+     </config>
+
+</node-list>

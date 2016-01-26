@@ -1,0 +1,562 @@
+<%
+## (C) Copyright 2002-2012, Riverbed Technology, Inc., All rights reserved.
+##
+## Author: Kevin Morrell
+##
+## This is the page for the VSPv1 Migration wizard. It functions as a way for
+## the user to seamlessly upgrade their installed slots from BOBv1 into BOBv2.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="RVBDUtils, FormUtils, Nodes, PagePresentation:Pagelet, NicFactory" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="dialogEntries_wizard">
+    mgmt = self.session().value('mgmt')
+
+    return {
+        'slotName': FormUtils.NodeEntry(
+            widgetClass='yui3-wizard-included-input',
+            name='slotName',
+            hint='(optional)',
+            tooltip='If no name is provided, the VM\'s current name will be used.',
+            label='Name'),
+        'installedSlots': FormUtils.NodeEntry(
+            widget='select',
+            widgetClass='yui3-wizard-included-input',
+            name='installedSlots',
+            label='VM to migrate'),
+        'datastore': FormUtils.NodeEntry(
+            widget='select',
+            widgetClass='yui3-wizard-included-input',
+            name='datastore',
+            label='Datastore'),
+        'diskLayout': FormUtils.NodeEntry(
+            widget='radio',
+            widgetClass='yui3-wizard-included-input',
+            type='string',
+            name='diskLayout',
+            value='lazy-thick',
+            label={'lazy-thick': 'Thick Provision Lazy Zeroed',
+                   'eager-thick': 'Thick Provision Eager Zeroed',
+                   'thin': 'Thin Provision'}),
+        'preserveInfo': FormUtils.NodeEntry(
+            widget='checkbox',
+            widgetClass='yui3-wizard-included-input',
+            name='preserveInfo',
+            label='Preserve UUID from source VM')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries_wizard = self.dialogEntries_wizard()
+portGroups = Nodes.getTreeifiedSubtree(mgmt, '/rbt/vsp/state/esxi/runtime/network/portgroup')
+datastoresDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/vsp/state/esxi/runtime/storage/datastore')
+datastores = sorted(datastoresDetails.keys(), cmp=FormUtils.alphanumericCompare)
+dialogEntries_wizard['datastore'].selectOptions = datastores
+
+for datastore in datastores: {
+    if datastore.startswith('riverbed_'): {
+        dialogEntries_wizard['datastore'].value = datastore
+        break
+    }
+}
+
+%>
+
+<div id="wizWelcome" class="midLevel yui3-wizard-loading">
+  <p class="settingHeaders">Welcome</p>
+  <p>
+    This wizard will guide you through migrating your installed VMs from
+    legacy versions of VSP so that they will work in the current version of
+    VSP.  Once the migration process has started, you will be unable to start
+    any more legacy VSP operations until migration has finished.
+  </p>
+  <p id="wizLoading">
+    <img src="/images/icon_test_running.gif" alt="" />
+    Loading wizard data...
+  </p>
+</div>
+
+<div id="wizSlot" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>" id="slotForm">
+    <p class="settingHeaders">Choose a VM</p>
+    <p>Choose a VM to migrate.  Only VMs without data flow will work
+       correctly in this version of VSP.</p>
+    <div class="midLevel">
+      <table>
+        <%= dialogEntries_wizard['installedSlots'].html(self) %>
+        <%= dialogEntries_wizard['slotName'].html(self) %>
+      </table>
+    </div>
+    <div id="dataflowMessage" class="midLevel">
+      <p>The following VMs contain data flow and cannot be migrated:</p>
+      <ul id="dataflowList"><li></li></ul>
+    </div>
+  </form>
+</div>
+
+<div id="wizSlotDetails" class="midLevel yui3-wizard-loading">
+  <p class="settingHeaders">VM Details</p>
+  <div class="midLevel">
+    <p>Verify VM details.</p>
+    <table id="slotTable" class="wizardTable">
+      <tr>
+        <td class="wizardLabel">VM name:</td>
+        <td class="wizardField" id="slotName"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Package name:</td>
+        <td class="wizardField" id="packageName"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Description:</td>
+        <td class="wizardField" id="slotDescription"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Size on disk:</td>
+        <td class="wizardField" id="sizeOnDisk"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Provision size:</td>
+        <td class="wizardField" id="provisionSize"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Number of CPUs:</td>
+        <td class="wizardField" id="numCPUs"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Memory size:</td>
+        <td class="wizardField" id="memSize"></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div id="wizDatastore" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>" id="datastoreForm">
+    <p class="settingHeaders">Datastore and Disk Format</p>
+    <p>Choose the datastore you want to use for this VM.</p>
+    <div class="midLevel">
+      <table>
+        <%= dialogEntries_wizard['datastore'].html(self) %>
+        <tr>
+          <td class="nodeEntry">Available space:</td>
+          <td id="datastoreSpace"></td>
+        </tr>
+      </table>
+      <p>Choose the disk layout desired.</p>
+      <%= dialogEntries_wizard['diskLayout'].html(self, value='lazy-thick') %>
+      <%= dialogEntries_wizard['diskLayout'].html(self, value='eager-thick') %>
+      <%= dialogEntries_wizard['diskLayout'].html(self, value='thin') %>
+      <table>
+        <%= dialogEntries_wizard['preserveInfo'].html(self) %>
+      </table>
+    </div>
+  </form>
+</div>
+<div id="wizNetwork" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>" id="networkMappingForm">
+    <p class="settingHeaders">Network Mapping</p>
+    <div class="midLevel">
+      <p>Map the networks used in this VM to networks in VMWare vSphere.</p>
+      <table id="networkMappingTable" class="wizardTable">
+        <tr>
+          <td><b>Source Networks</b></td>
+          <td><b>Destination Networks</b></td>
+        </tr>
+      </table>
+      <p id="multipleNicWarning" class="hidden">
+        Warning: Multiple source networks are mapped to the host network:
+        <span id="warningSpan">nbsp;</span>
+      </p>
+    </div>
+  </form>
+</div>
+<div id="wizReview" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>">
+    <p class="settingHeaders">Review Changes</p>
+    <table id="confirmationTable" class="confirmationTable">
+      <tr>
+        <td class="wizardLabel">VM to migrate:</td>
+        <td class="wizardField" id="confirmInstalledSlot"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">VM name:</td>
+        <td class="wizardField" id="confirmSlotName"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Package name:</td>
+        <td class="wizardField" id="confirmPackageName"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Size on disk:</td>
+        <td class="wizardField" id="confirmSizeOnDisk"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Datastore:</td>
+        <td class="wizardField" id="confirmDatastore"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Disk provisioning:</td>
+        <td class="wizardField" id="confirmDiskProvisioning"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Preserve UUID:</td>
+        <td class="wizardField" id="confirmPreserveUUID"></td>
+      </tr>
+    </table>
+  </form>
+</div>
+
+<div id="wizConfirm" class="midLevel yui3-wizard-loading">
+  <p class="settingHeaders">Confirmation</p>
+  <p>
+    The migration process may take several hours, depending on the size of your
+    VM.  During this time the appliance may experience degraded performance.
+    Are you sure you wish to continue?
+  </p>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+var slotName;
+var chosenSlot;
+var conversionStarted = false;
+
+var enableClose = true;
+var slotsLoaded = false;
+var slotsDetails;
+var eligibleSlotCount = 0;
+var destNetworks = [];
+
+Y.on('domready', function() {
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=getSlotData',
+        successFn: function(response) {
+            slotsDetails = Y.JSON.parse(response);
+            slotsLoaded = true;
+            $('wizWelcome').removeChild($('wizLoading'));
+            var selectEl = Y.one('[name=installedSlots]');
+            var dataflowList = $('dataflowList');
+            for (var k in slotsDetails) {
+                if (slotsDetails[k]['installed'] == 'true' && slotsDetails[k]['has_dataflow'] == 'false') {
+                    var node = '<option value="' + k + '">' + k + ' - ' + slotsDetails[k]['package_name'] + '</option>';
+                    // The dropdown is initialized with an empty option.  We
+                    // need to replace that for the first option instead of
+                    // appending.
+                    if (selectEl.get('options').item(0).getContent() == '') {
+                        selectEl.get('options').item(0).replace(node);
+                    } else {
+                        Y.one('[name=installedSlots]').append(node);
+                    }
+                    eligibleSlotCount++;
+                } else if (slotsDetails[k]['has_dataflow'] == 'true') {
+                    // It's impossible to create a list with no items in it, so
+                    // the it's created with a blank first entry instead.  If
+                    // we don't check for this we end up with an empty bullet
+                    // on top of the list.
+                    if (dataflowList.children[0].innerHTML == "") {
+                        dataflowList.children[0].innerHTML = k + ' - ' + slotsDetails[k]['package_name'];
+                    } else {
+                        var li = document.createElement('li');
+                        li.innerHTML = k + ' - ' + slotsDetails[k]['package_name'];
+                        dataflowList.appendChild(li);
+                    }
+                }
+            }
+            if (dataflowList.children[0].innerHTML == '') {
+                enableElements('dataflowMessage', 'hide');
+            }
+        }
+    });
+});
+
+Y.one('[name=datastore]').on("change", showDatastoreSpace);
+
+function showDatastoreSpace() {
+    var datastoresDetails = <%= RVBDUtils.jsonizeAndEscapeForJs(datastoresDetails) %>;
+    var datastore = Y.one('[name=datastore]').get('value');
+    var freeSpace = datastoresDetails[datastore]['free_size_bytes'];
+    freeSpace = RBT.Reports2.scale(freeSpace, 1, 'binary', 'B');
+    setElementText('datastoreSpace', freeSpace);
+}
+
+var wizConfig = {
+    titleText: 'VM Migration Wizard',
+    steps: [
+             { name: 'Welcome',
+               node: '#wizWelcome',
+               alternateValidator: firstStepAllowed },
+             { name: 'VM Settings',
+               node: '#wizSlot',
+               alternateValidator: eligibleSlot },
+             { name: 'VM Details',
+               node: '#wizSlotDetails',
+               before: collectSlotValues },
+             { name: 'Network Settings',
+               node: '#wizNetwork',
+               before: createNetworkTable },
+             { name: 'Miscellaneous Settings',
+               node: '#wizDatastore',
+               before: showDatastoreSpace },
+             { name: 'Review Changes',
+               node: '#wizReview',
+               before: collectConfirmValues },
+             { name: 'Confirmation',
+               node: '#wizConfirm',
+               nextText: 'Finish',
+               alternateValidator: closeButtonEnabled,
+               after: submitData }
+           ],
+    cancelImg: '/images/icon_wizard_close_bob.png',
+    cancelAction: cancelButtonClicked,
+    helpPage: 'setupWizardSeamlessUpgrade',
+    helpImg: '/images/icon_wizard_help_bob.png',
+    topOffset: 10,
+    width: 645,
+    zIndex: 300
+};
+
+function eligibleSlot() {
+    return (eligibleSlotCount != 0);
+}
+
+function collectSlotValues() {
+    chosenSlot = Y.one('[name=installedSlots]').get('value');
+    slotName = Y.one('input[name=slotName]').get('value');
+    if (slotName == '') {
+        slotName = chosenSlot;
+    }
+
+    var thickSize = slotsDetails[chosenSlot]['thick_lazy_zero_provision_size'];
+    var thinSize = slotsDetails[chosenSlot]['thin_provision_size'];
+    Y.all('[name=diskLayout]').each(function() {
+        var label = this.next().get('text');
+        if (label.substring(0, 20) == 'Thick Provision Lazy') {
+            this.next().set('text', 'Thick Provision Lazy Zeroed (' + thickSize + ')');
+        } else if (label.substring(0, 21) == 'Thick Provision Eager') {
+            this.next().set('text', 'Thick Provision Eager Zeroed (' + thickSize + ')');
+        } else {
+            this.next().set('text', 'Thin Provision (' + thinSize + ')');
+        }
+    });
+
+    var provisioning = thinSize + ' (thin provisioned)<br />' + thickSize + ' (thick provisioned)';
+    var sizeOnDisk = slotsDetails[chosenSlot]['size_on_disk'];
+    var memSize = slotsDetails[chosenSlot]['vm']['memory_size'];
+    sizeOnDisk = RBT.Reports2.scale(sizeOnDisk, 1, 'binary', 'B');
+    // The memory size is already in kB, so we need to multiply it by 1024 so
+    // that the scale function works correctly.
+    memSize = RBT.Reports2.scale(memSize * 1024, 1, 'binary', 'B');
+
+    Y.one("#slotName").setContent(slotName);
+    Y.one("#packageName").setContent(slotsDetails[chosenSlot]['package_name']);
+    Y.one("#sizeOnDisk").setContent(sizeOnDisk);
+    Y.one("#slotDescription").setContent(slotsDetails[chosenSlot]['package_description']);
+    Y.one("#provisionSize").setContent(provisioning);
+    Y.one("#numCPUs").setContent(slotsDetails[chosenSlot]['num_vcpus']);
+    Y.one("#memSize").setContent(memSize);
+    zebraStripe($('slotTable'));
+}
+
+function createNetworkTable() {
+    destNetworks = [];
+    var slot = Y.one('[name=installedSlots]').get('value');
+    var networkTable = Y.DOM.byId('networkMappingTable');
+    var portGroups = <%= RVBDUtils.jsonizeAndEscapeForJs(portGroups) %>;
+
+    // We need to clear the table every time this step is loaded, because it's
+    // possible that the user went back and selected a different slot.
+    while (networkTable.children[0].children.length > 1) {
+        networkTable.children[0].removeChild(networkTable.children[0].children[1]);
+    }
+
+    for (networkName in slotsDetails[slot]['network_name']) {
+        var row = networkTable.insertRow(networkTable.rows.length);
+        var cell1 = row.insertCell(0);
+        cell1.innerHTML = networkName;
+        var cell2 = row.insertCell(1);
+        var el = document.createElement('select');
+        el.name = 'networkMap' + networkName;
+        el.className = 'yui3-wizard-included-input';
+        for (var portGroup in portGroups) {
+            var option = document.createElement('option');
+            if (portGroup == 'rvbd_pri_vm_network') {
+                option.value = portGroup;
+                option.text = 'Primary (rvbd_pri_vm_network)';
+            } else if (portGroup == 'rvbd_aux_vm_network') {
+                option.value = portGroup;
+                option.text = 'Aux (rvbd_aux_vm_network)';
+            } else {
+                option.text = portGroup;
+                option.value = portGroup;
+            }
+            el.add(option, el.options[null]);
+            Y.one(el).on("change", checkDuplicateNICs);
+        }
+        destNetworks.push(el);
+        cell2.appendChild(el);
+    }
+    checkDuplicateNICs();
+    zebraStripe(networkTable);
+}
+
+function checkDuplicateNICs() {
+    var nicWarning = Y.one('#multipleNicWarning');
+    var warningNetwork = Y.one('#warningSpan');
+    for (var i = 0; i < destNetworks.length; i++) {
+        for (var j = i + 1; j < destNetworks.length; j++) {
+            if (destNetworks[i].value == destNetworks[j].value) {
+                nicWarning.set('className', 'warning');
+                warningNetwork.setContent(destNetworks[i].value);
+                return;
+                }
+        }
+    }
+    nicWarning.set('className', 'hidden');
+}
+
+function cancelButtonClicked() {
+    var exitWizard = confirm("Are you sure you want to exit the wizard?");
+    if (exitWizard) {
+        wizard.destroy();
+    }
+}
+
+function wizardFinished() {
+    enableClose = false;
+    $('wizNextButton').innerHTML = 'Loading Legacy VSP Page...';
+    enableElements($('wizNextButton'), false);
+    window.location = '/mgmt/gui?p=setupVSPv1Migration';
+}
+
+// Collects the values entered on the previous pages and displays them in a
+// confirmation table.
+function collectConfirmValues() {
+
+    // Collect the values of all of the user-configurable settings
+    var provisioning = Y.one('[name=diskLayout]:checked').get('value');
+    if (provisioning == 'lazy-thick') {
+        provisioning = 'Thick provisioning lazy zeroed';
+    } else if (provisioning == 'eager-thick') {
+        provisioning = 'Thick provisioning eager zeroed';
+    } else {
+        provisioning = 'Thin provisioning';
+    }
+    var sizeOnDisk = slotsDetails[chosenSlot]['size_on_disk'];
+    sizeOnDisk = RBT.Reports2.scale(sizeOnDisk, 1, 'binary', 'B');
+    var preserveUUID = Y.one('[name=preserveInfo]').get('checked') ? 'Yes' : 'No';
+    Y.one("#confirmInstalledSlot").setContent(chosenSlot);
+    Y.one("#confirmSlotName").setContent(slotName);
+    Y.one("#confirmPackageName").setContent(slotsDetails[chosenSlot]['package_name']);
+    Y.one("#confirmSizeOnDisk").setContent(sizeOnDisk);
+    Y.one("#confirmDatastore").setContent(Y.one('[name=datastore]').get('value'));
+    Y.one("#slotDescription").setContent(slotsDetails[chosenSlot]['package_description']);
+    Y.one("#confirmDiskProvisioning").setContent(provisioning);
+    Y.one("#confirmPreserveUUID").setContent(preserveUUID);
+    var confirmationTable = Y.DOM.byId('confirmationTable');
+    for (var i = confirmationTable.rows.length - 1; i > 0; i--) {
+        if (confirmationTable.rows[i].cells[0].innerHTML == 'Network Mapping:') {
+            confirmationTable.deleteRow(i);
+        }
+    }
+
+    Y.all('[name^=networkMap]').each(function() {
+        var row = confirmationTable.insertRow(confirmationTable.rows.length);
+        var cell1 = row.insertCell(0);
+        cell1.className = 'wizardLabel';
+        cell1.innerHTML = 'Network Mapping:';
+        var cell2 = row.insertCell(1);
+        cell2.className = 'wizardField';
+        cell2.innerHTML = '\"' + this.get('name').slice(10) + '\" to \"' + this.get('value') + '\"';
+    });
+    zebraStripe(confirmationTable);
+}
+
+function zebraStripe(table) {
+    var rows = table.getElementsByTagName("tr");
+    var odd = false;
+
+    // Because rows can get added and deleted as users go back and forth
+    // steps, we want to clear all striping information first.
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].style.display != "none") {
+            rows[i].className = rows[i].className.replace("evenRow", "");
+            rows[i].className = rows[i].className.replace("oddRow", "");
+        }
+    }
+
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].style.display != "none") {
+            if (odd) {
+                rows[i].className += " oddRow";
+            } else {
+                rows[i].className += " evenRow";
+            }
+            odd = !odd;
+        }
+    }
+}
+
+function submitData() {
+    enableClose = false;
+    var requestCfg,
+        data = {},
+        submitForm = this.get('submitForm'),
+        submitURL = '/mgmt/xmldata?p=setupWizardSeamlessUpgrade',
+        doc = Y.config.doc,
+        addedFields = [];
+
+    Y.all('.yui3-wizard-included-input').each(function () {
+        // if we are submitting a form, every input in that form will be submitted, regardless of class
+        // so we don't want to add inputs which are already contained within that form.
+        // only add inputs which have the inclInputClass, which are outside of the form.
+        // don't add this value if it's a type radio or checkbox and is not checked
+        if ((this.get('type') != 'radio' && this.get('type') != 'checkbox') || this.get('checked')) {
+            data[this.get('name')] = this.get('value');
+        // The wizard doesn't call submitPrep() before submitting, so
+        // any unchecked checkboxes are lost unless we make sure to add
+        // them.
+        } else if (this.get('type') == 'checkbox' && this.get('checked') == false) {
+            data[this.get('name')] = 'false';
+        }
+    });
+
+    requestCfg = {
+        method: 'POST',
+            on: {
+                start: function() {
+                    wizardFinished();
+                }
+            },
+        data: data
+    };
+
+    Y.io(submitURL, requestCfg);
+}
+
+function createXMLResults(messagesXML) {
+    var containerNode = Y.Node.create('<div id="xmlMessages"></div>'),
+        messages = messagesXML.childNodes;
+    Y.each(messages, function (message) {
+        var messageNode,
+            text = message.text || message.textContent, // .text for IE, .textContent for firefox
+            messageClass = message.getAttribute('class') || '';
+        messageNode = Y.Node.create('<p class="' + messageClass + '">' + text + '</p>');
+        containerNode.append(messageNode);
+    });
+    return containerNode;
+}
+
+function closeButtonEnabled() {
+    return enableClose;
+}
+
+function firstStepAllowed() {
+    return slotsLoaded;
+}
+
+// ]]>
+</script>

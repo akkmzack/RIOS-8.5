@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2012 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sca_stats                                           -->
+<!--   Module Root: /rbt/sca/stats                                          -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_sca_stats.cc -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sca/stats/state/*/info</name>                        -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="string">42</value>                                 -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sca_stats">
+    <state-wildcard>
+        <name>/rbt/sca/stats/state/connection/*</name>
+        <description>SCA connection</description>
+        <value type="uint32"/>
+        <get-func>mrss_get_connection_info</get-func>
+        <iterate-func>mrss_iterate_connections</iterate-func>
+    </state-wildcard>
+    <state>
+        <name>/rbt/sca/stats/state/connection/*/info</name>
+        <description>SCA connection data</description>
+        <value type="string"/>
+        <get-func>mrss_get_connection_info</get-func>
+        <get-func-arg>info</get-func-arg>
+    </state>
+
+    <state-wildcard>
+        <name>/rbt/sca/stats/state/tun/*</name>
+        <description>SCA TUN</description>
+        <value type="uint32"/>
+        <get-func>mrss_get_tun_stats</get-func>
+        <iterate-func>mrss_iterate_tun</iterate-func>
+    </state-wildcard>
+    <state>
+        <name>/rbt/sca/stats/state/tun/*/stats</name>
+        <description>SCA TUN statistics</description>
+        <value type="string"/>
+        <get-func>mrss_get_tun_stats</get-func>
+        <get-func-arg>stats</get-func-arg>
+    </state>
+</node-list>

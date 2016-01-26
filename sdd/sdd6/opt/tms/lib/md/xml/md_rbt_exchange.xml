@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_exchange                                            -->
+<!--   Module Root: /rbt/sport/blade/exchange                               -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_exchange.c       -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/blade/exchange/config/myconfig</name>          -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_exchange">
+    <config>
+        <name>/rbt/sport/blade/exchange/config/o365/enable</name>
+        <description>Enable support for Office 365</description>
+        <value type="bool">false</value>
+     </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/writebehind_qsize</name>
+        <description>Writebehind value for Exchange connections</description>
+        <value type="uint32">100</value>
+     </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/delegation/win7</name>
+        <description>Delegation mode for windows 7 client</description>
+        <value type="bool">false</value>
+     </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/delegation/all</name>
+        <description>delegation mode for all clients</description>
+        <value type="bool">false</value>
+     </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/outlook_anywhere/enable</name>
+        <description>Enable Outlook Anywhere</description>
+        <value type="bool">false</value>
+     </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/outlook_anywhere/auto_detect</name>
+        <description>Enable Outlook Anywhere auto detection</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/outlook_anywhere/set_prentry</name>
+        <description>Enable Outlook Anywhere to set proxy table entry</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/native_krb/enable</name>
+        <description>Enable native kerberos</description>
+        <value type="bool">false</value>
+     </config>
+     <passthrough>
+        <name>/rbt/sport/blade/exchange/action/external/*</name>
+        <description>External actions for MAPI that are handled by sport</description>
+        <value type="string"/>
+        <passthrough-provider>sport</passthrough-provider>
+    </passthrough>
+    <external-state>
+        <name>/rbt/sport/blade/exchange/state/blacklist/info</name>
+        <description>Mapi blacklist information from Sport</description>
+        <value type="string"/>
+        <state-provider>sport</state-provider>
+    </external-state>
+    <config>
+        <name>/rbt/sport/blade/exchange/config/admission/close_prepop</name>
+        <description>close prepop connection for MAPI admission control</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/exchange/config/admission/close_conn_cnt</name>
+        <description>close high connection count MAPI session </description>
+        <value type="uint32" min="0" max="50">4</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/exchange/config/admission/close_idle</name>
+        <description>close idle MAPI session</description>
+        <value type="uint32" min="0" max="864000">3600</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/exchange/config/admission/close_age</name>
+        <description>close new/old MAPI session</description>
+        <value type="string">old</value>
+        <value-choices delimiter=";">
+           <choice>new</choice>
+           <choice>old</choice>
+           <choice>none</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/exchange/config/admission/close_mem</name>
+        <description>close MAPI session using too much memory (kb)</description>
+        <value type="uint32" min="0" max="1000000">1024</value>
+    </config>
+</node-list>

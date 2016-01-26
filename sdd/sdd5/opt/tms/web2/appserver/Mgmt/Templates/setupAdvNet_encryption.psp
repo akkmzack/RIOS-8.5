@@ -1,0 +1,189 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupSecurity.psp
+## This is the template for setting up authentication methods, ordering,
+## and remote servers.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'enableAuth': NodeEntry(
+            path='/rbt/auth/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Authentication and Encryption'),
+        'enableSec': NodeEntry(
+            path='/rbt/auth/config/pfs',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Perfect Forward Secrecy'),
+        'rekey': NodeEntry(
+            path='/rbt/auth/config/rekey',
+            type='uint16',
+            validate=('intInRange', '[1, 65535]'),
+            widgetClass='small',
+            label='Time Between Key Renegotiations',
+            units='minutes'),
+        'auth1': NodeEntry(
+            path='/rbt/auth/config/authentication/1/name',
+            selectOptions=(('hmac_md5', 'MD5'), ('hmac_sha1', 'SHA-1'))),
+        'auth2': NodeEntry(
+            path='/rbt/auth/config/authentication/2/name',
+            selectOptions=(('', 'None'), ('hmac_md5', 'MD5'), ('hmac_sha1', 'SHA-1'))),
+    }
+    for i in range(1, 6):
+        entries['encryption%d' % i] = NodeEntry(
+            path='/rbt/auth/config/encryption/%d/name' % i,
+            value='',
+            widget='select')
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'peerIp': NodeEntry(
+            name='addSecurePeer_peerIp',
+            validate='ipv4addr',
+            widgetClass='ipaddr',
+            label='Peer IP Address'),
+        'secret': NodeEntry(
+            name='secret',
+            widget='password',
+            label='Enter the Shared Secret',
+            validate='password'),
+        'secretConfirm': NodeEntry(
+            name='secretConfirm',
+            widget='password',
+            label='Confirm the Shared Secret',
+            validate='password'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# set the encryption options
+if policyType or ('true' == Nodes.present(mgmt, '/rbt/sport/ssl/config/licensed')): {
+    encryptionOptions = (('des', 'DES'),
+                         ('3des', '3DES'),
+                         ('aes256', 'AES256'),
+                         ('aes', 'AES'),
+                         ('null_enc', 'NULL'),
+                         ('', 'None'))
+} else: {
+    encryptionOptions = (('des', 'DES'),
+                         ('null_enc', 'NULL'),
+                         ('', 'None'))
+}
+for i in range(1, 6): {
+    nodeEntries['encryption%d' % i].selectOptions = encryptionOptions
+}
+
+secret = Nodes.present(mgmt, pathPrefix + '/rbt/auth/config/secret')
+dialogEntries['secret'].value = secret and FormUtils.bogusPassword
+dialogEntries['secretConfirm'].value = secret and FormUtils.bogusPassword
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>General Settings</legend>
+    <input type="hidden" name="_action_" value="setupNetworkAuth" />
+    <div class="midLevel">
+      <%= nodeEntries['enableAuth'].html(self) %>
+      <%= nodeEntries['enableSec'].html(self) %>
+    </div>
+    <div class="midLevel">
+      <table>
+        <tr>
+          <td class="label">Encryption Policy:</td>
+          <td class="nodeEntry">&nbsp;&nbsp;1. <%= nodeEntries['encryption1'].html_widget(self) %></td>
+          <td class="nodeEntry">&nbsp;&nbsp;2. <%= nodeEntries['encryption2'].html_widget(self) %></td>
+          <td class="nodeEntry">&nbsp;&nbsp;3. <%= nodeEntries['encryption3'].html_widget(self) %></td>
+          <td class="nodeEntry">&nbsp;&nbsp;4. <%= nodeEntries['encryption4'].html_widget(self) %></td>
+          <td class="nodeEntry">&nbsp;&nbsp;5. <%= nodeEntries['encryption5'].html_widget(self) %></td>
+        </tr>
+        <tr>
+          <td class="label">Authentication Policy:</td>
+          <td class="nodeEntry">&nbsp;&nbsp;1. <%= nodeEntries['auth1'].html_widget(self) %></td>
+          <td class="nodeEntry">&nbsp;&nbsp;2. <%= nodeEntries['auth2'].html_widget(self) %></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+        </tr>
+      </table>
+    </div>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['rekey'].html(self) %>
+        <%= dialogEntries['secret'].html(self) %>
+        <%= dialogEntries['secretConfirm'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+peerTable = ajaxentrytable.AjaxEntryTable('peer',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=securePeer'),
+    titleText='Secure Peers',
+    emptyMessage='No secure peers.',
+    addButtonText='Add a New Secure Peer',
+    addButtonName='addSecurePeer',
+    removeName='removeSecurePeer',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedPeer_')
+
+
+# fewer columns on cmc
+if policyType: {
+    peerTable.headerSpec = ('', 'Peer')
+    peerTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('peer', 'selectedPeer_'),
+ AjaxEntryTable.tdAttr('peer')]"""
+} else: {
+    peerTable.headerSpec = ('', 'Peer', 'Encryption', 'Authentication', 'State', 'Duplex', 'Time Created')
+    peerTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('peer', 'selectedPeer_'),
+ AjaxEntryTable.tdAttr('peer'),
+ AjaxEntryTable.tdAttr('encryption'),
+ AjaxEntryTable.tdAttr('authentication'),
+ AjaxEntryTable.tdAttr('state'),
+ AjaxEntryTable.tdAttr('duplex'),
+ AjaxEntryTable.tdAttr('creation')]"""
+}
+
+peerTable.addDivContent = '''
+  <!-- MSIE Bug: Forms with only one text input don't send the submit field with the return key! -->
+  <input type="text" style="display: none;" disabled="disabled" size="1" />
+  <div class="midLevel">
+    <table>
+      %s
+    </table>
+  </div>
+  ''' % dialogEntries['peerIp'].html(self)
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupNetworkAuth" />
+    <%= peerTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<% self.endPagelet() %>

@@ -1,0 +1,807 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Domain Authentication Automatically</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.06.01.html#640640">Chapter 4	Configuring Optimization Features</a> : <a class="WebWorks_Breadcrumb_Link" href="optimization.06.27.html#640640">Windows Domain Authentication</a> : Configuring Domain Authentication Automatically</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading2Topic"><a name="640640">Configuring Domain Authentication Automatically</a></div>
+      <div class="Body"><a name="640647">RiOS v8.5 simplifies the </a>Steelhead appliance configuration necessary to optimize traffic in an environment where there are:</div>
+      <li class="Bullet"><a name="640648">Microsoft Windows file servers using signed SMB or signed SMB2/3 for file sharing to Microsoft </a>Windows clients.</li>
+      <li class="Bullet"><a name="640649">Microsoft Exchange servers providing an encrypted MAPI communication to Microsoft Outlook </a>clients.</li>
+      <li class="Bullet"><a name="640650">Microsoft Internet Information Services (IIS) Web servers running HTTP or HTTP-based Web </a>applications such as SharePoint 2007.</li>
+      <div class="Body"><a name="640652">This section describes how to simplify configuration using these operations: </a></div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="640656">Easy Config</a></span> - Configures the server-side Steelhead appliance in Active Directory integrated mode for Windows 2003 or Windows 2008 to enable secure protocol optimization for CIFS SMB1, SMB2/3, and encrypted MAPI for all clients and servers.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="640657">Auto Config</a></span> - Configures the following accounts and privileges:</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="640658">Configure Delegation Account </a></span>- Configures the deployed delegation account with AD delegation privileges.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="640659">Configure Replication Account</a></span> - Configures the deployed replication account with AD replication privileges.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="640660">Add Delegation Servers </a></span>- Configures a list of the Exchange and CIFS servers that have permission to delegate AD access privileges.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="640661">Remove Delegation Servers </a></span>- Removes Exchange and CIFS servers from the list of delegation server accounts with permission to delegate AD access privileges.</li>
+      <div class="Heading2"><a name="640663">Easy Domain Authentication Configuration</a></div>
+      <div class="Body"><a name="669121">Domain authentication automatic configuration simplifies the server-side Steelhead appliance </a>configuration for enabling latency optimizations in a secure environment. Using this widget automates the majority of the required configuration tasks, avoiding the need to perform step-by-step operations in different configuration tools and using the command line on the Windows AD platforms. </div>
+      <div class="Body"><a name="640667">Use this widget to configure the server-side Steelhead appliance in integrated Active Directory mode for </a>Windows 2003 or 2008 and later, and enable secure protocol optimization for CIFS SMB1, SMB2, and SMB3 for all clients and servers. To enable secure protocol optimization for MAPI and encrypted MAPI, you need to enable MAPI protocol optimization on all clients after running the widget. </div>
+      <div class="Body"><a name="640668">Domain Authentication Automatic Configuration performs these steps:</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="640669">Tests the DNS configuration.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640673">Joins the server-side Steelhead appliance to the domain.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640674">Enables secure protocol optimization, such as SMB signing.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640675">Configures a deployed replication user in Active Directory, with the necessary privileges.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="640676">If any of the steps fail during the configuration, the system automatically rolls back to the previous </a>configuration.</div>
+      <div class="Body"><a name="682014">You do not necessarily need to use the replication user or delegate user facility to optimize secure Windows </a>traffic if you deploy the server-side Steelhead appliance so that it joins a domain in the Active Directory environment. To integrate the server-side Steelhead appliance into Active Directory, you must configure the role when you join the Steelhead appliance to the Windows domain.</div>
+      <div class="Body"><a name="682027">When you integrate the server-side Steelhead appliance in this way, it does not provide any Windows </a>domain controller functionality to any other machines in the domain and does not advertise itself as a domain controller or register any SRV records (service records). In addition, the Steelhead appliance does not perform any replication nor hold any Active Directory objects. The server-side Steelhead appliance has just enough privileges so that it can have a legitimate conversation with the domain controller and then use transparent mode for NTLM authentication. </div>
+      <div class="HeadingProcedure"><a name="640677">To configure domain authentication using Easy Config</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="640681">On the server-side Steelhead appliance, choose Configure &gt; Networking &gt; Host Settings.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640682">Under Primary DNS server, specify the DNS server IP address to use as the DNS server for the domain.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640683">Under DNS domain list, add the primary DNS server name to the list.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640761">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640762">Choose Configure &gt; Optimization &gt; Domain Auth Auto Config.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="702790">Under Easy Config, select Configure Domain Auth. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640771">On the server-side Steelhead appliance, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.67392pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 141.03936pt">
+            <div class="CellHeading"><a name="742287">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 327.63456pt">
+            <div class="CellHeading"><a name="742289">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742291">Admin User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742296">Specify the name of the domain administrator. RiOS deletes domain </a>administrator credentials after the join.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742298">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742300">Specify the password for the domain administrator account. This control is case-</a>sensitive.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742302">Domain/Realm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742304">Specify</a><span class="Bold"> </span>the fully-qualified domain name of the Active Directory domain in which to make the Steelhead appliance a member. Typically, this is your company domain name. RiOS supports Windows 2000 or later domains. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742312">Domain Controller</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742314">Specify the hosts that provide user login service in the domain, separated by </a>commas. (Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742316">Short Domain Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742318">Specify the short (NETBIOS) domain name.</a></div>
+            <div class="CellBody"><a name="742320">You can identify the short domain name by pressing Ctrl+Alt+Del on any </a>member server. You must explicitly specify the short domain name if it does not match the leftmost portion of the fully qualified domain name.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742322">Enable Encrypted MAPI</a><span style="font-weight: bold"> </span></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742326">Select to enable encrypted MAPI optimization on the server-side Steelhead </a>appliance. After running this widget, you must also choose Configure &gt; Optimization &gt; MAPI on the client-side Steelhead appliance and select Enable MAPI Exchange Optimization and Enable Encrypted Optimization. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742332">Enable SMB Signing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742334">Select to enable optimization on SMB-signed connections on the server-side and </a>client-side Steelhead appliances.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742339">Enable SMB2 Signing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742341">Select to enable optimization on SMB2-signed connections on the server-side </a>and client-side Steelhead appliances.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742346">Enable SMB3 Signing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742348">Select to enable optimization on SMB3-signed connections on the server-side </a>and client-side Steelhead appliances.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742353">Join Account Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742358">Specifies which account type the server-side Steelhead appliance uses to join the </a>domain controller. </div>
+            <div class="CellBody"><a name="742362">In RiOS v7.0 and later, you can optimize the traffic to and from hosted Exchange </a>servers. You must configure the server-side Steelhead appliance in integrated Active Directory mode for Windows 2003 or Windows 2008 and higher domains. This allows the Steelhead appliance to use authentication within the Active Directory on the Exchange servers that provide Microsoft Exchange online services. The domain that the server-side Steelhead appliance joins must be either the same as the client user or any domain that trusts the domain of the client user. </div>
+            <div class="CellBody"><a name="742375">When you configure the server-side Steelhead appliance in integrated Active </a>Directory mode, the server-side Steelhead appliance does not provide any Windows domain controller functionality to any other machines in the domain and does not advertise itself as a domain controller. In addition, the Steelhead appliance does not perform any replication nor hold any AD objects. When integrated with the Active Directory, the server-side Steelhead appliance has just enough privileges so that it can have a legitimate conversation with the domain controller and then use transparent mode for NTLM authentication.</div>
+            <div class="CellBody"><a name="742382">Select one of the following options from the drop</a>&#8209;down list:</div>
+            <li class="CellBullet"><span class="Bold"><a name="742383">Active Directory integrated (Windows 2003)</a></span> - Configures the server-side Steelhead appliance in Active Directory integrated mode. If the account for the server-side Steelhead was not already present, it is created in organizational unit (OU) domain controllers. If the account existed previously as a domain computer then its location does not change. You can move the account to a different OU later. </li>
+            <div class="CellIndent1"><a name="742390">You must have Administrator privileges to join the domain. </a></div>
+            <div class="CellIndent1"><a name="742391">This option does not support cross-domain authentication where the user is </a>from a domain trusted by the domain to which the server-side Steelhead appliance is joined.</div>
+            <li class="CellBullet"><span class="Bold"><a name="742395">Active Directory integrated (Windows 2008 and later)</a></span> - Configures the server-side Steelhead appliance in integrated Active Directory mode for Windows 2008 DCs and higher and supports authentication across domains. This is the default setting.</li>
+            <div class="CellIndent1"><a name="742399">You must explicitly specify the Windows 2008 DCs as a comma-separated list </a>in the Domain Controller field. The list should contain either the name or IP address of the Windows 2008 DCs. </div>
+            <div class="CellIndent1"><a name="742400">You must have Administrator privileges to join the domain. Additionally, if </a>the user account is in a domain that is different from the domain to which the join is being performed, specify the user account in the format domain\\username. Do not specify the user account in the format username@realmname. In this case, domain is the short domain name of the domain to which the user belongs.</div>
+            <div class="CellBody"><a name="742404">Even though the Steelhead appliance is integrated with Active Directory, it does </a>not provide any Windows domain controller functionality to any other machines in the domain. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742406">Configure Domain Auth</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742408">Click to configure domain authentication.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Indent1"><a name="640872">After you click </a><span style="font-weight: bold">Configure Domain Auth</span>, the status indicates whether the domain authentication was successful. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupDAAC.html#641126', '');" title="Configuring Domain Authentication Automatically">Status and Logging</a></span>. If the authentication succeeds, secure protocol optimization for CIFS (SMB1), SMB2, and SMB33 is enabled for all clients and servers. Encryped MAPI is enabled for all servers. To enable encrypted MAPI for all clients, you must enable encrypted optimization on the client-side Steelhead appliance. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization">Configuring MAPI Optimization</a></span>.</div>
+      <div class="Heading2"><a name="640882">Configuring Domain Authentication for Delegation</a></div>
+      <div class="Body"><a name="640883">Although a user with generic domain administrator privileges meets the requirements for replication, this </a>could have some security implications. </div>
+      <div class="Heading3"><a name="640884">Delegation</a></div>
+      <div class="Body"><a name="640885">Using delegation mode to optimize SMB-signed or encrypted MAPI traffic requires additional </a>configuration (beyond joining the server-side Steelhead appliance to a domain) because delegation mode uses the Active Directory constrained delegation feature. You must configure both the server-side Steelhead appliance and the Windows domain that it joins.</div>
+      <div class="Body"><a name="640892">Constrained delegation is an Active Directory feature that enables configured services to obtain security </a>related information for a user. Configuring constrained delegation requires the creation of a special delegate user account in the Windows domain. The account allows the delegate user the privilege of obtaining security information for use with specific applications (like CIFS and MAPI), and then configuring the delegate user credentials on the server-side Steelhead appliance.</div>
+      <div class="Heading3"><a name="640896">Replication</a></div>
+      <div class="Body"><a name="640897">You can assign a restricted set of privileges to a user, known as a replication user. You can configure the </a>replication user on a per-forest basis so that the user assigned to it can retrieve machine credentials from any domain controller in any trusted domain within the forest. Remember that a forest can comprise of multiple domains with trusts between them.</div>
+      <div class="Body"><a name="640901">Automatic configuration simplifies setting up your Steelhead appliance for delegation or replication. Use </a>these widgets to:</div>
+      <li class="Bullet"><a name="640902">Configure delegation or replication accounts.</a></li>
+      <li class="Bullet"><a name="640903">Add or remove delegation servers.</a></li>
+      <div class="Heading3"><a name="640904">Configuring the Delegation Account</a></div>
+      <div class="Body"><a name="640905">The configure delegation account widget adds a user with trusted delegation rights to a domain.</a></div>
+      <div class="HeadingProcedure"><a name="640906">To configure the delegation account with AD delegation privileges</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="640907">Choose Configure &gt; Optimization &gt; Domain Auth Auto Config.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640908">Under Auto Config, select Configure Delegation Account. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640916">On the server-side Steelhead appliance, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="742415">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="742417">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742419">Admin User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742421">Specify the delegate user name. The maximum length is 20 characters. The user name </a>cannot contain any of the following characters:</div>
+            <div class="CellBody"><a name="742422"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="742423">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="742424">You can only add one delegate user per domain. A delegate user is required in </a>each of the domains where a server is going to be optimized.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742426">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742428">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742430">Delegation Domain/</a>Realm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742432">Select the delegation domain in which you want to make the delegate user a trusted </a>member from the drop-down list.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742434">Domain Controller</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742436">Specify the hosts that provide user login service in the domain, separated by commas. </a>(Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742438">Configure Delegation </a>Account</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742440">Click to configure the account.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Indent1"><a name="640954">After you click </a><span style="font-weight: bold">Configure Delegation Account</span>, the status indicates whether the configuration was successful. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupDAAC.html#641126', '');" title="Configuring Domain Authentication Automatically">Status and Logging</a></span>.</div>
+      <div class="Heading3"><a name="640958">Configuring the Replication Account</a></div>
+      <div class="Body"><a name="640959">The configure replication account widget adds a user with trusted replication rights to a domain.</a></div>
+      <div class="HeadingProcedure"><a name="640960">To configure the replication account </a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="640961">Choose Configure &gt; Optimization &gt; Domain Auth Auto Config.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640962">Under Auto Config, select Configure Replication Account. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="640970">On the server-side Steelhead appliance, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="742447">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="742449">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742451">Admin User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742453">Specify the replication user name. The maximum length is 20 characters. The user name </a>cannot contain any of the following characters:</div>
+            <div class="CellBody"><a name="742454"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="742455">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="742456">You can only add one replication user per domain. A replication user is </a>required in each of the domains where a server is going to be optimized.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742458">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742460">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742462">Replication Domain/</a>Realm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742464">Select the replication domain in which you want to make the replication user a trusted </a>member from the drop-down list. You must preconfigure the replication domain; it no replication domain exists, the list displays None.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742466">Domain Controller</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742468">Specify the hosts that provide user login service in the domain, separated by commas. </a>(Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742470">Configure Replication </a>Account</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742472">Click to configure the account.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Indent1"><a name="641008">After you click </a><span style="font-weight: bold">Configure Replication Account</span>, the status indicates whether the replication account configuration was successful. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupDAAC.html#641126', '');" title="Configuring Domain Authentication Automatically">Status and Logging</a></span>.</div>
+      <div class="Heading3"><a name="641009">Adding the Delegation Servers</a></div>
+      <div class="Body"><a name="641010">The add delegation servers widget adds delegation servers from either the CIFS or Exchange MDB service.</a></div>
+      <div class="HeadingProcedure"><a name="641011">To add delegation servers</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="641012">Choose Configure &gt; Optimization &gt; Domain Auth Auto Config.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="641013">Under Auto Config, select Add Delegation Servers. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="641021">On the server-side Steelhead appliance, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="742479">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="742481">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742483">Admin User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742485">Specify the delegate user name. The maximum length is 20 characters. The user name </a>cannot contain any of the following characters:</div>
+            <div class="CellBody"><a name="742486"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="742487">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="742488">You can only add one delegate user per domain. A delegate user is required in </a>each of the domains where a server is going to be optimized.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742490">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742492">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742494">Delegation Domain/</a>Realm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742496">Select the delegation domain in which you want to make the delegate user a trusted </a>member from the drop-down list.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742498">Domain Controller</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742500">Specify the hosts that provide user login service in the domain, separated by commas. </a>(Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742502">Service</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742504">Select a service type for delegation: CIFS or Exchange MDB service. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742506">Server List</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742508">Specify the CIFS or MAPI servers as the local hostname, separated by commas.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742510">Add Delegation Servers</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742512">Click to add the servers for delegation.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Indent1"><a name="641067">After you click </a><span style="font-weight: bold">Add Delegation Servers</span>, the status indicates whether the configuration was successful. </div>
+      <div class="Heading3"><a name="641068">Removing the Delegation Servers</a></div>
+      <div class="Body"><a name="641069">The remove delegation servers widget removes delegation servers from either the CIFS or Exchange MDB </a>service.</div>
+      <div class="HeadingProcedure"><a name="641070">To remove delegation servers </a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="641071">Choose Configure &gt; Optimization &gt; Domain Auth Auto Config.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="641072">Under Auto Config, select Remove Delegation Servers. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="641076">On the server-side Steelhead appliance, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="742519">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="742521">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742523">Admin User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742525">Specify the domain administrator name assigned to the delegation server. The maximum </a>length is 20 characters. The user name cannot contain any of the following characters:</div>
+            <div class="CellBody"><a name="742526"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="742527">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742529">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742531">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742533">Delegation Domain/</a>Realm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742535">Select the delegation domain in which you want delegate user is a trusted member.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742537">Domain Controller</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742539">Specify the hosts that provide user login service in the domain, separated by commas. </a>(Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742541">Service</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742543">Select the delegation service type: CIFS or Exchange MDB service. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742545">Server List</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742547">Specify the CIFS or MAPI servers as the local hostname, separated by commas.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742549">Remove Delegation </a>Servers</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="742551">Click to remove the servers from delegation.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Indent1"><a name="641122">After you click </a><span style="font-weight: bold">Remove Delegation Servers</span>, the status indicates whether the servers were removed. </div>
+      <div class="Heading2"><a name="641126">Status and Logging</a></div>
+      <div class="Body"><a name="641127">After you run a widget, the status indicates one of these states: </a></div>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="641131">Not Started</a></span> - The operation has never executed on this Steelhead appliance.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="641132">Success</a></span> - The last time the operation executed, it completed successfully with no errors.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="641133">Failed</a></span> - The last time the operation executed, the results were unsuccessful. The operation was not carried out because it ran into an error condition.</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="641134">In Progress</a></span> - The operation is actively running. In this state, the browser constantly polls the back end to see if the operation has completed. Once the operation completes, the browser stops polling. </li>
+      <div class="Body"><a name="641135">Last Run displays the amount of time elapsed since the last execution and then the time and date the </a>operation completed. The time is meaningful only if the status is success or failed.</div>
+      <div class="Body"><a name="641136">Logging Data displays log output for the operation. You might want to view the log if the status indicates </a>an operation failure. Two log files follow an operation: </div>
+      <li class="Bullet"><a name="641137">The summary log contains the highlights of the full log. </a></li>
+      <li class="Bullet"><a name="641138">The full log contains a detailed record of the operation. </a></li>
+      <div class="Body"><a name="641139">You can control the logging data display using the tabs. </a></div>
+      <div class="Body"><a name="641140">Select Hide Log to remove the logs from the display.</a></div>
+      <div class="Body"><a name="641141">Select the Summary and Full Log tabs to view the logging data. The system displays a line count for the </a>number of lines in the logging data. The system omits the tab if the log file is empty.</div>
+      <li class="BulletSubBullet2"><a name="641142">For the summary and full log tabs, an abbreviated form of the timestamp appears in the left margin </a>of each line. Use the mouse to hover over a timestamp and view the entire timestamp in a tooltip. </li>
+      <div class="Indent2"><a name="689452">Not all log lines have timestamps, because some of the logging data is generated by third-party </a>(non-Riverbed) applications. </div>
+      <li class="BulletSubBullet2"><a name="646616">The log highlights line errors in red and warnings in yellow. </a></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

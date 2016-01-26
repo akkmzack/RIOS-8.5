@@ -1,0 +1,247 @@
+<firmware>
+
+<binaries>
+    <cmd name="grep"/>
+    <cmd name="awk"/>
+    <cmd name="dmidecode"/>
+    <cmd name="ipmitool"/>
+</binaries>
+
+<cmds name="prepare_afulnx">
+    <one_cmd cmd="cp /usr/sbin/amifldrv_mod.o /var/home/root/"/>
+    <one_cmd cmd="cd /var/home/root"/>
+</cmds>
+
+<cmds name="post_afulnx">
+    <one_cmd cmd="cd -"/>
+</cmds>
+
+<cmds name="sleep">
+    <one_cmd cmd="sleep 20"/>
+</cmds>
+
+<cmds name="install_redfin_ipmi">
+    <one_cmd cmd="/sbin/modprobe ipmi_si kipmid_max_busy_us=200"/>
+    <one_cmd cmd="/sbin/modprobe ipmi_devintf"/>
+    <one_cmd cmd="/sbin/modprobe ipmi_msghandler"/>
+</cmds>
+
+<cmds name="uninstall_ipmi">
+    <one_cmd cmd="/sbin/modprobe -r ipmi_si"/>
+    <one_cmd cmd="/sbin/modprobe -r ipmi_devintf"/>
+    <one_cmd cmd="/sbin/modprobe -r ipmi_msghandler"/>
+</cmds>
+
+
+<cmds name="reset_lsi_ctrl">
+    <one_cmd cmd="/opt/tms/bin/lsiutil -p1 -r"/>
+</cmds>
+
+<FW_item name="redfin_BIOS_36" category="BIOS" comments="upgrading from 0.36 to 0.36">
+    <cur_ver possible_cmds="1" cmd0="dmidecode | grep -A 2 &quot;BIOS Information&quot; | awk &#39;/Version/ {printf (&quot;%f\n&quot;, substr($2, 3,6))}&#39;" />
+    <expected_image ver="0.36" newer_ok="yes" image_file="/boot/8229v036.rom" />
+    <upgrade_cmd cmd="/usr/sbin/afulnx_64" cmd_option=" /boot/8229v036.rom /B /P /N /C" />
+    <fall_back ver="0.36" image="/boot/8229v036.rom" cmd_option=" /boot/8229v036.rom /B /P /N /C" />
+</FW_item>
+
+<FW_item name="redfin_BIOS_42" category="BIOS" comments="upgrading from 0.42 to 0.42">
+    <cur_ver possible_cmds="1" cmd0="dmidecode | grep -A 2 &quot;BIOS Information&quot; | awk &#39;/Version/ {printf (&quot;%f\n&quot;, substr($2, 3,6))}&#39;"/>
+    <expected_image ver="0.42" newer_ok="yes" image_file="/boot/8229v042.rom" />
+    <upgrade_cmd cmd="/usr/sbin/afulnx_64" cmd_option=" /boot/8229v042.rom /B /P /N /C" />
+    <fall_back ver="0.42" image="/boot/8229v042.rom" cmd_option=" /boot/8229v042.rom /B /P /N /C" />
+</FW_item>
+
+<FW_item name="redfin_BIOS_43_fb36" category="BIOS" comments="upgrading from 0.43 to 0.43">
+    <cur_ver possible_cmds="1" cmd0="dmidecode | grep -A 2 &quot;BIOS Information&quot; | awk &#39;/Version/ {printf (&quot;%f\n&quot;, substr($2, 3,6))}&#39;"/>
+    <expected_image ver="0.43" newer_ok="yes" image_file="/boot/8229v043.rom" />
+    <upgrade_cmd cmd="/usr/sbin/afulnx_64" cmd_option=" /boot/8229v043.rom /B /P /N /C" />
+    <fall_back ver="0.36" image="/boot/8229v036.rom" cmd_option=" /boot/8229v036.rom /B /P /N /C" />
+</FW_item>
+
+
+<FW_item name="redfin_BIOS_43_fb42" category="BIOS" comments="upgrading from 0.43 to 0.43">
+    <cur_ver possible_cmds="1" cmd0="dmidecode | grep -A 2 &quot;BIOS Information&quot; | awk &#39;/Version/ {printf (&quot;%f\n&quot;, substr($2, 3,6))}&#39;"/>
+    <expected_image ver="0.43" newer_ok="yes" image_file="/boot/8229v043.rom" />
+    <upgrade_cmd cmd="/usr/sbin/afulnx_64" cmd_option=" /boot/8229v043.rom /B /P /N /C" />
+    <fall_back ver="0.42" image="/boot/8229v042.rom" cmd_option=" /boot/8229v042.rom /B /P /N /C" />
+</FW_item>
+
+
+
+<FW_item name="redfin_BMC_210" category="BMC">
+    <cur_ver possible_cmds="1" cmd0="ipmitool bmc info | grep &quot;Firmware Revision&quot;| awk &#39;{print $4}&#39;"/>
+    <expected_image ver="2.10" newer_ok="yes" image_file="/boot/8229r01.i10" />
+    <upgrade_cmd cmd="/sbin/kcsflash" cmd_option=" /boot/8229r01.i10 NoConfig Y" />
+    <fall_back ver="2.10" image="/boot/8229r01.i10" cmd_option=" /boot/8229r01.i10 NoConfig Y" />
+</FW_item >
+
+<FW_item name="redfin_BMC_212" category="BMC">
+    <cur_ver possible_cmds="1" cmd0="ipmitool bmc info | grep &quot;Firmware Revision&quot;| awk &#39;{print $4}&#39;"/>
+    <expected_image ver="2.12" newer_ok="yes" image_file="/boot/8229r02.i12" />
+    <upgrade_cmd cmd="/sbin/kcsflash" cmd_option=" /boot/8229r02.i12 NoConfig Y" />
+    <fall_back ver="2.10" image="/boot/8229r01.i10" cmd_option=" /boot/8229r01.i10 NoConfig Y" />
+</FW_item >
+
+
+<FW_item name="redfin_LSI_controller_FW_PH09" category="LSI controller FW" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -f 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="81fc01b8586c281cbcef7897d4db9364" image_file="/boot/PH09_GCA9IT.fw" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -a Yes -f /boot/PH09_GCA9IT.fw 2" />
+    <fall_back ver="81fc01b8586c281cbcef7897d4db9364" image="/boot/PH09_GCA9IT.fw" cmd_option=" -a Yes -f /boot/PH09_GCA9IT.fw 2" />
+</FW_item>
+
+<FW_item name="redfin_LSI_controller_FW_PH13" category="LSI controller FW" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -f 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="246624574bb95bee8a824575a387572b" image_file="/boot/PH13_GCA13IT.fw" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -a Yes -f /boot/PH13_GCA13IT.fw 2" />
+    <fall_back ver="246624574bb95bee8a824575a387572b" image="/boot/PH13_GCA13IT.fw" cmd_option=" -a Yes -f /boot/PH13_GCA13IT.fw 2" />
+</FW_item>
+
+<FW_item name="redfin_LSI_controller_BIOS_717" category="LSI controller BIOS" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -c 1 | awk &#39;/BIOS md5sum/ {print $4}&#39;"/>
+    <expected_image ver="36d1bbc179376d2f1778330f16aa8f16" image_file="/boot/PH09_mptsas2.rom" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -a Yes -f /boot/PH09_mptsas2.rom,, 4" />
+    <fall_back ver="36d1bbc179376d2f1778330f16aa8f16" image="/boot/PH09_mptsas2.rom" cmd_option=" -a Yes -f /boot/PH09_mptsas2.rom,, 4" />
+</FW_item>
+
+<FW_item name="redfin_LSI_controller_BIOS_725" category="LSI controller BIOS" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -c 1 | awk &#39;/BIOS md5sum/ {print $4}&#39;"/>
+    <expected_image ver="89d4dd2b3da2e42a42ee509ec10ce1f8" image_file="/boot/PH13_mptsas2.rom" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -a Yes -f /boot/PH13_mptsas2.rom,, 4" />
+    <fall_back ver="89d4dd2b3da2e42a42ee509ec10ce1f8" image="/boot/PH13_mptsas2.rom" cmd_option=" -a Yes -f /boot/PH13_mptsas2.rom,, 4" />
+</FW_item>
+
+<FW_item name="redfin_LSI_expander_FW_11" category="LSI expander FW" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -x 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="f58dd79c2053fc9fce8e34dc887cb0c9" image_file="/boot/PH11_1_sas2xfwB3.fw" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/PH11_1_sas2xfwB3.fw -a 20,1,2,2,Yes,0,0,0 20" />
+    <fall_back ver="f58dd79c2053fc9fce8e34dc887cb0c9" image="/boot/PH11_1_sas2xfwB3.fw" cmd_option=" -p1 -f /boot/PH11_1_sas2xfwB3.fw -a 20,1,2,2,Yes,0,0,0 20" />
+</FW_item>
+
+<FW_item name="redfin_LSI_expander_FW_12" category="LSI expander FW" comments="upgrading from xx to xx">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -x 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="eb8cd2c48eafdedb81ccdde282e88520" image_file="/boot/PH12_sas2xfw.fw" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/PH12_sas2xfw.fw -a 20,1,2,2,Yes,0,0,0 20" />
+    <fall_back ver="eb8cd2c48eafdedb81ccdde282e88520" image="/boot/PH12_sas2xfw.fw" cmd_option=" -p1 -f /boot/PH12_sas2xfw.fw -a 20,1,2,2,Yes,0,0,0 20" />
+</FW_item>
+
+<FW_item name="redfin_LSI_expander_FW_13" category="LSI expander FW" comments="ph13">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -x 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="4c128fabb5aa79eee90d1766678d1622" image_file="/boot/PH13_b3_sas2xfw.fw" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/PH13_b3_sas2xfw.fw -a 20,1,2,2,Yes,0,0,0 20" />
+    <fall_back ver="4c128fabb5aa79eee90d1766678d1622" image="/boot/PH13_b3_sas2xfw.fw" cmd_option=" -p1 -f /boot/PH13_b3_sas2xfw.fw -a 20,1,2,2,Yes,0,0,0 20" />
+</FW_item>
+
+
+<FW_item name="redfin_LSI_expander_BIN_11" category="LSI expander BIN file" comments="bin 10.14">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -y 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="24f4a97a176a57691572562a86b30f4a" image_file="/boot/mfg10142011.bin" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/mfg10142011.bin -a 20,1,2,131,Yes,0,0,0 20" />
+    <fall_back ver="24f4a97a176a57691572562a86b30f4a" image="/boot/mfg10142011.bin" cmd_option=" -p1 -f /boot/mfg10142011.bin -a 20,1,2,131,Yes,0,0,0 20" />
+</FW_item >
+
+
+
+<FW_item name="redfin_LSI_expander_BIN_12" category="LSI expander BIN file" comments="bin 06.04">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -y 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="a11ca0b7e41df7f282a0bc35085badc7" image_file="/boot/mfg06042012.bin" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/mfg06042012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+    <fall_back ver="a11ca0b7e41df7f282a0bc35085badc7" image="/boot/mfg10142011.bin" cmd_option=" -p1 -f /boot/mfg06042012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+</FW_item >
+
+
+<FW_item name="redfin_LSI_expander_BIN_13_3dot5" category="LSI expander BIN file" comments="bin 07.19.2012 for 2u 3 dot 5 ">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -y 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="5e1790bc5b3e583bdda4cfa2756cc6ce" image_file="/boot/mfg_BP12_07192012.bin" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/mfg_BP12_07192012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+    <fall_back ver="5e1790bc5b3e583bdda4cfa2756cc6ce" image="/boot/mfg_BP12_07192012.bin" cmd_option=" -p1 -f /boot/mfg_BP12_07192012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+</FW_item >
+
+<FW_item name="redfin_LSI_expander_BIN_13_2dot5" category="LSI expander BIN file" comments="bin 06.11.2012 for 2u 2dot5 ">
+    <cur_ver possible_cmds="1" cmd0="/sbin/lsi_fw_checksums.py -u /sbin/lsiutil.165 -y 1 | awk &#39;/md5sum/ {print $4}&#39;"/>
+    <expected_image ver="8155f19d127660070fd1252900d75cfe" image_file="/boot/mfg_BP24_06112012.bin" />
+    <upgrade_cmd cmd="/opt/tms/bin/lsiutil" cmd_option=" -p1 -f /boot/mfg_BP24_06112012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+    <fall_back ver="8155f19d127660070fd1252900d75cfe" image="/boot/mfg_BP24_06112012.bin" cmd_option=" -p1 -f /boot/mfg_BP24_06112012.bin -a 20,1,2,131,Yes,0,0,0 20" />
+</FW_item >
+
+<motherboard part="425-00140-01" mobo_type="1U_SATA" comment="redfin 1u CX">
+  <upgrade>
+    <run_cmd name="prepare_afulnx"/>
+    <transaction name="BIOS_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="yes" reboot_now="no">
+        <item name="redfin_BIOS_43_fb36"/>
+    </transaction>
+    <run_cmd name="post_afulnx"/>
+    <run_cmd name="install_redfin_ipmi"/>
+    <transaction name="BMC_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no" reboot_now="no">
+        <item name="redfin_BMC_212"/>
+        <after_upgrade_action name="sleep"/>
+    </transaction>
+  </upgrade>
+</motherboard>
+
+<motherboard part="425-00205-01" mobo_type="1U_LSI" comment="redfin 1u ex, 1160">
+  <upgrade>
+    <run_cmd name="prepare_afulnx"/>
+    <transaction name="BIOS_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="yes" reboot_now="no">
+        <item name="redfin_BIOS_43_fb36"/>
+    </transaction>
+    <run_cmd name="post_afulnx"/>
+    <run_cmd name="install_redfin_ipmi"/>
+    <transaction name="BMC_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no" reboot_now="no">
+        <item name="redfin_BMC_212"/>
+        <after_upgrade_action name="sleep"/>
+    </transaction>
+    <transaction name="LSI_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no" reboot_now="no">
+        <item name="redfin_LSI_controller_FW_PH13"/>
+        <item name="redfin_LSI_controller_BIOS_725"/>
+        <after_upgrade_action name="reset_lsi_ctrl"/>
+    </transaction>
+  </upgrade>
+</motherboard>
+
+<motherboard part="425-00205-01" mobo_type="2U_LSI" comment="redfin 2u EX, 1260">
+  <upgrade>
+    <run_cmd name="prepare_afulnx"/>
+    <transaction name="BIOS_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="yes" reboot_now="no">
+        <item name="redfin_BIOS_43_fb36"/>
+    </transaction>
+    <run_cmd name="post_afulnx"/>
+    <run_cmd name="install_redfin_ipmi"/>
+    <transaction name="BMC_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no" reboot_now="no">
+        <item name="redfin_BMC_212"/>
+        <after_upgrade_action name="sleep"/>
+    </transaction>
+    <transaction name="LSI_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no" reboot_now="no">
+        <item name="redfin_LSI_controller_FW_PH13"/>
+        <item name="redfin_LSI_controller_BIOS_725"/>
+        <item name="redfin_LSI_expander_FW_13"/>
+        <item name="redfin_LSI_expander_BIN_13_3dot5"/>
+        <after_upgrade_action name="reset_lsi_ctrl"/>        
+    </transaction>
+  </upgrade>
+</motherboard>
+
+
+<motherboard part="425-00205-01" mobo_type="2U25_LSI" comment="redfin 2u 2.5 CX">
+  <upgrade>
+    <run_cmd name="prepare_afulnx"/>
+    <transaction name="BIOS_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="yes" reboot_now="no">
+        <item name="redfin_BIOS_43_fb42"/>
+    </transaction>
+    <run_cmd name="post_afulnx"/>
+    <run_cmd name="install_redfin_ipmi"/>
+    <transaction name="BMC_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no">
+        <item name="redfin_BMC_212"/>
+        <after_upgrade_action name="sleep"/>
+    </transaction>
+    <transaction name="LSI_upgrade" retry_times="3" alarm_if_fails="yes" fall_back_to_old_image="yes" need_reboot="no">
+        <item name="redfin_LSI_controller_FW_PH13"/>
+        <item name="redfin_LSI_controller_BIOS_725"/>
+        <item name="redfin_LSI_expander_FW_13"/>
+        <item name="redfin_LSI_expander_BIN_13_2dot5"/>
+        <after_upgrade_action name="reset_lsi_ctrl"/>
+    </transaction>
+  </upgrade>
+</motherboard>
+
+</firmware>

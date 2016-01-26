@@ -1,0 +1,30 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportHTTPStatistics.psp
+## This is the template for the HTTP Statistics report page (pre-Samoa and Samoa+ stats combined)
+## Refactored to use common report code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:HTTPStatisticsPagelet" %>
+<%@page extends="HTTPStatisticsPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'httpForm',
+    'reportSpecs': {
+        'hr': {
+            'tableName': 'httpPrefetchPerfTable',
+            'gfxId': 'httpPrefetchPerfCombined',
+            'gfxDisplayId': 'httpPrefetchPerfGraphImg'
+         }
+    }
+}
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<%@include file="includes/reportHTTPStatistics.psp" %>

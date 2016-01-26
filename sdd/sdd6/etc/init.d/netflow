@@ -1,0 +1,111 @@
+#!/bin/bash
+#
+#  netflow  start, stop and watch the RBT netflow kernel module
+# 
+
+
+# network interface to track
+IFACE=$2
+
+RBTKMODS=/opt/rbt/lib/modules
+OPTIONS=
+MODULE_NAME=netflow
+DEVICE=$MODULE_NAME
+MODE=644
+GROUP=root
+MAJOR=""
+MODULE_DIR=/proc/$MODULE_NAME
+
+exists() {
+    return $(lsmod | grep -q ^${MODULE_NAME} > /dev/null 2>&1)
+}
+
+start() {
+    exists
+    if [ "$?" = 0 ]; then
+        echo "$MODULE_NAME module already loaded"
+        return 1
+    fi
+    echo "Loading $MODULE_NAME module"
+    insmod ${RBTKMODS}/${MODULE_NAME}.o ${OPTIONS}
+
+    # remove node w/ (possibly) stale major
+    rm -f /dev/${DEVICE} > /dev/null 2>&1
+
+    if [ -z $MAJOR ]; then
+        #echo "No default major number supplied"
+        MAJOR=`/bin/cat /proc/devices | /bin/grep ${MODULE_NAME} | /bin/sed -e "s, ${MODULE_NAME},,"`
+    fi
+    if [ ! "x" = "x$MAJOR" ]; then
+        #echo "Dynamic major number assigned: $MAJOR" 
+        /bin/mknod /dev/${DEVICE} c $MAJOR 0 > /dev/null 2>&1
+        chgrp $GROUP /dev/${DEVICE} > /dev/null 2>&1
+        chmod $MODE /dev/${DEVICE} > /dev/null 2>&1
+    fi
+
+    if [ ! -z $IFACE ]; then
+        echo $IFACE > ${MODULE_DIR}/ifaces
+        echo "$MODULE_NAME tracking network interface $IFACE"
+    fi
+
+    return 0
+}
+
+stop() {
+    exists
+    if [ "$?" = 0 ]; then
+        echo "Unloading $MODULE_NAME module"
+        rmmod netflow
+    else
+        echo "$MODULE_NAME module not loaded"
+        return 1
+    fi
+    rm -f /dev/${DEVICE}0 > /dev/null 2>&1
+    rm -f /dev/${DEVICE} > /dev/null 2>&1
+
+    return 0
+}
+
+# this is handy for debugging, but not much else
+watch() {
+    exists
+    if [ "$?" -ne 0 ]; then
+        echo "$MODULE_NAME module not loaded"
+        return 1
+    fi
+    if [ ! -f ${MODULE_DIR}/info ]; then
+        echo "procfs interface has vanished"
+        return 1
+    fi
+
+    for i in `seq 1 20000`
+    do
+        clear
+        cat ${MODULE_DIR}/info
+        sleep 1
+    done
+
+    return 0
+}
+
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    watch)
+        watch
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart} {eth[0-n]|wan[0..n]}"
+        exit 1
+esac
+
+exit $?

@@ -1,0 +1,353 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Lit Min Lee
+##
+## setupDateTime.psp
+##
+## Basic Settings for Date, Time and NTP.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, HostUtils, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#ntpServerTable_main { width: 640px; }
+#ntpAuthTable_main { width: 640px; }
+.table_active_status, .table_ntp_version, .table_auth_status { text-align: center }
+.keyTypeSpan { padding-right: 10px; }
+input.wide5 { width: 500px; }
+.encryptedText { word-wrap: break-word; width: 400px; margin: 0; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'ntpEnable': NodeEntry(
+            path='/ntp/enable',
+            type='bool',
+            widget='radio',
+            label={'true': 'Use NTP Time Synchronization',
+                   'false': 'Set Time Manually'},
+            enableDiv = {'false': 'settime_manual'}),
+        'changeDate': NodeEntry(
+            name='changeDate',
+            type='bool',
+            widget='checkboxLeft',
+            label='Change Date:',
+            enableDiv='change_date'),
+        'changeTime': NodeEntry(
+            name='changeTime',
+            type='bool',
+            widget='checkboxLeft',
+            label='Change Time:',
+            enableDiv='change_time'),
+        'timezone': NodeEntry(
+            name='timezone',
+            path='/time/zone',
+            widget='select',
+            action='return checkTZWarning(this)',
+            label='Time Zone')
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'ntpServer_host': NodeEntry(
+            name='ntpServer_host',
+            validate='hostname',
+            label='Hostname or IP Address'),
+        'ntpServer_version': NodeEntry(
+            name='ntpServer_version',
+            selectOptions=('3', '4'),
+            label='Version',
+            value='4'),
+        'ntpServer_enable': NodeEntry(
+            name='ntpServer_enable',
+            selectOptions=(('true', 'Enabled'), ('false', 'Disabled')),
+            label='Enabled'),
+        'ntpServer_keyid': NodeEntry(
+            name='ntpServer_keyid',
+            validate=('intInRange', '[1, 65534]'),
+            label='Key ID',
+            inputOptional=True),
+        'ntpAuth_keyid': NodeEntry(
+            name='ntpAuth_keyid',
+            validate=('intInRange', '[1, 65534]'),
+            label='Key ID'),
+        'ntpAuth_keyType': NodeEntry(
+            name='ntpAuth_keyType',
+            widget='radio',
+            label={'MD5': 'MD5', 'SHA1': 'SHA1'},
+            action='revalidate()',
+            value='MD5'),
+        'ntpAuth_secret': NodeEntry(
+            name='ntpAuth_secret',
+            widgetClass='wide3',
+            action='updateUpdateables("ntpAuthForm")',
+            validate='validateSecret'),
+        'manual_date': NodeEntry(
+            name='date',
+            validate='date',
+            widgetClass='date'),
+        'manual_time': NodeEntry(
+            name='time',
+            validate='time',
+            widgetClass='time')
+        }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# Set current date,time
+dialogEntries['manual_date'].value = Nodes.present(mgmt, '/time/now/date')
+dialogEntries['manual_time'].value = Nodes.present(mgmt, '/time/now/time')
+zone = Nodes.present(mgmt, '/time/zone')
+
+# populate timezone selector
+nodeEntries['timezone'].selectOptions = HostUtils.getTimezones()
+
+## ntp server table:
+ntpServerTable = ajaxentrytable.AjaxEntryTable('ntpServer',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=ntpServers'),
+    headerSpec=('', 'Server', ('Version', 'table_ntp_version'), 'Enabled', 'Key ID'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('host', 'selectedNtpServer_'),
+ AjaxEntryTable.tdAttr('host'),
+ AjaxEntryTable.tdAttr('version', 'table_ntp_version'),
+ AjaxEntryTable.tdActiveSelect('enable', '_ntpServer_enable_', 'host', [['false', 'Disabled'], ['true', 'Enabled']], 'return ntpSubmitAction(this)'),
+ AjaxEntryTable.tdAttr('key')]""",
+    emptyMessage='No Requested NTP Servers.',
+    removeName='removeNtpServers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedNtpServer_',
+    titleText='Requested NTP Servers',
+    addButtonText='Add a New NTP Server',
+    addButtonName='addNtpServer')
+
+ntpServerTable.addDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['ntpServer_host'].html(self),
+       dialogEntries['ntpServer_version'].html(self),
+       dialogEntries['ntpServer_enable'].html(self),
+       dialogEntries['ntpServer_keyid'].html(self))
+
+
+## ntp active peers table:
+ntpActivePeersTable = ajaxentrytable.AjaxEntryTable('ntpActivePeers',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=ntpActivePeers'),
+    headerSpec=(('Active', 'table_active_status'), 'Server', ('Auth Status', 'table_auth_status'), 'Key ID', 'Ref ID'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('active', 'table_active_status'),
+ AjaxEntryTable.tdAttr('server'),
+ AjaxEntryTable.tdAttr('auth', 'table_auth_status'),
+ AjaxEntryTable.tdAttr('keyid'),
+ AjaxEntryTable.tdAttr('refid')]""",
+    titleText='Connected NTP Servers',
+    emptyMessage='No Connected NTP Servers.')
+
+
+## ntp authentication key table:
+ntpAuthTable = ajaxentrytable.AjaxEntryTable('ntpAuth',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=ntpAuths'),
+    headerSpec=('', 'Key ID', 'Key Type', 'Encrypted Text'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('key', 'selectedNtpAuth_'),
+ AjaxEntryTable.tdAttr('key'),
+ AjaxEntryTable.tdAttr('type'),
+ AjaxEntryTable.td([wordwrapEncryptedText()])]""",
+   titleText='NTP Authentication Keys',
+    emptyMessage='No NTP Authentication Keys.',
+    removeName='removeNtpAuths',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedNtpAuth_',
+    addButtonText='Add a New NTP Authentication Key',
+    addButtonName='addNtpAuth')
+
+ntpAuthTable.addDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      <tr>
+        <td>
+          <label class="labelPaddedRight">
+            Key Type:
+          </label>
+        </td>
+        <td class="nodeEntry">
+          <span class="keyTypeSpan">%s</span>
+          <span id="sha1Span" class="keyTypeSpan">%s</span>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <label id="secretTooltip" class="labelPaddedRight yui3-tooltip-trigger">
+            Secret:
+          </label>
+        </td>
+        <td class="nodeEntry">
+          %s
+        </td>
+      </tr>
+    </table>
+  </div>
+''' % (dialogEntries['ntpAuth_keyid'].html(self),
+       dialogEntries['ntpAuth_keyType'].html(self, value='MD5', format='inline'),
+       dialogEntries['ntpAuth_keyType'].html(self, value='SHA1', format='inline'),
+       dialogEntries['ntpAuth_secret'].html(self, format='inline'))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="dateTimeForm">
+
+  <!-- Date and Time -->
+  <div id="datetime_config" class="topLevel">
+    <fieldset id="dateAndTime">
+      <legend>Date and Time</legend>
+      <div class="midLevel">
+        <%= nodeEntries['timezone'].html(self, format='block') %>
+        <p id="tzWarningMessage" class="textContainer warning hidden">
+          Changes to the Time Zone will end your current browser session and require you to log in again.
+        </p>
+      </div>
+      <div class="midLevel">
+        <%= nodeEntries['ntpEnable'].html(self, value='false') %>
+        <div id="settime_manual" class="indent">
+          <div class="nodeEntry">
+            <%= nodeEntries['changeDate'].html(self, format="inline") %>
+            <span id="change_date">
+              <%= dialogEntries['manual_date'].html(self, format="inline") %>
+            </span>
+          </div>
+          <div class="nodeEntry">
+            <%= nodeEntries['changeTime'].html(self, format="inline") %>
+            <span id="change_time">
+              <%= dialogEntries['manual_time'].html(self, format="inline") %>
+            </span>
+          </div>
+        </div>
+        <%= nodeEntries['ntpEnable'].html(self, value='true') %>
+      </div>
+    </fieldset>
+    <div>
+      <input type="hidden" name="_action_" value="setupDateTime" />
+    </div>
+    <%= FormUtils.formSubmitButtons(self) %>
+   </div>
+</form>
+
+  <!-- NTP Settings -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <%= ntpServerTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupDateTime" />
+  </div>
+</form>
+
+<%= ntpActivePeersTable.html(self, 'topLevel') %>
+
+<form method="post"
+      id="ntpAuthForm"
+      action="<%= self.thisPageletRequest() %>">
+    <%= ntpAuthTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupDateTime" />
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Force long hash strings to do word wrapping inside a <p> tag.
+
+function wordwrapEncryptedText() {
+    return function(entryTable, parent, element) {
+        var secretSpan = document.createElement('p');
+
+        setElementClass(secretSpan, 'encryptedText');
+        secretSpan.appendChild(document.createTextNode(element.getAttribute('secret')));
+        parent.appendChild(secretSpan);
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Tooltip for entering Secret text.
+
+var secretTooltip = new RBT.Tooltip({
+    triggerNode:        '#secretTooltip',
+    addTriggerClass:    false,
+    content:            '<p>' +
+                        'Accepted formats:' +
+                        '</p>' +
+                        '<ul>' +
+                        '  <li>1- to 16-character ASCII string (MD5 only)</li>' +
+                        '  <li>40-character HEX string</li>' +
+                        '  <li>44-character, or longer, base64 string ("Encrypted Text")</li>' +
+                        '</ul>' +
+                        '<p>' +
+                        'The first two are received from NTP server administrators while ' +
+                        'the third format is used to transfer keys between Steelheads.' +
+                        '</p>'
+    }).render();
+
+// Needed since MD5 and SHA1 support different Secret formats.
+function revalidate() {
+    RBT.Validator.validatePage();
+}
+
+function validateSecret(val) {
+    if (!val.match(/^[A-Fa-f0-9]{40}$/)) {                                  // 40 HEX?
+        if (val.length < 44 || !val.match(/^[a-z\d+\/]{42,}={0,2}$/i)) {    // 44+ base64?
+            var keyType = getFormValue('ntpAuthForm', 'ntpAuth_keyType');
+
+            if (keyType == 'SHA1' || !val.match(/^.{1,16}$/)) {             // MD5's 1-16 ASCII?
+                if (keyType == 'SHA1')
+                    throw 'Secrets for SHA1 can only be 40-character <br/>HEX strings ' +
+                          'or 44-character (or longer) <br/>base64 strings';
+                throw 'Secrets for MD5 can be either 1-16 character <br/>ASCII strings, ' +
+                          '40-character HEX strings or <br/>44-character (or longer) base64 strings';
+            }
+        }
+    }
+}
+
+function ntpSubmitAction(el) {
+    el.name = el.name.substr(1);
+    el.form.submit();
+    return false;
+}
+
+function checkTZWarning(select) {
+    if (select.value != '<%= zone %>') {
+        Y.one('#tzWarningMessage').removeClass('hidden');
+    } else {
+        Y.one('#tzWarningMessage').addClass('hidden');
+    }
+}
+// ]]>
+</script>

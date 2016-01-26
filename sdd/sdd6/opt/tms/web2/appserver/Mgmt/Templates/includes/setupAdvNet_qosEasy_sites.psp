@@ -1,0 +1,226 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+#
+# This is a template that defines content for the "Sites"
+# tab in the Simple QoS Configuration page.
+#
+# It is an included template for parent PSP setupAdvNet_qosSimple.psp, and
+# should be referenced to determine other methods and variables that
+# are externally declared but still in scope. The parent PSP is where
+# RBM permissions and imports are done.
+#
+# @author Andrew Hao
+%>
+
+<psp:method name="css_sites">
+    return '''
+/* Make AET width consistent with other tables. */
+#remoteSiteTable_main { 
+    width: 100%;
+}
+'''
+</psp:method>
+
+<psp:method name="dialogEntries_sites" params="bwOversubscriptionEnabled, availableWanBw">
+    if bwOversubscriptionEnabled:
+        wanBwValidate = ('intInRange', '[1, 4294967295]')
+        wanBwHint = ''
+    else:
+        wanBwValidate = ('intInRange', '[1, %s]' % availableWanBw)
+        wanBwHint = '(%s kbps available)' % availableWanBw
+
+    return {
+        'order': FormUtils.NodeEntry(
+            name='order',
+            label='Position',
+            widget='select'),
+        'name': FormUtils.NodeEntry(
+            name='name',
+            label='Name',
+            validate='qosName'),
+        'subnet': FormUtils.NodeEntry(
+            name='subnet',
+            label='Remote Subnets',
+            widget='textarea',
+            validate=('ipv4prefix_list', '["\n", 5]')),
+        'addSite_wanbandwidth': FormUtils.NodeEntry(
+            name='addSite_wanbandwidth',
+            label='Remote Link Bandwidth',
+            tooltip='Required if QoS Shaping is enabled.',
+            inputOptional=True,
+            validate=wanBwValidate,
+            hint=wanBwHint,
+            units='kbps',
+            widgetClass='medium'),
+        'editSite_wanbandwidth': FormUtils.NodeEntry(
+            name='editSite_wanbandwidth',
+            label='Remote Link Bandwidth',
+            tooltip='Required if QoS Shaping is enabled.',
+            inputOptional=True,
+            # Ideally, the maximum int range should be
+            # (available bw + site's current bw), but our validation system
+            # can't handle this.
+            validate=('intInRange', '[1, 4294967295]'),
+            units='kbps',
+            widgetClass='medium'),
+        'bandwidthProfile': FormUtils.NodeEntry(
+            name='bandwidthprofile',
+            label='Service Policy',
+            widget='select')
+        }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+wanBandwidth = int(Nodes.present(mgmt,  pathPrefix + '/rbt/hfsc/config/global/interface/primary/link_rate'))
+totalSiteBandwidth = 0
+for siteId in Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/site'): {
+    totalSiteBandwidth += int(Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/site/%s/wan_bw' % siteId))
+}
+availableWanBw = wanBandwidth - totalSiteBandwidth
+bwOversubscriptionEnabled = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/bw_overcommit') == 'true'
+isWanBandwidthSet = wanBandwidth == 0 and 'false' or 'true'
+dialogEntries_sites = self.dialogEntries_sites(bwOversubscriptionEnabled, availableWanBw)
+addPrefix = 'addSite_'
+editPrefix = 'editSite_'
+allProfiles = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/profile')
+allProfiles.sort(FormUtils.alphanumericCompare)
+allProfiles = [(p, p) for p in allProfiles]
+dialogEntries_sites['bandwidthProfile'].selectOptions = allProfiles
+
+allSiteIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/site')
+allSiteIndices.sort(FormUtils.alphanumericCompare)
+allSiteIndices = [(i, i) for i in allSiteIndices]
+defaultSiteIndex = len(allSiteIndices)
+
+# We add a space to the end of the "End" option, see bug 70309 for details
+dialogEntries_sites['order'].selectOptions = \
+    [('1', 'Start')] + allSiteIndices + [(str(defaultSiteIndex) + ' ', 'End')]
+dialogEntries_sites['order'].value = str(len(allSiteIndices)) + ' '
+
+remoteSiteTable = ajaxentrytable.AjaxEntryTable('remoteSite',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=easyQoS_sites'),
+    headerSpec=('',
+                ('Order', '', 'sortAttrib("order_idx")'),
+                ('Name', '', 'sortAttrib("name")'),
+                ('Remote Subnets', '', 'sortAttrib("subnet")'),
+                ('Service Policy', '', 'sortAttrib("bandwidth_profile")'),
+                ('Remote Link Bandwidth', '', 'sortAttrib("remote_link_bw")')),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('order_idx', 'selectedSite_', 'moveToSelectedSite_', ['%d']),
+ AjaxEntryTable.tdAttr('order_idx'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdLines('subnet'),
+ AjaxEntryTable.tdAttr('bandwidth_profile'),
+ AjaxEntryTable.tdAttr('remote_link_bw_pretty')]
+""" % defaultSiteIndex,
+    emptyMessage='No remote site information',
+    addButtonText='Add Site',
+    moveName='moveSite',
+    moveButtonText='Move Site',
+    moveButtonCancelText='Cancel Move',
+    removeName='removeSite',
+    removeButtonText='Remove Site')
+
+remoteSiteTable.addDivContent="""
+<p id="mustSetWanBwMessage" class="hidden midLevel">
+  The WAN Bandwidth in the WAN Link section must be set before sites can be added.
+</p>
+<div id="needMoreWanBwMessage" class="hidden midLevel">
+  New sites cannot be added because there is no more available WAN bandwidth. To make more WAN bandwidth available, do one or more of the following:
+  <p></p>
+  <ul>
+    <li>Enable Local WAN Oversubscription in the WAN Link section.</li>
+    <li>Decrease the Remote Link Bandwidth of a different Site.</li>
+    <li>Increase the WAN Bandwidth in the WAN Link section.</li>
+  </ul>
+</div>
+<div id="addSite" class="site midLevel">
+  <table>
+    %(name)s
+    %(order)s
+    %(subnet)s
+    %(wanBandwidth)s
+    %(bandwidthProfile)s
+  </table>
+  %(submitButton)s
+</div>
+""" % {'name': dialogEntries_sites['name'].html(self, namePrefix=addPrefix),
+       'order': dialogEntries_sites['order'].html(self, namePrefix=addPrefix),
+       'subnet': dialogEntries_sites['subnet'].html(self, namePrefix=addPrefix),
+       'wanBandwidth': dialogEntries_sites['addSite_wanbandwidth'].html(self),
+       'bandwidthProfile': dialogEntries_sites['bandwidthProfile'].html(self, namePrefix=addPrefix),
+       'submitButton': FormUtils.formSubmitButtons(self, {'name': 'addSite',
+                                                    'value': 'Add'})}
+
+remoteSiteTable.editDivContent="""
+<input type="hidden" name="editSite_name" />
+<input type="hidden" name="editSite_order" />
+<table class="midLevel">
+  %(subnet)s
+  %(wanBandwidth)s
+  %(bandwidthProfile)s
+</table>
+%(submitButton)s
+""" % {'subnet': dialogEntries_sites['subnet'].html(self, namePrefix=editPrefix),
+       'wanBandwidth': dialogEntries_sites['editSite_wanbandwidth'].html(self),
+       'bandwidthProfile': dialogEntries_sites['bandwidthProfile'].html(self, namePrefix=editPrefix),
+       'submitButton': FormUtils.formSubmitButtons(self, {'name': 'editSite',
+                                                    'value': 'Apply'})}
+%>
+
+<form id="easyQoS_remoteLinksForm" action="<%= self.thisPageletRequest() %>" method="post">
+  <div>
+    <%= remoteSiteTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_sites" />
+  </div>
+</form>
+
+<%
+self.addPageletJavascript('''
+var allProfiles = %(profiles)s;
+
+remoteSiteTable.addEntry = function() {
+    // Hide the add div if the WAN bandwidths have not been set yet.
+    if (%(isWanBandwidthSet)s === false) {
+        enableElements('addSite', 'hide');
+        enableElements('mustSetWanBwMessage', true);
+    }
+    // Hide the add div if there is no available bandwidth and oversubscription is not enabled.
+    else if ( (%(availableWanBw)s === 0) && (!%(bwOversubEnabled)s) ) {
+        enableElements('addSite', 'hide');
+        enableElements('needMoreWanBwMessage', true);
+    }
+};
+
+remoteSiteTable.editEntry = function(editName) {
+    var form = $('easyQoS_remoteLinksForm');
+    var el = this.getEntryElement('name', editName);
+
+    // AET comes back with semicolon delimiters. Switch to newlines.
+    var subnetPretty = el.getAttribute('subnet').replace(/;/g, '\\u000A');
+
+    setFormValue(form, 'editSite_order', el.getAttribute('order_idx'));
+    setFormValue(form, 'editSite_name', editName);
+    setFormValue(form, 'editSite_subnet', subnetPretty);
+    setFormValue(form, 'editSite_wanbandwidth', el.getAttribute('remote_link_bw'));
+    setFormValue(form, 'editSite_bandwidthprofile', el.getAttribute('bandwidth_profile'));
+};
+
+// disable the subnet textarea for the default site
+remoteSiteTable.updateHook = function() {
+    if (this.editName) {
+        Y.one('#easyQoS_remoteLinksForm textarea[name=editSite_subnet]').
+            set('disabled', this.editName === '%(defaultSiteName)s');
+    }
+};
+''' % {
+    'isWanBandwidthSet': isWanBandwidthSet,
+    'availableWanBw': availableWanBw,
+    'bwOversubEnabled': bwOversubscriptionEnabled and 'true' or 'false',
+    'profiles': allProfiles,
+    'defaultSiteName': qos.DEFAULT_SITE_NAME,
+})
+%>

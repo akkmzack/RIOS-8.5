@@ -1,0 +1,274 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupPFS_settings.psp
+##
+## Proxy Files Service Settings
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="pageletNodes">
+    nodes = ['/rbt/rcu/action/cancel_action',
+             '/rbt/rcu/action/smb_global_config',
+             '/rbt/rcu/config/pfs/enable'
+             '/rbt/rcu/manage_service',
+             '/rbt/rcu/manage_user',
+             '/resolver/nameserver/1/address']
+    return nodes
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    mgmt = self.session().value('mgmt')
+    if not self.session().value('debug', None) \
+    and 'false' == Nodes.present(mgmt, '/rbt/rcu/state/valid_model'):
+        return False
+    if not super(self.__class__, self).pageIsReadable():
+        return False
+    return True
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'pfs_signature': FormUtils.NodeEntry(
+            name='pfs_signature',
+            selectOptions=(('enabled', 'Enabled'),
+                           ('disabled', 'Disabled')),
+            label='Security Signature Settings',
+            action='dontChangeSignature = true'),
+        'pfs_deadtime': FormUtils.NodeEntry(
+            name='pfs_deadtime',
+            widgetClass='small',
+            label='Idle Connection Timeout',
+            units='Minutes',
+            validate='uint16',
+            action='dontChangeTimeout = true'),
+        'pfs_password': FormUtils.NodeEntry(
+            name='pfs_password',
+            widget='password',
+            label='Local Admin Password',
+            validate='password',
+            value=FormUtils.bogusPassword,
+            inputOptional=True),
+        'pfs_passwordConfirm': FormUtils.NodeEntry(
+            name='pfs_passwordConfirm',
+            widget='password',
+            label='Local Admin Password Confirm',
+            validate='password',
+            value=FormUtils.bogusPassword,
+            inputOptional=True),
+    }
+</psp:method>
+
+<%
+self.hasHelp = True
+
+self.relatedPages = ({'page': 'setupHostSettings', 'note': 'DNS Settings'},
+                    'setupServiceDomain',
+                    'setupPFS_shares',
+                    'reportPFSShares',
+                    'reportPFSStatistics')
+
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+rcudStatus = Nodes.present(mgmt, '/pm/monitor/process/rcud/state')
+# check if the rcud is terminated
+if rcudStatus != 'running': {
+    self.getPagePresentationServlet().setFormError('Internal Error. Unable to communicate with process rcud.')
+    self.beginPagelet()
+    self.endPagelet() # end the page here because the nodes won't work without rcud
+    return
+}
+
+dialogEntries['pfs_signature'].value = Nodes.present(mgmt,
+                                                     '/rbt/rcu/samba/config/server_signing')
+dialogEntries['pfs_deadtime'].value = Nodes.present(mgmt,
+                                                    '/rbt/rcu/samba/config/deadtime')
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupPFS_settings"
+      id="pfsSettingsForm1">
+  <fieldset>
+    <legend>Proxy File Service</legend>
+    <div id="pfsStartDiv" class="interactiveCommand">
+      <div class="commandStatus">
+        Status: <span id="pfsStatusDisplay"><%= Nodes.present(mgmt, '/rbt/rcu/pfs/status') %></span>
+      </div>
+      <div class="commandButtons">
+        <input type="hidden" name="_action_" value="pfsSettings" />
+        <input type="button" name="disable" value="Disable"
+               onclick="pfsServerClick('disable');" />
+        <input type="button" name="enable" value="Enable"
+               onclick="pfsServerClick('enable');" />
+        <input type="button" name="start" value="Start"
+               onclick="pfsServerClick('start');" />
+      </div>
+    </div>
+    <p id="pfsReplyDisplay"></p>
+  </fieldset>
+</form>
+
+<% # pfsSettingsForm2 was the "Domain / Local Workgroup Settings" form, and was removed in r33529. %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupPFS_settings"
+      id="pfsSettingsForm3">
+  <fieldset id="otherPFSSettings">
+    <legend>Other PFS Settings</legend>
+    <div class="midLevel">
+      <table>
+       <%= dialogEntries['pfs_signature'].html(self) %>
+       <%= dialogEntries['pfs_deadtime'].html(self) %>
+       <%= dialogEntries['pfs_password'].html(self) %>
+       <%= dialogEntries['pfs_passwordConfirm'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <div class="submitButtons" id="pfsSubmitButton">
+    <input type="hidden" name="_action_" value="pfsSettings" />
+    <%= FormUtils.formSubmitButtons(self, {'name': 'pfsApply', 'value': 'Apply', 'id':'pfsSettingsForm3Submit'}) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+// While true, the pfsUpdater should not change the value in the timeout text field. This
+// should be set to true if 1) pfsUpdater updates the value (because it may take a while
+// for a previous change to take affect or 2) if the user modifies the text field at all.
+// dontChangeTimeout starts out as false, so that pfsUpdater can update its value (unless
+// the user has manually typed in a new value themself.)
+//
+// dontChangeSignature works the same way as dontChangeTimeout.
+var dontChangeTimeout = false;
+var dontChangeSignature = false;
+
+var pfsStatusState = '<%= Nodes.present(mgmt, '/rbt/rcu/pfs/status') %>';
+
+var pfsUpdater = new AjaxUpdater('/mgmt/xmldata?p=pfsStatus');
+pfsUpdater.update = function(request) {
+    if (!request.responseText) return;
+    var el = request.responseXML.documentElement.firstChild;
+    if ('error' == el.tagName) return;
+    pfsStatusState = el.getAttribute('pfs-status');
+    var form = $('pfsSettingsForm3');
+    var deadtime = el.getAttribute('deadtime');
+    var signature = el.getAttribute('signature');
+    // If the timeout has not been modified before and the timeout from the server is different, then change it.
+    if ((!dontChangeTimeout) && (form.pfs_deadtime.value != deadtime)) {
+        dontChangeTimeout = true;
+        form.pfs_deadtime.value = deadtime;
+    }
+    // Same as above with the security signature.
+    if ((!dontChangeSignature) && (form.pfs_signature.value != signature)) {
+        dontChangeSignature = true;
+        form.pfs_signature.value = signature;
+    }
+    updatePFSSettingsServiceControl();
+    updateUpdateables();
+}
+
+function updatePFSSettingsServiceControl(transition) {
+    if (transition) {
+        setElementText('pfsStatusDisplay', transition);
+    } else {
+        setElementText('pfsStatusDisplay', pfsStatusState);
+    }
+    var form = document.getElementById('pfsSettingsForm1');
+    switch(pfsStatusState) {
+    case 'PFS disabled':
+        enableElements(form.disable, false);
+        enableElements(form.enable, true);
+        enableElements(form.start, false);
+        form.enable.value = 'Enable';
+        break;
+    case 'PFS stopped':
+        enableElements(form.disable, true);
+        enableElements(form.enable, false);
+        enableElements(form.start, true);
+        form.enable.value = 'Enable';
+        break;
+    case 'PFS started':
+        enableElements(form.disable, false);
+        enableElements(form.enable, true);
+        enableElements(form.start, false);
+        form.enable.value = 'Stop';
+        break;
+    default: 	// transition
+        enableElements(form.disable, false);
+        enableElements(form.enable, false);
+        enableElements(form.start, false);
+        break;
+    }
+}
+
+
+function pfsServerClick(click) {
+    switch (click) {
+    case 'disable':
+        if (!confirm('Are you sure you want to disable the PFS Server?  Current settings will no longer be available.')) {
+            return false;
+        }
+        updatePFSSettingsServiceControl('Disabling...');
+        sendPfsControl('pfsReplyDisplay', 'service', 'disable');
+        break;
+    case 'enable':
+        if ('PFS disabled' == pfsStatusState) {
+            updatePFSSettingsServiceControl('Enabling...');
+            sendPfsControl('pfsReplyDisplay', 'service', 'enable');
+        } else if ('PFS started' == pfsStatusState) {
+            updatePFSSettingsServiceControl('Stopping...');
+            sendPfsControl('pfsReplyDisplay', 'service', 'stop');
+        }
+        break;
+    case 'start':
+        updatePFSSettingsServiceControl('Starting...');
+        sendPfsControl('pfsReplyDisplay', 'service', 'start');
+        break;
+    }
+}
+
+// send out a pfsControl command
+// if there's a response, place it in the responseDiv
+function sendPfsControl(responseDiv, nameValuePairs) {
+    // clear them out first
+    setElementText('pfsReplyDisplay', '');
+    var req = newAjaxRequest('/mgmt/xmldata?p=pfsControl');
+    var params = [];
+    for (var i = 1; i < arguments.length; ) {
+        params.push(encodeURIComponent(arguments[i++]) + '=' + encodeURIComponent(arguments[i++]));
+    }
+    if (responseDiv) {
+        setReadyStateChangeFunc(req,
+            function() {sendPfsControlReply(req, responseDiv);});
+    }
+    req.send(params.join('&'));
+}
+
+function sendPfsControlReply(req, responseDiv) {
+    if (4 == req.readyState) {
+        var el = req.responseXML.documentElement.firstChild;
+        if (el.childNodes && el.childNodes.length) {
+            setElementText(responseDiv, el.childNodes.item(0).data);
+        }
+    }
+}
+
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    // form3 and it's Apply button are disabled when PFS is disabled.
+    return (('PFS stopped' == pfsStatusState) || ('PFS started' == pfsStatusState));
+}
+addUpdateable('enable', displayControl, 'pfsSettingsForm3');
+addUpdateable('enable', displayControl, 'pfsSettingsForm3Submit');
+// ]]>
+</script>
+

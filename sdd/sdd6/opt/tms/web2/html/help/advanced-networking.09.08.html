@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>QoS Overview</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.09.01.html#280203">Chapter 7	Configuring Network Integration Features</a> : <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.09.07.html#280203">Applying QoS Policies</a> : QoS Overview</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading2Topic"><a name="280203">QoS Overview</a></div>
+      <div class="Body"><a name="280204">QoS is a reservation system for network traffic in which you use QoS sites or classes to distribute network </a>resources. RiOS v6.5 improves QoS with the following benefits:</div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280208">Simplified setup</a></span> - A basic QoS configuration page streamlines setup for networks that require minimal configuration of network traffic.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="293545">AppFlow Engine (AFE) </a></span>- Allows advanced classification and shaping of network traffic. The Steelhead inspects classification rules for information within the TCP/UDP payload in addition to packet headers to distinguish between different traffic types. </li>
+      <div class="Indent1"><a name="296969">With AFE, QoS can identify applications accurately and differentiate applications that use the same </a>port on the same server. For example, Sharepoint and Microsoft Background Intelligent Transfer Service (BITS) can use port 80 on the same server. Once an application is identified, you can place into different classes for QoS enforcement. AFE identification is similar to deep packet inspection (DPI) because it identifies applications based on patterns. This approach allows you to more accurately identify modern applications than signature-based DPI methods by being aware of the more complex ways they communicate and the dependencies between multiple flows.</div>
+      <div class="Indent1"><a name="296976">The QoS classifier in </a>RiOS v6.5 accommodates multiple types of traffic monitoring, including header-based and third-party protocol matching rules. A protocol matching rule contains a combination of header and Layer-7 information to identify applications accurately. By adjusting a global list of applications or class bandwidth allocations, you can use QoS in v6.5 to create endless combinations of Layer-7 applications. </div>
+      <div class="Indent1"><a name="291978">In addition to supporting many well-known applications, you can use AFE to add signatures to </a>identify custom applications. For example, you can identify a new HTTP application based on a specific domain name or relative path.</div>
+      <div class="Indent1"><a name="292331">You can also use AFE to classify encrypted applications, such as HTTPS. You do not need the public </a>and private key pair in order to use AppFlow Engine.</div>
+      <div class="Indent1"><a name="292333">AFE works with both pass-through and optimized traffic and is available in both the basic QoS and </a>advanced QoS modes.</div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280213">Port label handling</a></span> - Allows you to specify a port range for more efficient port handling.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280214">Connection tracking for pass-through traffic</a></span> - Eliminates per-packet inspection of flow oriented traffic, thereby enhancing performance.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280215">Rule hierarchy</a></span> - Allows you to increase the number of rules per site, up to 2000.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280216">Site awareness</a></span> - Improves performance and scalability in multi-site configurations.</li>
+      <div class="Body"><a name="280221">QoS classes are based on traffic importance, bandwidth needs, and delay-sensitivity. You allocate network </a>resources to each of the classes. Traffic flows according to the network resources allocated to its class. </div>
+      <div class="Body"><a name="280225">You configure QoS on client-side and server-side </a>Steelhead appliances to control the prioritization of different types of network traffic and to ensure that Steelhead appliances give certain network traffic (for example, VoIP) higher priority over other network traffic. </div>
+      <div class="Heading3"><a name="280229">Traffic Classification</a></div>
+      <div class="Body"><a name="280231">QoS allows you to specify priorities for particular classes of traffic and properly distribute excess </a>bandwidth among classes. The QoS classification algorithm provides mechanisms for link sharing and priority services while decoupling delay and bandwidth allocation. </div>
+      <div class="Body"><a name="280232">Many QoS implementations use some form of Packet Fair Queueing (PFQ), such as Weighted Fair </a>Queueing or Class-Based Weighted Fair Queueing. As long as high-bandwidth traffic requires a high priority (or vice-versa), PFQ systems perform adequately. However, problems arise for PFQ systems when the traffic mix includes high-priority, low-bandwidth traffic, or high-bandwidth traffic that does not require a high priority, particularly when both of these traffic types occur together. Features such as low-latency queueing (LLQ) attempt to address these concerns by introducing a separate system of strict priority queueing that is used for high-priority traffic. However, LLQ is not an effective way of handling bandwidth and latency trade-offs. LLQ is a separate queueing mechanism meant as a work around for PFQ limitations.</div>
+      <div class="Body"><a name="280237">The </a>Riverbed QoS system is not based on PFQ, but rather on Hierarchical Fair Service Curve (HFSC). HFSC delivers low latency to traffic without wasting bandwidth and delivers high bandwidth to delay-insensitive traffic without disrupting delay-sensitive traffic. The Riverbed QoS system achieves the benefits of LLQ without the complexity and potential configuration errors of a separate queueing mechanism. </div>
+      <div class="Body"><a name="280244">The </a>Steelhead appliance HFSC-based QoS enforcement system provides the flexibility needed to simultaneously support varying degrees of delay requirements and bandwidth usage. For example, you can enforce a mix of high-priority, low-bandwidth traffic patterns (for example, SSH, Telnet, Citrix, RDP, and CRM systems) with lower priority, high-bandwidth traffic (for example, FTP, backup, and replication). RiOS QoS allows you to protect delay-sensitive traffic such as VoIP, as well as other delay-sensitive traffic such as RDP and Citrix. You can do this without having to reserve large amounts of bandwidth for their traffic classes.</div>
+      <div class="Body"><a name="280245">QoS classification occurs during connection setup for optimized traffic, before optimization and </a>compression. QoS shaping and enforcement occurs after optimization and compression.</div>
+      <div class="Body"><a name="280247">By design, QoS is applied to both pass-through and optimized traffic; however, you can choose to classify </a>either pass-through or optimized traffic. QoS is implemented in the operating system; it is not a part of the optimization service. When the optimization service is disabled, all the traffic is pass-through and is still shaped by QoS. </div>
+      <div class="Heading2"><a name="280249">Basic or Advanced QoS</a></div>
+      <div class="Body"><a name="280253">R</a>iOS v6.5 provides two types of QoS configurations:  basic and advanced. The QoS configuration you implement depends on how much classification and shaping your network traffic requires and whether you are migrating from a previous RiOS version or configuring QoS on a Steelhead for the first time.</div>
+      <div class="Body"><a name="280260">Advanced QoS supports different bandwidths for different interfaces; basic QoS does not, but you can </a>specify the remote site absolute bandwidth.</div>
+      <div class="Body"><a name="280267">After upgrading a </a>Steelhead to RiOS v6.5, the default is:</div>
+      <li class="Bullet"><a name="280271">Basic QoS on new and upgraded </a>Steelheads that do not have a QoS configuration.</li>
+      <li class="Bullet"><a name="280278">Advanced QoS on </a>Steelheads that have a existing QoS configuration. The Steelhead preserves the configuration.</li>
+      <div class="Body"><a name="280279">Use basic QoS when you:</a></div>
+      <li class="Bullet"><a name="280284">currently do not have </a>RiOS QoS configured.</li>
+      <li class="Bullet"><a name="280288">are currently using </a>RiOS v6.1.x or earlier QoS but are willing to consolidate and reconfigure your existing rules. The existing configuration is lost when you switch from advanced to basic QoS.</li>
+      <li class="Bullet"><a name="280289">do not need more granular control and can use the default settings.</a></li>
+      <div class="Body"><a name="280290">Use advanced QoS when you:</a></div>
+      <li class="Bullet"><a name="284914">are currently using </a>RiOS v6.1.x or earlier QoS and do not want to reconfigure your existing rules. The Steelhead preserves the configuration. </li>
+      <li class="Bullet"><a name="284918">need to use the MX-TCP queue. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupAdvNet_qosClasses.html#281276', '');" title="Configuring Advanced QoS">Enabling MX-TCP Queue Policies (Advanced QoS only)</a></span>.</li>
+      <li class="Bullet"><a name="291958">need to set application priorities for Citrix ICA traffic (this requires packet-order queue).</a></li>
+      <li class="Bullet"><a name="291959">have WAN links with different bandwidth (basic QoS assumes all links of the same size). For example, </a>you might have a 2 Mbps MPLS link with a 1 Mbps ADSL backup.</li>
+      <div class="Heading2"><a name="284919">QoS Classes</a></div>
+      <div class="Body"><a name="280299">QoS classes set priorities and bandwidths. Basic QoS comes with six predefined classes, and you cannot add </a>or delete classes. In advanced QoS, you can create multiple QoS classes. There is no requirement that QoS classes represent applications, traffic to remote sites, or any other particular aggregation. </div>
+      <div class="Body"><a name="280303">The QoS classes that are always present on the </a>Steelhead appliance in Advanced QoS mode are:</div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280306">Root class</a></span><span style="font-size: 9.0pt"> - </span>The root class is used to constrain the total outbound rate of traffic leaving the Steelhead appliance to the configured, per-link WAN bandwidth. This class is not configured directly, but is created when you enable QoS classification and enforcement on the Steelhead appliance. </li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280312">Built-in default class</a></span><span style="font-size: 9.0pt"> - </span>The QoS scheduler applies the built-in default class constraints and parameters on traffic not placed in a class by the configured QoS rules.</li>
+      <div class="Body"><a name="280313">QoS classes are configured in one of two different modes: </a><span style="font-style: italic">flat</span> or <span style="font-style: italic">hierarchical</span>. The difference between the two modes primarily consists of how QoS classes are created. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="280317">For details on QoS classes, see the </a><span class="book_title">R</span><span class="book_title">iverbed Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="280319">Hierarchical Mode </a></div>
+      <div class="Body"><a name="280320">In hierarchical mode, you create QoS classes as children of QoS classes other than the root class. This allows </a>you to create overall parameters for a certain traffic type, and specify parameters for subtypes of that traffic. There is no enforced limit to the number of QoS class levels you can create.</div>
+      <div class="Body"><a name="280321">In hierarchical mode, the following relationships exist between QoS classes:</a></div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280323">Sibling classes</a></span><span style="font-size: 9.0pt"> - </span>Classes that share the same parent class.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280325">Leaf classes</a></span><span style="font-size: 9.0pt"> - </span>Classes at the bottom of the class hierarchy.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280327">Inner classes</a></span><span style="font-size: 9.0pt"> - </span>Classes that are neither the root class nor leaf classes.</li>
+      <div class="Body"><a name="280328">In hierarchical mode, QoS rules can only specify leaf classes as targets for traffic. </a></div>
+      <div class="Body"><a name="280332">R</a>iverbed QoS controls the traffic of hierarchical QoS classes in the following manner:</div>
+      <li class="Bullet"><a name="280333">QoS rules assign active traffic to leaf classes.</a></li>
+      <li class="Bullet"><a name="280334">The QoS scheduler:</a></li>
+      <li class="BulletSubBullet2"><a name="280335">applies active leaf class parameters to the traffic.</a></li>
+      <li class="BulletSubBullet2"><a name="280336">applies parameters to inner classes that have active leaf class children. </a></li>
+      <div class="Heading3"><a name="280337">Flat Mode (Advanced QoS only)</a></div>
+      <div class="Body"><a name="280338">In flat mode, all of the QoS classes you create must have the root class as their parent. Accordingly, all of the </a>QoS classes you create are siblings. </div>
+      <div class="Body"><a name="280339">The QoS scheduler treats QoS classes in flat mode the same way that it does in hierarchical mode. However, </a>only a single class level is defined. QoS rules place active traffic into the leaf classes. Each active class has their own QoS rule parameters which the QoS scheduler applies to traffic.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="280346">You can use the </a>CMC to enable QoS and to configure and apply QoS policies centrally to Steelhead appliances. For details, see the <span class="book_title">S</span><span class="book_title">teelhead Central Management Console User&#8217;s Guide</span> and the <span class="book_title">R</span><span class="book_title">iverbed Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="280354">Selecting a QoS Enforcement System</a></div>
+      <div class="Body"><a name="280355">Selecting the appropriate QoS enforcement system depends on the location of WAN bottlenecks for traffic </a>leaving the site. </div>
+      <div class="Body"><a name="280356">Use the following guidelines when implementing advanced QoS:</a></div>
+      <li class="Bullet"><a name="280357">A site that acts as a data server for other locations, such as a data center or regional hub, typically uses </a>hierarchical mode. The first level of classes represents remote sites, and those remote site classes have child classes that either represent application types, or are indirectly connected remote sites. </li>
+      <li class="Bullet"><a name="280358">A site that typically receives data from other locations, such as a branch site, typically uses flat mode. </a>The classes represent different application types.</li>
+      <div class="Body"><a name="280359">For example, suppose you have a network with ten locations, and you want to choose the correct mode for </a>site 1. Traffic from site 1 normally goes to two other sites: sites 9 and 10. If the WAN links at sites 9 and 10 are at a higher bandwidth than the link at site 1, the WAN bottleneck rate for site 1 is always the link speed for site 1. In this case, you can use flat mode to enforce QoS at site 1, because the bottleneck that needs to be managed is the link at site 1. In flat mode, the parent class for all created classes is the root class that represents the WAN link at site 1.</div>
+      <div class="Body"><a name="280360">In the same network, site 10 sends traffic to sites 1 through 8. Sites 1 through 8 have slower bandwidth links </a>than site 10. Because the traffic from site 10 faces multiple WAN bottlenecks (one at each remote site), you configure hierarchical mode for site 10.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="293579">For details on configuring QoS for a branch office and data center, see the </a><span class="book_title">R</span><span class="book_title">iverbed Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="280363">QoS Classification for the FTP Data Channel </a></div>
+      <div class="Body"><a name="304205">When configuring QoS classification for FTP, the QoS rules differ depending on whether the FTP data </a>channel is using<span style="font-style: italic"> active</span> or <span style="font-style: italic">passive</span> FTP. Active versus passive FTP determines whether the FTP client or the FTP server select the port connection for use with the data channel, which has implications for QoS classification.</div>
+      <div class="Heading4"><a name="304206">Active FTP Classification</a></div>
+      <div class="Body"><a name="304207">With active FTP, the FTP client logs in and enters the PORT command, informing the server which port it </a>must use to connect to the client for the FTP data channel. Next, the FTP server initiates the connection towards the client. From a TCP perspective, the server and the client swap roles. The FTP server becomes the client because it sends the SYN packet, and the FTP client becomes the server because it receives the SYN packet.</div>
+      <div class="Body"><a name="304208">Although not defined in the RFC, most FTP servers use source port 20 for the active FTP data channel. </a></div>
+      <div class="Body"><a name="304211">For active FTP, configure a QoS rule on the server-side </a>Steelhead appliance to match source port 20. On the client-side Steelhead appliance, configure a QoS rule to match destination port 20.</div>
+      <div class="Body"><a name="304216">You can also use AFE to classify active FTP data.</a></div>
+      <div class="Heading4"><a name="304217">Passive FTP Classification</a></div>
+      <div class="Body"><a name="304218">With passive FTP, the FTP client initiates both connections to the server. First, it requests passive mode by </a>entering the PASV command after logging in. Next, it requests a port number for use with the data channel from the FTP server. The server agrees to this mode, selects a random port number, and returns it to the client. Once the client has this information, it initiates a new TCP connection for the data channel to the server-assigned port. Unlike active FTP, there is no role swapping and the FTP client initiates the SYN packet for the data channel. </div>
+      <div class="Body"><a name="304219">The FTP client receives a random port number from the FTP server.</a><span style="font-family: &quot;Times New Roman&quot;"> </span>Because the FTP server cannot return a consistent port number to use with the FTP data channel, RiOS does not support QoS Classification for passive FTP in versions earlier than RiOS v4.1.8, v5.0.6, or v5.5.1. Later RiOS releases support passive FTP and the QoS Classification configuration for passive FTP is the same as active FTP.</div>
+      <div class="Body"><a name="304231">When configuring QoS Classification for passive FTP, port 20 on both the server and client-side </a>Steelhead appliances means the port number used by the data channel for passive FTP, as opposed to the literal meaning of source or destination port 20.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="304235">The </a>Steelhead appliance must intercept the FTP control channel (port 21), regardless of whether the FTP data channel is using active or passive FTP.</div>
+      <div class="Body"><a name="280406">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'advanced-networking.09.12.html#281404', '');" title="QoS Marking Default Setting">QoS Marking with the FTP Data Channel</a></span>.</div>
+      <div class="Heading3"><a name="280407">Using QoS with RSP</a></div>
+      <div class="Body"><a name="280414">To route optimized traffic through a </a>Steelhead appliance that is using QoS and RSP simultaneously, RiOS must be positioned last in the RSP data flow. To verify that RiOS is positioned correctly, choose Configure &gt; Branch Services &gt; RSP Data Flow. In the RSP Data Flow table at the bottom of the page, check that RiOS appears as the last item in the data flow, directly above the WAN interface. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupRSPDataflow.html#246771', '');" title="Configuring RSP Data Flow">Configuring RSP Data Flow</a></span>. </div>
+      <div class="Heading3"><a name="280425">QoS Classification for Citrix Traffic </a></div>
+      <div class="Body"><a name="280429">R</a>iOS v6.0 and later provides a way to classify Citrix traffic using QoS to differentiate between different traffic types within a Citrix session. QoS classification for Citrix traffic is beneficial in mixed-use environments where Citrix users perform printing and use drive-mapping features. Using QoS to classify Citrix traffic in a mixed-use environment provides optimal network performance for end users. Note that if the Citrix sessions in your environment carry only interactive traffic, you can use basic QoS.</div>
+      <div class="Body"><a name="280430">Citrix QoS classification provides support for </a>Presentation Server v4.5, XenApp v5.0 and v6.0, and v10.x, v11.x, and v12.x clients.</div>
+      <div class="Body"><a name="280434">The essential </a>RiOS capabilities that ensure optimal delivery of Citrix traffic over the network are: </div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280435">Latency priority</a></span><span style="font-size: 9.0pt"> - </span>The Citrix traffic application priority affects traffic latency. This allows you to assign interactive traffic a higher priority than print or drive-mapping traffic. A typical application priority for interactive Citrix sessions, such as screen updates, is real-time or interactive. Keep in mind that priority is relative to other classes in your QoS configuration. You must use advanced QoS. </li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="280436">Bandwidth allocation</a></span> (also known as traffic shaping)<span style="font-size: 9.0pt"> - </span>When configuring QoS for Citrix traffic, it is important to allocate the correct amount of bandwidth for each QoS traffic class. The amount you specify reserves a pre-determined amount of bandwidth for each traffic class. Bandwidth allocation is important for ensuring that a given class of traffic cannot consume more bandwidth than it is allowed. It is also important to ensure that a given class of traffic has a minimum amount of bandwidth available for delivery of data through the network.</li>
+      <div class="Body"><a name="280442">R</a>iOS v6.5 provides a default rule for Citrix ICA traffic. You can simply use the default rule or edit it to suit your configuration in either basic or advanced QoS. </div>
+      <div class="Body"><a name="287443">The default ports for the Citrix service are 1494 (native ICA traffic) and 2598 (session reliability). To use </a>session reliability, you must enable Citrix optimization on the Steelhead appliance in order to classify the traffic correctly. You can enable and modify Citrix ICA optimization settings in the Configure &gt; Optimization &gt; Citrix ICA page. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Steelhead_Management_Console_Online_Help_v7.0', 'setupServiceProtocolsICA.html#333018', '');" title="Configuring Citrix ICA Optimization">Configuring Citrix ICA Optimization</a></span>. </div>
+      <div class="Body"><a name="295792">You can use session reliability with optimized traffic only. Session reliability with </a>RiOS QoS does not support pass-through traffic. For details about disabling session reliability, go to<br /><a href="http://support.citrix.com/proddocs/index.jsp?topic=/xenapp5fp-w2k8/ps-sessions-sess-rel.html" target="external_window">http://support.citrix.com/proddocs/index.jsp?topic=/xenapp5fp-w2k8/ps-sessions-sess-rel.html</a></div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="280451">If you upgrade from a previous </a>RiOS version with an existing Citrix QoS configuration, the upgrade automatically combines the five pre-existing Citrix rules into one.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="292610">For QoS configuration examples, see the </a><span class="book_title">R</span><span class="book_title">iverbed Deployment Guide</span>.</div>
+      <div class="Body"><a name="280452">&nbsp;</a></div>
+      <div class="Pbreak_H1"><a name="280458">&nbsp;</a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_with_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

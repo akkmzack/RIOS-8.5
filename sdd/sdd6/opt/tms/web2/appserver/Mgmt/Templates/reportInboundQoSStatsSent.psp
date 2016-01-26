@@ -1,0 +1,38 @@
+<%
+##
+##
+##
+## reportInboundQosStatsSent.psp
+## This is the template for the Inbound QoS Stats Sent report page.
+## Refactored to use common reports code.
+##
+## Inbound QoS Stats Dropped and Inbound QoS Stats Sent are virtually identical except for data source and labelling,
+## so they use the same Pagelet superclass and include PSP.
+##
+%>
+
+<%
+reportOpts = {
+    'direction': 'inbound',
+    'controlFormId': 'qosClassesEnforcedForm',
+    'dtype': 'sent',
+    'reportSpecs': {
+        'iqsssp': {
+            'gfxId': 'qosInboundClassesPreEnforcement',
+            'gfxDisplayId': 'qosClassesPreEnforcementGraphImg',
+            'order' : 1,
+        },
+        'iqsse': {
+            'tableName': 'qosClassesEnforcedTable',
+            'gfxId': 'qosInboundClassesEnforced',
+            'gfxDisplayId': 'qosClassesEnforcedGraphImg',
+            'order' : 2,
+        }
+    },
+    'supportedProds': ['sh'] # Required for reports on the CMC
+}
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<%@include file="includes/reportQoSStats.psp" %>

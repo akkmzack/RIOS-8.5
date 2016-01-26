@@ -1,0 +1,162 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## CPU Utilization report for Steelhead EX.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/cpu_utilization',
+            '/system/cpu/indiv']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'displayMode': FormUtils.NodeEntry(
+            name='displayMode',
+            userPath='web/reports/cpu_display_mode',
+            userConfigAutoSave=True,
+            label='Display Mode',
+            widget='select',
+            selectOptions=[('avg', 'Brief'), ('indiv', 'Detailed')],
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<%
+if not RVBDUtils.isEXVSP(): {
+    self.write('<p>' \
+                 'The CPU Utilization report is located ' \
+                 '<a href="/mgmt/gui?p=reportHostCPUUtilization">here</a>.' \
+               '</p>')
+    self.endPagelet()
+    return
+}
+%>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['displayMode'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].endOnTick = false;
+    highstockOptions.yAxis[0].max = 101;
+    highstockOptions.yAxis[0].title.text = 'Utilization (%)';
+
+    highstockOptions.lazyLoading = true; // graph updates each time navigator is changed
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        dataFormatterFn: dataFormatter,
+        options: highstockOptions,
+        customControlDiv: Y.one('div#reportControls'),
+        statsFn: cpuStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        optionsModifierFn: modifyOptions
+    });
+});
+
+function assembleDataUrl() {
+    var baseDataUrl = '<%= Reports2.constructDataUrl("reportCpuUtilEXVSP") %>';
+    var displayMode = Y.one('select[name="displayMode"]').get('value');
+    return addQueryStringParameter(baseDataUrl, 'displayMode', displayMode);
+}
+
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl()
+    });
+}
+
+function cpuStats(allSeriesData) {
+    var allStats = [];
+    var systemAverage = Y.one('select[name="displayMode"]').get('value') == 'avg';
+
+    for (var i = 0; i < allSeriesData.length; i++) {
+        // Compute the overall average utilization for System Average only.
+        if (systemAverage) {
+            var avgUtil = RBT.Reports2.avg(allSeriesData[i]);
+            var avgUtilText = 'Average: ' + dataFormatter(avgUtil);
+            allStats.push([avgUtilText]);
+        } else {
+            allStats.push([]);
+        }
+    }
+
+    return allStats;
+}
+
+function dataFormatter(value, seriesName) {
+    return Math.round(value) + '%';
+}
+
+function modifyOptions(options, response) {
+    options.series = [];
+
+    for (var i = 0; i < response.length; i++) {
+        var name = response[i].name;
+
+        var color;
+        if (name == 'RiOS Average') {
+            color = RBT.Reports2.RED;
+        } else if (name.indexOf('RiOS') > 0) {
+            color = RBT.Reports2.PINK;
+        } else if (name == 'VSP Average') {
+            color = RBT.Reports2.BLUE;
+        } else if (name.indexOf('VSP') > 0) {
+            color = RBT.Reports2.AQUA;
+        }
+
+        var seriesOptions = {
+            name: name,
+            color: color
+        };
+
+        if (name.indexOf('Average') > 0 && Y.one('select[name="displayMode"]').get('value') == 'indiv') {
+            seriesOptions.zIndex = 1;
+            seriesOptions.lineWidth = 2;
+            seriesOptions.states = {
+                hover: {
+                    lineWidth: 2
+                }
+            };
+        }
+
+        options.series.push(seriesOptions);
+    }
+
+    // Make the navigator shadow the first series (RiOS Average).
+    options.navigator.baseSeries = 0;
+    options.navigator.series.lineColor = options.series[0].color;
+    options.navigator.yAxis.max = 100;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

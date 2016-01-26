@@ -1,0 +1,565 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: virtualized-generic
+#
+# Functions:
+#    VOID get_platform()
+#
+#       Returns CMC, for instance.
+#
+#    VOID init_hardware_phase0(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+#           "true" if a boot flash disk is supported
+#           "false" if a boot flash disk is not supported
+#           "error" if an error occurred determining flash support.
+#
+#    BOOL supports_bmc_watchdog_pretimeout
+#       Little routine to indicate whether the motherboard supports BMC 
+#       watchdog pre-timeout or not.
+#
+#    BOOL supports_rfut
+#       Little routine to indicate whether the motherboard supports 
+#       rfut (riverbed firmware upgrading tool) or not.
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+HWTOOL=/opt/hal/bin/hwtool.py
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+MODPROBE=/sbin/modprobe
+RMMOD=/sbin/rmmod
+HAL_CACHE=/var/opt/tms/hal_cache
+CACHED_MOBO=${HAL_CACHE}/motherboard
+
+HAL_LOG_WARN="/usr/bin/logger -p user.warn -t hal"
+HAL_LOG_ERROR="/usr/bin/logger -p user.err -t hal"
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#------------------------------------------------------------------------------
+# get_model
+#------------------------------------------------------------------------------
+
+get_model()
+{
+    RESULT=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/model`
+    if [ $? != 0 ]; then
+        echo "Failed to determine model number."
+        exit 1
+    fi
+    echo ${RESULT}
+}
+
+#------------------------------------------------------------------------------
+# get_motherboard
+#------------------------------------------------------------------------------
+
+get_motherboard()
+{
+    if [ -f ${CACHED_MOBO} ]; then
+        MOBO=`cat ${CACHED_MOBO} | grep "^CMP"`
+        if [ "x${MOBO}" != "x" ]; then
+            echo ${MOBO}
+            return
+        fi
+    fi
+
+    MOBO=`${HWTOOL} -q motherboard`
+    if [ $? != 0 ]; then
+        echo "Failed to determine motherboard."
+        exit 1
+    fi
+    echo ${MOBO} > ${CACHED_MOBO}
+    echo ${MOBO}
+    return
+}
+
+#------------------------------------------------------------------------------
+# get_platform
+#------------------------------------------------------------------------------
+
+get_platform()
+{
+    RESULT=`cat /etc/build_version.sh | grep "^BUILD_PROD_ID=" | cut -d= -f2 | sed 's/"//g'`
+    if [ $? != 0 ]; then
+        echo "Failed to determine platform."
+        exit 1
+    fi
+    echo ${RESULT}
+}
+
+#------------------------------------------------------------------------------
+# Stuff to call from init_hardware_phase0
+#------------------------------------------------------------------------------
+bail_on_sdbresize_error() {
+    if [ $? -ne 0 ]; then
+        echo $1
+        exit 1
+    fi
+}
+
+sdbresize() {
+  #
+  # For CMCVE.
+  # Users are expected to increase, from ESX, the allocation to the second disk
+  # (the one dedicated to the /data partition on CMCVEs) if they install more
+  # endpoint licenses.  This script detects such a disk enlargement and sees to
+  # nondestructively extending the existing filesystem (/dev/sdb1) into the new
+  # area.
+  # If the disk is seen to have become smaller, that's a user error, but to avoid
+  # having the whole CMC become disabled, we wipe /dev/sdb1 clean.
+  #
+  
+  total_cyls=`fdisk -l /dev/sdb | grep heads | grep cylinders | awk '{print $(NF-1)}'`
+  highest_cyl=`fdisk -l /dev/sdb | tail -1 | awk '{print $3}'`
+  # Note fdisk and sfdisk give off-by-one accounts of what the "start" and "end"
+  # cylinder on a partition is.  If fdisk says 1 and 5, sfdisk will say 0 and 4.
+  # As if that's not bad enough, when you use sfdisk to create a partition,
+  # you need to say (referring to the example above) 0 and 5!
+  
+  # If disk hasn't grown, then there's nothing to do.
+  if [ $total_cyls -eq $highest_cyl ]; then
+      exit 0
+  fi
+
+  # Change /dev/sdb1 to cover its entire disk.
+  echo "0,$total_cyls,83" | sfdisk -uC /dev/sdb
+  bail_on_sdbresize_error "sfdisk partition-grow operation failed"
+  
+  # Extend formatting to new areas of sdb1.
+  if [ $total_cyls -lt $highest_cyl ]; then
+      # wipe it
+      mke2fs -j -L DATA /dev/sdb1
+      bail_on_sdbresize_error ""
+  else
+      # nondestructively expand it
+      e2fsck -y -f /dev/sdb1
+      case $? in
+        0|1) ;;
+        2) echo "0,$highest_cyl,83" | sfdisk /dev/sdb;
+           reboot;;
+        *) bail_on_sdbresize_error "";;
+      esac
+      resize2fs /dev/sdb1
+      bail_on_sdbresize_error ""
+  fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#------------------------------------------------------------------------------
+
+init_hardware_phase0()
+{
+    if [ `get_model` = "8001" -a `get_platform` = "CMC" ]  # CMC in a VM
+    then
+        sdbresize
+    fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    FLASH_SUP=`uses_flash_disk`
+    if [ "x${FLASH_SUP}" = "xtrue" ]; then
+        mount_flash_disk
+    elif [ "x${FLASH_SUP}" = "xerror" ]; then
+        ${HAL_LOG_ERROR} "Flash disk not found. Manufacturing without flash. "
+    fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+
+get_ecc_ram_support()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+
+uses_fan_status()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_flash_disk
+#------------------------------------------------------------------------------
+FLASH_DEV="/dev/sdb"
+FLASH_MOUNT="/flash/cfg"
+
+uses_flash_disk()
+{
+    MOD=`get_model`
+
+    case "${MOD}" in
+        "8550")
+	    TMP_FLASH_DEV=`echo $FLASH_DEV | awk '{ print substr( $0, 6 , length($0)) }'`
+	    DISK_SIZE=`cat /sys/block/${TMP_FLASH_DEV}/size`
+            if [ $? -ne 0 ]; then
+                echo "error"
+            fi
+
+            #Minnimum disk size is 10MB
+            if [ $DISK_SIZE -le 10000 ]; then
+                echo "error"
+            fi
+
+            echo "true"
+
+        ;;
+        *)
+            echo "false"
+
+        ;;
+    esac
+}
+
+mount_flash_disk()
+{
+    if [ ! -d /flash/cfg ]; then
+        mkdir -p ${FLASH_MOUNT} >> /dev/null
+    fi
+
+    mount ${FLASH_DEV} ${FLASH_MOUNT} >> /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        umount ${FLASH_DEV} > /dev/null 2>&1
+
+        ${HAL_LOG_WARN} "Cannot mount FLASH. Forcing recovery. "
+
+        /sbin/fsck -y ${FLASH_DEV} > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            mount ${FLASH_DEV} ${FLASH_MOUNT} > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                ${HAL_LOG_WARN} "FLASH recovery successful. "
+                return 0
+            fi
+        fi
+
+        #fsck -y failed, or the mount after fsck -y failed.
+        ${HAL_LOG_WARN} "FLASH filesystem is unrecoverable, rebuilding clean filesystem. "
+
+        #force an unmount
+        umount ${FLASH_MOUNT} > /dev/null 2>&1
+
+        /sbin/mke2fs -qF -O ^resize_inode -j ${FLASH_DEV}
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_ERROR} "Unable to rebuild FLASH filesystem. Aborting manufacture. "
+            return 1
+        fi
+
+        #mount FLASH one last time
+        mount ${FLASH_DEV} ${FLASH_MOUNT} > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Unable to rebuild FLASH filesystem. "
+                return 1
+        else
+            ${HAL_LOG_WARN} "FLASH filesystem is rebuilt and mounted. "
+            return 0
+        fi
+    fi
+
+    if [ ! -d /flash/cfg/data/ ]; then
+        mkdir -p /flash/cfg/data/
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_ERROR} "Unable to create GW persistent data directory."
+            exit 1
+        fi
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+
+uses_disk_led()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_power
+#------------------------------------------------------------------------------
+
+uses_disk_power()
+{
+    echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# supports_bmc_watchdog_pretimeout
+# This hal function is called by mgmt to check whether
+# the machine supports bmc hardware watchdog pre-timout.
+#------------------------------------------------------------------------------
+supports_bmc_watchdog_pretimeout()
+{
+        echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# supports_rfut
+# This hal function is called by mgmt to check whether
+# the machine supports rfut or not.
+#------------------------------------------------------------------------------
+supports_rfut()
+{
+        echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+
+. /opt/hal/bin/hal_common.sh
+
+case "${FUNCTION}" in
+
+    "init_hardware_phase0")
+        init_hardware_phase0
+        ;;
+
+    "init_hardware_phase1")
+        init_hardware_phase1
+        ;;
+
+    "init_hardware_phase2")
+        init_hardware_phase2
+        ;;
+
+    "deinit_hardware_phase1")
+        deinit_hardware_phase1
+        ;;
+
+    "deinit_hardware_phase2")
+        deinit_hardware_phase2
+        ;;
+
+    "get_num_raid_arrays")
+        get_num_raid_arrays
+        ;;
+
+    "get_temperature")
+        get_temperature
+        ;;
+
+    "uses_power_supplies")
+        uses_power_supplies
+        ;;
+
+    "uses_fan_status")
+        uses_fan_status
+        ;;
+
+    "uses_flash_disk")
+        uses_flash_disk
+        ;;
+
+    "uses_hardware_wdt")
+        uses_hardware_wdt
+        ;;
+	
+    "uses_disk_led")
+        uses_disk_led
+        ;;
+
+    "uses_disk_power")
+        uses_disk_power
+        ;;
+
+    "get_ecc_ram_support")
+        get_ecc_ram_support
+        ;;
+
+    "get_motherboard")
+        get_motherboard
+        ;;
+	
+    "get_model")
+        get_model
+        ;;
+
+    "get_avail_speed_duplex")
+        get_avail_speed_duplex ${ARGS}
+        ;;
+
+    "get_default_speed_duplex")
+        get_default_speed_duplex ${ARGS}
+        ;;
+
+    "get_default_ipmi_wdt_timeout")
+        get_default_ipmi_wdt_timeout
+        ;;
+    "supports_bmc_watchdog_pretimeout")
+        supports_bmc_watchdog_pretimeout
+        ;;
+    "supports_rfut")
+        supports_rfut
+        ;;
+    "get_platform")
+       get_platform
+       ;;
+    *)
+        echo "Not implemented."
+        exit 128
+        ;;
+
+esac

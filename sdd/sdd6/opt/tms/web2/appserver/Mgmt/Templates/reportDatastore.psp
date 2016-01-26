@@ -1,0 +1,83 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportDatastore.psp
+## This is the template for the Data Store report page.
+## Refactored to use common report code
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, ajaxentrytable, ProductReportContext:ProductGfxContext, ProductReportContext:DataStorePagelet, GfxUtils" %>
+<%@page extends="DataStorePagelet" %>
+
+<%
+# Use somewhat stripped-down reportOpts because there aren't any graphics in this report
+# There's a 'gfxId' anyhow because the table is generated in support_report_gfx.
+# We do it that way so we can get an Ajax update, just like all other reports AETs
+reportOpts = {
+    'controlFormId': 'dataStoreForm',
+    'reportSpecs': {
+        'dsstatus': {
+            'tableName': 'dataStoreStatusTable',
+            'gfxId': 'dataStoreStatus'
+        }
+    }
+}
+dataStoreStatusTable = ajaxentrytable.AjaxEntryTable('dataStoreStatus',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdAttr('label'),
+        AjaxEntryTable.tdAttr('value')
+]""",
+    emptyMessage='No information available about Data Store Status.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div>
+<form id="dataStoreForm" class="topLevel graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+    <%= GfxUtils.getExportOrReportAction(self) %>
+<%
+applianceSelected = reportOpts['applianceSelected']
+if applianceSelected: {
+%>
+<%= dataStoreStatusTable.html(self, cssClass="midLevel") %>
+<% } else: { %>
+<fieldset>
+  <div class="midLevel">
+    Please select an appliance below to view this report.
+  </div>
+</fieldset>
+<%
+}
+%>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <%= reportOpts.get('groupHdr', '') %>
+<% if applianceSelected: { %>
+          <th>Refresh:</th>
+<% } %>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <%= reportOpts.get('groupCol', '') %>
+<% if applianceSelected: { %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+<% } %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+</form>
+</div>
+
+<% self.endPagelet() %>

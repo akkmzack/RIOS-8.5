@@ -1,0 +1,1274 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: virtualized-generic
+#
+# Functions:
+#    VOID get_platform()
+#
+#       Returns CMC, for instance.
+#
+#    VOID init_hardware_phase0(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+#           "true" if a boot flash disk is supported
+#           "false" if a boot flash disk is not supported
+#           "error" if an error occurred determining flash support.
+#    VOID mount_proxy_fs
+#       Mounts /dev/sdc1 on /proxy, if it exists.  (CMCVE only).
+#
+#    BOOL supports_bmc_watchdog_pretimeout
+#       Little routine to indicate whether the motherboard supports BMC 
+#       watchdog pre-timeout or not.
+#
+#    BOOL supports_rfut
+#       Little routine to indicate whether the motherboard supports 
+#       rfut (riverbed firmware upgrading tool) or not.
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+HAL_CACHE=/var/opt/tms/hal_cache
+RVBD_SUPER=/opt/tms/bin/rvbd_super
+RRDM_TOOL=/opt/hal/bin/raid/rrdm_tool.py
+MODPROBE=/sbin/modprobe
+HWTOOL=/opt/hal/bin/hwtool.py
+RDICTL="/opt/tms/bin/rdictl"
+
+HAL_LOG_NOTICE="/usr/bin/logger -p user.notice -t hal"
+HAL_LOG_WARN="/usr/bin/logger -p user.warn -t hal"
+HAL_LOG_ERROR="/usr/bin/logger -p user.err -t hal"
+
+#-----------------------------------------------------------------------------
+# General FS recovery routines.
+#-----------------------------------------------------------------------------
+DO_FS_RECOVERY="/sbin/do_fs_recovery.sh"
+FSCK_OPTIONS="-T -a -V"
+
+. /opt/hal/bin/upgrade_common.sh
+
+exit_if_error() {
+    if [ $? -ne 0 ]; then
+        echo Error: $1 [exiting]
+        exit 1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+################################################################################
+# get_physical_mobo
+################################################################################
+get_physical_mobo()
+{
+    echo `${HWTOOL_PY} -q physical-mobo`
+}
+
+#------------------------------------------------------------------------------
+# missing_rvbd_super
+#------------------------------------------------------------------------------
+
+missing_rvbd_super()
+{
+    RESULT=`${RVBD_SUPER} -g $1`
+    RET=$?
+    # Try again just to be sure that its not a transient error
+    if [ ${RET} -ne 0 ]; then
+        RESULT=`${RVBD_SUPER} -g $1`
+        RET=$?
+    fi
+    
+    echo ${RET}
+}
+
+# List of the required volumes to be set up early in the boot process
+# so the rest of the system can come up
+#
+MGMT_VOLUME_LIST="var swap"
+
+do_create_sw_raid()
+{
+    VOL="${1}"
+
+    # if we arent passed in a second param, send output to stdout.
+    LOG="$2"
+
+    ${RRDM_TOOL} -c /${VOL} > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        if [ "x${LOG}" = "x" ]; then
+            echo "Unable to recreate RAID array [${VOL}]"
+        else
+            ${HAL_LOG_WARN} "Unable to recreate RAID Array [${VOL}]"
+        fi
+
+        return 1
+    fi
+
+    return 0
+}
+
+DO_HALT="/sbin/halt -p"
+
+# 
+# This routine is called before logging is set up, so output messages
+# to the console.
+#
+# We may want to put a failure message on the flash to indicate why we died
+# if we couldnt start the array.
+#
+do_start_mgmt_volumes()
+{
+    USES_SW_RAID=`${RRDM_TOOL} --uses-sw-raid`
+    if [ "x${USES_SW_RAID}" = "xTrue" ]; then
+        echo "Starting SW Raid Arrays"
+
+        for VOL in ${MGMT_VOLUME_LIST}; do
+            echo "Starting: ${VOL}"
+            # we have stuff to do
+            ${RRDM_TOOL} --run=/${VOL}
+            if [ $? -ne 0 ]; then
+                echo "Unable to Start RAID Array [${VOL}]"
+                echo "Starting RAID Recovery for [${VOL}]"
+
+                # starting the array has failed, this is bad!
+                # so .. we throw away the RAID and rebuild.
+                do_create_sw_raid ${VOL}
+                if [ $? -ne 0 ]; then
+                    echo "Unable to start required array ${VOL}, halting system"
+                    ${DO_HALT}
+                fi
+
+                ${DO_FS_RECOVERY} ${VOL} -f
+                if [ $? -ne 0 ]; then
+                    echo "Unable to complete filesystem recovery for ${VOL}, halting system"
+                    ${DO_HALT}
+                fi
+            fi
+        done
+    fi
+
+    return 0
+}
+
+
+# Awk the output of rrdm_tool -l to find out if the volume is a SW RAID device
+# or not. 
+check_volume_is_raid()
+{
+    local ARRAY_LINE="$1"
+    IS_RAID=`echo ${ARRAY_LINE} | awk 'BEGIN{FS=":"}{print $6}'`
+    if [ "x${IS_RAID}" = "xtrue" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+
+# Start any other RAID devices needed by RiOS, but not necessarily Linux
+# this would be PFS and the Segstore(NON FTS).
+#
+# Logging is OK here since we would have started /var above.
+#
+do_start_rios_volumes()
+{
+    USES_SW_RAID=`${RRDM_TOOL} --uses-sw-raid`
+    if [ "x${USES_SW_RAID}" = "xTrue" ]; then
+        ${HAL_LOG_INFO} "Starting RiOS Raid Arrays"
+        DEVICE_LIST=`${RRDM_TOOL} -l`
+        for LINE in ${DEVICE_LIST}; do
+            DO_START=0
+            ARRAY=`echo $LINE | awk 'BEGIN{FS=":"} {print $1}'`
+
+            check_volume_is_raid "${LINE}"
+            if [ $? -eq 0 ]; then
+                # we might need to start it. 
+                echo "${MGMT_VOLUME_LIST}" | grep $ARRAY > /dev/null
+                if [ $? -ne 0 ]; then
+                    # its not in the list we already looked at for mgmt volumes so
+                    # lets start it
+                    DO_START=1
+                fi
+            fi
+
+            if [ ${DO_START} -eq 1 ]; then
+                ${RRDM_TOOL} --run=/${ARRAY}
+                if [ $? -ne 0 ]; then
+                    echo "Unable to Start RAID Array [${ARRAY}]"
+                    echo "Starting RAID Recovery for [${ARRAY}], Wiping the array and starting clean"
+
+                    # starting the array has failed, this is bad!
+                    # so .. we throw away the RAID and rebuild.
+                    do_create_sw_raid ${ARRAY}
+                    if [ $? -ne 0 ]; then
+                        echo "Unable to start required array ${ARRAY}, halting system"
+                        ${DO_HALT}
+                    fi
+
+                    ${DO_FS_RECOVERY} ${ARRAY}
+                    if [ $? -ne 0 ]; then
+                        echo "Unable to complete filesystem recovery for ${ARRAY}, halting system"
+                        ${DO_HALT}
+                    fi
+                fi
+            fi
+        done
+    fi
+}
+
+#------------------------------------------------------------------------------
+# check_resource_profile_change
+#------------------------------------------------------------------------------
+check_resource_profile_change()
+{
+    if [ -f /config/changeprofile ]; then
+        PROFILE=`cat /config/changeprofile`
+        rm -f /config/changeprofile
+        touch / 2>/dev/null
+        READ_ONLY_ROOT=$?
+
+        [ $READ_ONLY_ROOT -ne 0 ] && mount -o rw,remount /
+
+        echo "Storage Profile Reconfiguration for:${PROFILE}"
+        RESULT=`${RRDM_TOOL} --validate --profile=${PROFILE}`
+        if [ "x${RESULT}" != "xTrue" ]; then
+            echo "Storage Profile Reconfigurtion Validation failed for ${PROFILE}"
+        else
+            ${RRDM_TOOL} --change-profile --profile=${PROFILE}
+            if [ $? -ne 0 ]; then
+                echo "Storage Profile Change Request Failed for ${PROFILE}"
+            fi
+
+            # update disk_config.xml
+            ${RRDM_TOOL} --write-config
+            if [ $? -ne 0 ]; then
+                echo "Disk config update failed, disk metadata may be out of date"
+            fi
+   
+        fi
+        [ $READ_ONLY_ROOT -ne 0 ] && mount -o ro,remount /
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#------------------------------------------------------------------------------
+
+init_hardware_phase0()
+{
+
+    check_resource_profile_change
+
+    # on units supporting sw raid, we need to start the raid arrays and fix any that are broken
+    # first we start /var and /swap since those are needed for system boot
+    # 
+    RRDM_SUPPORTED=`${RRDM_TOOL} --supported`
+    if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+        do_start_mgmt_volumes
+        do_start_rios_volumes
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# detect_redfin_loms -- find the mitac loms on redfins
+#
+# return as a comma separated list of ifindex's..
+#------------------------------------------------------------------------------
+detect_redfin_loms()
+{
+        local n
+        local d
+        local dl
+        local MACTAB
+        MACTAB=`${HWTOOL_PY} -q mactab`
+
+        for n in /sys/class/net/*; do
+                if [ -h $n/device ]; then
+                        name=`basename $n`
+                        HWADDR=`ifconfig ${name} | grep HWaddr | awk -F"HWaddr " '{print $2}'`
+                        name=`echo ${MACTAB} | sed -e 's/\(:..\) /\1\n/g' | grep ${HWADDR} | awk '{print $1}'`
+                        if [ "x${name}" = "xaux" -o "x${name}" = "xprihw" -o "x${name}" = "xprimary" ]; then
+                                continue
+                        fi
+                        d=$n/device
+                        dl=`readlink $d`
+                        dl=`basename $dl`
+                        dl=`echo $dl | sed -e 's/^0000://1' -e 's/:.*//1'`
+
+                        echo `cat $n/ifindex` `cat $d/vendor` `cat $d/device` `cat $d/subsystem_vendor` `cat $d/subsystem_device` $dl
+                fi
+        done | egrep '(0x8086 0x10d3 0x8086 0x0000)' | sort -k 6 | awk '{ print $1; }' | tr '\n' ',' | sed 's/,$//1'
+}
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    #check_kernel_options
+    check_kernel_options
+
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    if [ "x${PHYSICALMOBO}" = "x425-00205-01" ]; then
+        ${HAL_LOG_INFO} "Starting sw_raidcheck for hotplug notifications"
+        export PYTHONPATH="/opt/hal/bin/raid"
+        /sbin/sw_raidcheck.py &
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Unable to start sw_raidcheck, disk hotplug services will be unavailable"
+        fi
+    fi
+}
+
+populate_iscsi_config()
+{
+    # get the model
+    MODEL=`get_model`
+
+    # get the primary mac addr
+    mac_addr=`cat /tmp/BOB.vmx | grep guestinfo.hostprimarymac | awk -F '= ' '{print $2}'| sed 's/"//g'` 
+
+    #
+    # Generate the iscsi target config file to be used by iscsi_target.
+    # The labelling for the iscsi partition is "rsp".
+    #
+    # XXX Currently there is only one rsp partition. In the future
+    # there'll be a "rsp-local" partition so multiple luns would
+    # be exported.
+    #
+    ISCSI_CONFIG_OUTPUT="/var/etc/opt/tms/output/iscsi_config.xml"
+    ISCSI_CONFIG="/opt/hal/bin/bob/IscsiConfig.py"
+    # Start with a clean slate by removing the existing config file.
+    # The mode could have switched to VE_ONLY and there is no rsp
+    # partition.
+    rm -f ${ISCSI_CONFIG_OUTPUT}
+
+    if [ ! -f ${ISCSI_CONFIG} ]; then
+        ${HAL_LOG_WARN} "IscsiConfig command is missing."
+    else
+        RSP_DEV=`${RRDM_TOOL} -l | grep rsp | awk 'BEGIN{FS=":"} {print $2}'`
+        if [ "x${RSP_DEV}" != "x" ]; then
+            if [ ! -b /dev/${RSP_DEV} ]; then
+                ${HAL_LOG_WARN} "Block device for RSP Storage not found."
+            else
+                # Not checking for reserve space
+                TMP_SYL_RSP_DEV=`readlink -f /dev/${RSP_DEV}`
+                SYL_RSP_DEV=`echo $TMP_SYL_RSP_DEV | awk '{ print substr( $0, 6 , length($0)) }'`
+                dev1=`echo $SYL_RSP_DEV | awk '{ print substr( $0, 1 , 1) }'`
+                dev2=`echo $SYL_RSP_DEV | awk '{ print substr( $0, 1 , length($0)-1) }'`
+                if [ ${dev1} = "s" ]; then
+                    total_sectors=`cat /sys/block/${dev2}/${SYL_RSP_DEV}/size`
+                else
+                    total_sectors=`cat /sys/block/${SYL_RSP_DEV}/size`
+                fi
+                RSP_SIZE=`expr ${total_sectors} / 2`
+                if [ "x${RSP_SIZE}" == "x" ]; then
+                    ${HAL_LOG_WARN} "RSP Storage /dev/${RSP_DEV} is unknown size."
+                else
+                    # sfdisk output is in 1K and the Iscsi config wants the size
+                    # in 512 byte sectors
+                    RSP_SIZE_SECT=$[ ${RSP_SIZE} * 2 ]
+                    ${ISCSI_CONFIG} ${RSP_DEV},${RSP_SIZE_SECT} --mac=${mac_addr} > ${ISCSI_CONFIG_OUTPUT}
+                fi
+            fi
+        fi
+	# There should always be an iscsi_target config file, otherwise
+        # iscsi_target continuously exits.  If there is no config file,
+        # create one without the <vlun> element
+        if [ ! -f ${ISCSI_CONFIG_OUTPUT} ]; then
+            ${ISCSI_CONFIG} --mac=${mac_addr} > ${ISCSI_CONFIG_OUTPUT}
+        fi
+    fi
+
+    case "${MODEL}" in
+        "560")
+            HAL_560_SH="/opt/hal/bin/bob/hal_560.sh"
+            if [ ! -f ${HAL_560_SH} ]; then
+                ${HAL_LOG_WARN} "HAL_560 script missing."
+            else
+                # grab functions from the script.
+                . ${HAL_560_SH}
+
+                if [ ! -f /var/opt/rbt/.rsp_ready ]; then
+                    echo "Initializing RSP Partition"
+                    hal_560_raid_prep
+
+                    touch /var/opt/rbt/.rsp_ready
+                fi
+
+                hal_560_raid_start
+            fi
+            ;;
+        *)
+            RRDM_SUPPORTED=`${RRDM_TOOL} --supported`
+            if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+                ${HAL_LOG_INFO} "Model [${MODEL}] supports sw raid, doing raid specific setup."
+
+                if [ ! -f /var/opt/rbt/.rsp_ready ]; then
+                    echo "Initializing RSP Partition"
+                    do_make_sw_pfs
+                fi
+
+                do_mount_sw_pfs
+            fi
+            ;;
+    esac
+    case "x${PHYSICALMOBO:0:9}" in
+        "x425-00205")
+                rmmod i2c_piix4
+                modprobe esxi-piix4
+                modprobe bypass_redfin_xx60 machine_type=1 if_indecies=`detect_redfin_loms` > /dev/null 2>&1
+                ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    setup_ssd_queue_unplug
+
+    populate_iscsi_config	
+
+    # Mount our underlying ESXi filesystem through remotefs
+    ifconfig hpn 169.254.131.1 netmask 255.255.255.0 # TODO: remove once we have
+                                                     #       this set elsewhere
+    mkdir -p /esxi
+    /usr/local/bin/rfs -otransform_symlinks `/opt/rbt/bin/EsxiInfo.py -i`:/ /esxi
+
+    #Set the para-virt watchdog driver
+    rm -f /dev/watchdog
+
+    ${MODPROBE} esxi_watchdog >& /dev/null
+    mknod /dev/watchdog c 10 130
+    if [ $? -ne 0 -a ! -c /dev/watchdog ]; then
+        ${HAL_LOG_WARN} "Unable to create watchdog device, hardware watchdog will be unavailable"
+    fi
+
+    if [ ! -f ${MDDBREQ} ]; then
+        ${HAL_LOG_WARN} "$MDDBREQ not installed.  Can't determine if fts machine."
+    else
+        FTS_FLAG=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/fts`
+        if [ $? != 0 ]; then
+            ${HAL_LOG_WARN} "Failed to determine if fts machine."
+        else
+            if [ "x${FTS_FLAG}" == "xtrue" ]; then
+                /opt/tms/bin/hald_fts &
+                /opt/hal/bin/raid/write_sb_data.py &
+            fi
+        fi
+    fi
+
+    init_10G_silicom
+
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    return
+}
+
+# XXX This assumes a 1K blocksize (which is what mke2fs assumes on the
+# cmdline unless you specify -b 4096, at which time you need to divide this
+# by 4, if that changes.
+#               
+RESERVE_BLOCKS=1024 # reserve 1024 x 1024 = 1MB at the end of ext3 partitions.
+
+# for new hw single disk units, we want to reserve space at
+# the end of the ext3 partitions so we could add a MD SB in the future.
+#                       
+do_calculate_blocks_w_reserve()
+{
+    dev=$1
+    # if we've been told to reserve some space, we need to calc
+    # the number of blocks to tell ext3 to use.
+    dev1=`echo $dev | awk '{ print substr( $0, 1 , 1) }'`
+    dev2=`echo $dev | awk '{ print substr( $0, 1 , length($0)-1) }'`
+    if [ ${dev1} = "s" ]; then
+        total_sectors=`cat /sys/block/${dev2}/${dev}/size`
+    else
+        total_sectors=`cat /sys/block/${dev}/size`
+    fi
+ 
+    total_blocks=`expr ${total_sectors} / 2`
+
+    if [ ${total_blocks} -le ${RESERVE_BLOCKS} ]; then
+        echo "*** Block size too small when calculating reserve blocks on $dev"
+        cleanup_exit
+    fi
+
+    expr ${total_blocks} - ${RESERVE_BLOCKS}
+}
+
+#------------------------------------------------------------------------------
+# do_make_sw_pfs
+#------------------------------------------------------------------------------
+
+do_make_sw_pfs()
+{
+    RSP_DEV=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $2}'`
+    RESERVE_SPACE=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $5}'`
+    TMP_SYL_RSP_DEV=`readlink -f /dev/${RSP_DEV}`
+    SYL_RSP_DEV=`echo $TMP_SYL_RSP_DEV | awk '{ print substr( $0, 6 , length($0)) }'`
+
+    if [ "x${RSP_DEV}" != "x" ]; then
+        if [ ! -b /dev/${RSP_DEV} ]; then
+            ${HAL_LOG_WARN} "Block device for RSP partition not found."
+            return 1
+        fi
+        blocks=
+
+        if [ "x${RESERVE_SPACE}" = "xtrue" ]; then
+            blocks=`do_calculate_blocks_w_reserve ${SYL_RSP_DEV}`
+        fi
+
+        ${HAL_LOG_INFO} "Formatting RSP mount point with ext3"
+        /sbin/mke2fs -q -O ^resize_inode -L SMB -j /dev/${RSP_DEV} ${blocks}
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Unable to make ext3 filesystem on /dev/${RSP_DEV} for RSP"
+            return 1
+        else
+            # set samba ready
+            touch /var/opt/rbt/.rsp_ready
+        fi
+    fi
+
+    return 0
+}
+
+
+
+#------------------------------------------------------------------------------
+# do_check_fs
+#
+# Takes a filesystem device and a filesystem name and does the appropriate 
+# pre-mount fsck checks on it. If problems are detected, the fs_recovery
+# script is invoked to do best effort repairs of the filesystem.
+# 
+#------------------------------------------------------------------------------
+do_check_fs()
+{
+    FS_DEV="$1"
+    FS_NAME="$2"
+
+    if [ "x${FS_DEV}" != "x" -a "x${FS_NAME}" != "x" ]; then
+        ${HAL_LOG_INFO} "Checking Filesystem ${FS_NAME}:${FS_DEV}"
+
+        initlog -r "/sbin/fsck ${FSCK_OPTIONS} ${FS_DEV}"
+        RC=$?
+        if [ ${RC} -eq 0 -o ${RC} -eq 1 ]; then
+            ${HAL_LOG_INFO} "${FS_DEV} Filesystem Checks Successful"
+        elif [ ${RC} -gt 1 ]; then
+            # > 1 RC means bad filesystem, so call the recovery script.
+            ${DO_FS_RECOVERY} ${FS_NAME}
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Unable to recover FS ${FS_NAME}:${FS_DEV}"
+                ${HAL_LOG_WARN} "Filesystem will be unavailable."
+                return 1
+            fi
+        fi
+    fi
+
+    return 0;
+}
+
+
+#------------------------------------------------------------------------------
+# do_mount_sw_pfs
+#
+# Bring up the RSP mount if we can.  Also do appropriate pre-mount FSCK checks
+# 
+#------------------------------------------------------------------------------
+do_mount_sw_pfs()
+{
+    RSP_DEV=`/opt/hal/bin/raid/rrdm_tool.py -l | grep pfs | awk 'BEGIN{FS=":"} {print $2}'`
+
+    if [ "x${RSP_DEV}" != "x" ]; then
+        if [ ! -b /dev/${RSP_DEV} ]; then
+            ${HAL_LOG_WARN} "Block device for RSP partition not found."
+            return 1
+        fi
+
+        # check the filesystem before we mount it.
+        #
+        do_check_fs "/dev/${RSP_DEV}" "pfs"
+        if [ $? -ne 0 ]; then
+            # we couldnt bring this filesystem up, log messages
+            # are in the check routine.
+            return 1
+        fi
+
+        mount | grep /proxy
+        if [ $? -ne 0 ]; then
+            mount /dev/${RSP_DEV} /proxy -o defaults,acl,noauto,user_xattr
+
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Unable to mount RSP /dev/${RSP_DEV} /proxy partition"
+
+                # try to recovery process.
+                #
+                ${DO_FS_RECOVERY} pfs -f
+                return 1
+            fi
+        fi
+    fi
+
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    RRDM_SUPPORTED=`${RRDM_TOOL} --uses-sw-raid`
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "unable to determine if unit uses sw raid."
+        ${HAL_LOG_WARN} "Raid status and alarms will be unavailable."
+    echo "0"
+        return
+    fi
+
+    if [ "x${RRDM_SUPPORTED}" = "xTrue" ]; then
+        # mgmt is only hooked up to support 1 raid array 
+        # so we report one, and the rrdm_tool, presents all the 
+        # different arrays as a single array of disks
+        # when asking for disk status.
+        echo "1"
+        return
+    fi
+
+    # no raid arrays.
+    echo "0"
+}
+
+#-------------------------------------------------------------------------------
+# show_raid_diagram
+#
+# draws the picture of the front drive bays.
+#-------------------------------------------------------------------------------
+
+show_raid_diagram()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        
+        OUTPUT=`${RRDM_TOOL} -s /disk`
+        if [ $? -ne 0 -o "x${OUTPUT}" = "x" ]; then
+                ${HAL_LOG_WARN} "no raid output or status returned from rrdm_tool"
+                exit 1
+        fi
+
+        MODEL=`get_model`
+        case "${MODEL}" in
+            "EX1160L"|"EX1160M"|"EX1160H"|"EX1160VH")
+                draw_drive_row 0 1 "${OUTPUT}"
+                draw_drive_row 2 3 "${OUTPUT}"
+                ;;
+            "EX1260L_2"|"EX1260M_2"|"EX1260H_2")
+                draw_drive_row 0 3 "${OUTPUT}"
+                draw_drive_row 8 9 "${OUTPUT}"
+                ;;
+            "EX1260L_4"|"EX1260M_4"|"EX1260H_4")
+                draw_drive_row 0 7 "${OUTPUT}"
+                draw_drive_row 8 9 "${OUTPUT}"
+                ;;
+            "EX1260VH_2")
+                draw_drive_row 0 3 "${OUTPUT}"
+                draw_drive_row 8 11 "${OUTPUT}"
+                ;;
+            "EX1260VH_4")
+                draw_drive_row 0 7 "${OUTPUT}"
+                draw_drive_row 8 11 "${OUTPUT}"
+                ;;
+        esac
+
+}
+
+HAL_PY='/opt/hal/bin/hal.py'
+
+#------------------------------------------------------------------------------
+# show_raid_config
+#------------------------------------------------------------------------------
+
+show_raid_config()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} show_raid_config
+}
+#------------------------------------------------------------------------------
+# show_raid_info
+#------------------------------------------------------------------------------
+
+show_raid_info()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} show_raid_info
+
+}
+
+show_raid_info_detail()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} show_raid_info_detail
+}
+
+show_raid_config_detail()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} show_raid_config_detail
+}
+
+
+#------------------------------------------------------------------------------
+# show_raid_physical
+#------------------------------------------------------------------------------
+
+show_raid_physical()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} show_raid_physical
+}
+
+#------------------------------------------------------------------------------
+# raid_card_vendor
+#------------------------------------------------------------------------------
+
+raid_card_vendor()
+{
+        PMOBO=`get_physical_mobo`
+        case "${PMOBO:0:9}" in
+            "425-00205")
+                ;;
+            *)
+                echo ""
+                return
+                ;;
+        esac
+        ${HAL_PY} raid_card_vendor
+}
+
+
+#------------------------------------------------------------------------------
+# get_raid_status
+#------------------------------------------------------------------------------
+
+get_raid_status()
+{
+    RRDM_USES_RAID=`${RRDM_TOOL} --uses-sw-raid`
+    if [ "x${RRDM_USES_RAID}" = "xTrue" ]; then
+        # use rrdm tool's output to directly display disk status
+        # mgmt expects spaces and not tabs though, so use spaces.
+        ${RRDM_TOOL} -s /disk
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Unable to read disk/raid status."
+        fi
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# init_10G_silicom
+#
+# Each of the card is set to inline2 mode
+# Silicom's "rdid" exe takes some time to initialize completely. This time may
+# vary between 5 to 30 seconds. So, we try to initialize every 5 seconds and 
+# give up after 30 seconds with a error message in the log 
+#------------------------------------------------------------------------------
+
+init_10G_silicom()
+{
+    #Check for broadcom switch on a Silicom 10G.
+    modprobe rdi machine_type=1> /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        mknod /dev/linux-user-bde c 126 0
+
+        #Start the Silicom's exe
+        /usr/sbin/rdid
+        sleep 5
+
+        #Count the number of 10G cards on the machine
+        NUM=`ls /proc/net/rdi | wc -l`
+
+        DEVNUM=0
+        TRIES=0
+        #For each of the 10G card, set to inline2 mode
+        while [ $DEVNUM -ne $NUM ]
+        do
+            RET=`${RDICTL} dev $DEVNUM set_cfg 2 2>/dev/null`
+            #If setting inline2 mode fails, sleep for 5 seconds and retry. Total number
+            #of tries is 5
+            FAIL=`echo $RET | grep "Fail"`
+            if [ $? -eq 0 ]; then
+                TRIES=`expr $TRIES + 1`
+                if [ $TRIES -lt 5 ];then
+                    sleep 5
+                    continue
+                else
+                    echo "Failed to initialize 10G Silicom cards"
+                    return
+                fi
+            else
+                INFO=`cat /proc/net/rdi/dev$DEVNUM | tr '\n' ' ' | sed 's/ $//'`
+                echo "Initialized $INFO to inline2 mode"
+            fi
+            DEVNUM=`expr $DEVNUM + 1`
+        done
+    fi
+}
+
+
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+
+get_ecc_ram_support()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+
+uses_fan_status()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_flash_disk
+#------------------------------------------------------------------------------
+uses_flash_disk()
+{
+    echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+
+uses_disk_led()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_power
+#------------------------------------------------------------------------------
+
+uses_disk_power()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# supports_bmc_watchdog_pretimeout
+# This hal function is called by mgmt to check whether
+# the machine supports bmc hardware watchdog pre-timout.
+#------------------------------------------------------------------------------
+supports_bmc_watchdog_pretimeout()
+{
+	echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_if_type 
+#------------------------------------------------------------------------------
+
+get_if_type()
+{
+    # Return a dummy value in case this is a VSH
+    echo "BOB"
+    exit 0
+}
+
+#------------------------------------------------------------------------------
+# get_if_status 
+#------------------------------------------------------------------------------
+
+get_if_status()
+{
+    # get_er_if_status only applies in case of VSH - and only for er status
+    get_er_if_status ${ARGS}
+    exit $?
+}
+
+# Returns the relay index
+find_relay_index()
+{
+    #the interface has format of wan0_0, lan1_0, etc.
+    slot_port=`echo $1 | tr -d '[a-z][A-Z]'`
+    slot=`echo $slot_port | cut -c 1`
+    port=`echo $slot_port | cut -c 3`
+
+    wan_lan=`echo $1 | cut -c 1-3`
+    RELAY_IF="inpath${slot}_${port}"
+    RELAY_IX=`get_er_relay_index ${RELAY_IF}`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "No ether-relay interface for [${RELAY_IF}]"
+	exit 1
+    fi
+
+    echo ${RELAY_IX}
+}
+
+#------------------------------------------------------------------------------
+# set_if_wdt_block 
+#------------------------------------------------------------------------------
+
+set_if_wdt_block()
+{
+    verify_nic_arg $1
+
+    RELAY_IX=`find_relay_index $1`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "No ether-relay interface for $1"
+	exit 1
+    fi
+
+    set_er_if_wdt_block "${RELAY_IX}"
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "Unable to configure software fail to block on [$1]"
+	exit 1
+    fi
+    exit 0
+}
+
+#------------------------------------------------------------------------------
+# set_if_wdt_bypass 
+#------------------------------------------------------------------------------
+
+set_if_wdt_bypass()
+{
+    verify_nic_arg $1
+
+    RELAY_IX=`find_relay_index $1`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "No ether-relay interface for $1"
+	exit 1
+    fi
+
+    set_er_if_wdt_bypass "${RELAY_IX}"
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "Unable to configure software fail to bypass on [$1]"
+	exit 1
+    fi
+
+    exit 0
+}
+
+#------------------------------------------------------------------------------
+# get_if_wdt_status 
+#------------------------------------------------------------------------------
+
+get_if_wdt_status()
+{
+    get_generic_if_wdt_status ${ARGS}
+    exit $?
+}
+
+# On BOB boxes, Granite has requested that we configure the unplug_threshold
+# for SSD devices to 1, which avoids the ioscheduler aggregating commands
+# and adding excess io latency
+setup_ssd_queue_unplug()
+{
+    case "x${PHYSICALMOBO:0:9}" in
+        "x425-00205")
+            DEVLIST=`${RRDM_TOOL} --list-by-media=ssd | grep online | cut -f1 -d" "`
+
+            for dev in $DEVLIST; do
+                scsidev=`readlink /dev/disk$dev`
+                if [ -e /sys/block/${scsidev}/queue/unplug_threshold ]; then
+                    echo 1 > /sys/block/${scsidev}/queue/unplug_threshold
+                    CUR_VAL=`cat /sys/block/${scsidev}/queue/unplug_threshold`
+                    echo "disk${dev} ${scsidev} unplug_thresh is set to ${CUR_VAL}"
+                else
+                    echo "disk${dev} ${scsidev} does not exist, not applying queue unplug threshold"
+                fi
+            done
+        ;;
+        "x425-00135")
+            # BlueDell's only have 1 ssd and its always disk0
+            scsidev=`readlink /dev/disk0`
+            if [ -e /sys/block/${scsidev}/queue/unplug_threshold ]; then
+                echo 1 > /sys/block/${scsidev}/queue/unplug_threshold
+                CUR_VAL=`cat /sys/block/${scsidev}/queue/unplug_threshold`
+                echo "disk0 ${scsidev} unplug_thresh is set to ${CUR_VAL}"
+            else
+                echo "disk0 ${scsidev} does not exist, not applying queue unplug threshold"
+            fi
+
+        ;;
+    esac
+
+
+}
+
+
+
+#------------------------------------------------------------------------------
+# supports_rfut
+# This hal function is called by mgmt to check whether
+# the machine supports rfut or not.
+#------------------------------------------------------------------------------
+supports_rfut()
+{
+        echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+
+PHYSICALMOBO=`${HWTOOL} -q physical-mobo`
+if [ "x${PHYSICALMOBO}" = "x400-DELL-01" -o "x${PHYSICALMOBO}" = "x425-00135-01" -o "x${PHYSICALMOBO}" = "x425-00205-01" ]; then
+    . /opt/hal/bin/hal_common.sh
+fi
+
+case "${FUNCTION}" in
+
+    init_hardware_phase0 |\
+    init_hardware_phase1 |\
+    init_hardware_phase2 |\
+    deinit_hardware_phase1 |\
+    deinit_hardware_phase2 |\
+    init_10G_silicom |\
+    get_num_raid_arrays |\
+    show_raid_diagram |\
+    show_raid_config |\
+    show_raid_info |\
+    show_raid_info_detail |\
+    show_raid_config_detail |\
+    show_raid_physical |\
+    raid_card_vendor |\
+    get_raid_status |\
+    get_temperature |\
+    uses_power_supplies |\
+    uses_fan_status |\
+    uses_flash_disk |\
+    supports_hw_upgrades |\
+    uses_hardware_wdt |\
+    uses_disk_led |\
+    uses_disk_power |\
+    get_ecc_ram_support |\
+    get_motherboard |\
+    get_model |\
+    get_platform |\
+    check_update_bios |\
+    get_system_led_color |\
+    get_avail_speed_duplex |\
+    get_default_speed_duplex |\
+    get_default_ipmi_wdt_timeout |\
+    get_if_type |\
+    get_if_status |\
+    set_if_wdt_block |\
+    set_if_wdt_bypass |\
+    set_if_bypass |\
+    set_if_normal |\
+    set_if_block |\
+    get_if_block_cap |\
+    get_hw_if_status |\
+    get_er_if_status |\
+    get_er_if_wdt_status |\
+    get_hw_if_wdt_status|\
+    setup_ssd_queue_unplug)
+        $FUNCTION ${ARGS}
+        ;;
+    "get_if_wdt_status")
+        get_generic_if_wdt_status ${ARGS}
+        ;;
+    "supports_bmc_watchdog_pretimeout")
+        supports_bmc_watchdog_pretimeout
+        ;;
+    "supports_rfut")
+        supports_rfut
+        ;;
+    "get_platform")
+       get_platform
+       ;;
+    *)
+        echo "Not implemented."
+        exit 128
+        ;;
+
+esac
+

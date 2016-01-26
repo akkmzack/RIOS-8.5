@@ -1,0 +1,90 @@
+<perf_tests>
+<!-- Simple Test Descriptions -->
+
+<simple_test name="RandomRead"
+             desc="Pure Random Read"
+             duration="60">
+    <utility name="diskperf"
+             arguments="-t #time# -d #device# -s #size# -a random -e 1 -E 1 -m 100"
+             type="read"/>
+</simple_test>
+
+<simple_test name="50_50_ReadWrite"
+             desc="Mixed 50/50 Read Write"
+             duration="60">
+    <utility name="diskperf"
+             arguments="-m 50 -t #time# -d #device# -s #size# -a random -e 1 -E 1 -f 1 -F 1"
+             type="readwrite"
+             tolerance="5"/>
+</simple_test>
+
+
+<simple_test name="SeqRead"
+             desc="Pure Sequential Read"
+             duration="60"
+             tolerange="5">
+    <utility name="diskperf"
+             arguments="-t #time# -d #device# -s #size# -a random -e 32 -E 32 -m 100"
+             type="read"/>
+</simple_test>
+
+<simple_test name="SeqWrite"
+             desc="Pure Sequential Write"
+             duration="60"
+             tolerange="5">
+    <utility name="diskperf"
+             arguments="-t #time# -d #device# -s #size# -a random -f 32 -F 32 -m 0"
+             type="write"/>
+</simple_test>
+
+<simple_test name="RandomWrite"
+             desc="Pure Random Write"
+             duration="60">
+    <utility name="diskperf"
+             arguments="-t #time# -d #device# -s #size# -a random -f 1 -F 1 -m 0"
+             type="write"
+             tolerance="5"/>
+</simple_test>
+
+<perf_test name="StandardRead"
+           desc="Basic non destructive read performance test"
+           hidden="false">
+    <sub_test name="RandomRead" duration="60"/>
+</perf_test>
+
+<perf_test name="StandardWrite"
+           desc="Basic destructive write performance test"
+           hidden="true">
+    <sub_test name="RandomWrite" duration="60"/>
+</perf_test>
+
+<perf_test name="StandardSeqRead"
+           desc="Basic non destructive sequential read performance test"
+           hidden="true">
+    <sub_test name="SeqRead" duration="60"/>
+</perf_test>
+<perf_test name="StandardSeqWrite"
+           desc="Basic destructive sequential write  performance test"
+           hidden="false">
+    <sub_test name="SeqWrite" duration="60"/>
+</perf_test>
+<perf_test name="SportBenchmark"
+           desc="Test to emulate common sport uses"
+           hidden="false">
+    <sub_test name="SeqWrite" duration="60"/>
+    <sub_test name="RandomRead" duration="60"/>
+</perf_test>
+<perf_test name="StdReadWrite"
+           desc="Basic destructive read/write performance test"
+           hidden="true">
+    <sub_test name="RandomRead" duration="30"/>
+    <sub_test name="RandomWrite" duration="30"/>
+</perf_test>
+
+<perf_test name="StdWriteRead"
+           desc="Basic destructive read/write performance test"
+           hidden="true">
+    <sub_test name="RandomWrite" duration="30"/>
+    <sub_test name="RandomRead" duration="30"/>
+</perf_test>
+</perf_tests>

@@ -1,0 +1,1619 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupPrepop.psp
+## Prepopulation page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, datetime, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsCIFS','setupServiceProtocolsSMB2') %>
+
+<psp:method name="css">
+    return '''
+#policyTable_main {
+    width: 700px;
+}
+p.note {
+    width: 500px;
+}
+.rulesClass {
+    width: 50px;
+    text-align: center;
+}
+.rowMargin {
+    padding-top: 10px;
+    padding-bottom: 2px;
+}
+
+/* Operations */
+
+.viewLogLink {
+    margin-right: 1em;
+}
+
+/* Adding/Editing Rules */
+
+.attributeCol {
+    width: 270px;
+}
+.valueCol {
+    width: 244px;
+}
+.deleteCol {
+    width: 40px;
+}
+.initSyncIssue {
+  color: #0000B0;
+  background-color: white;
+  border: 1px solid black;
+  padding: 6px 10px;
+  margin: 10px 0;
+  width: 400px;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    return ['/rbt/rcu/prepop/status',
+            '/rbt/rcu/prepop_share/*',
+            '/rbt/rcu/share/*',
+            '/rbt/rcu/config/prepop/enable',
+            '/rbt/rcu/action/policy',
+            '/rbt/rcu/action/cancel_action',
+            '/rbt/rcu/action/create_policy',
+            '/rbt/rcu/action/share_config']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'cifsPrepop_enable': NodeEntry(
+            path='/rbt/rcu/config/prepop/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable CIFS Prepopulation'),
+        'transparentPrepop_enable': NodeEntry(
+            path='/pm/process/sink_port/auto_launch',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Opens port 8777 to allow manual warming of the datastore using RCU ' \
+                    '(Riverbed Copy Utility).',
+            label='Enable Transparent Prepopulation Support using RCU'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    syncTimeUnitOptions = (('minutes', 'Minutes'),
+                           ('hours', 'Hours'),
+                           ('days', 'Days'))
+    syncMaxSizeUnitOptions = (('MB', 'MB'),
+                              ('GB', 'GB'))
+    syncFilesizeUnitOptions = (('kB', 'kB'),
+                               ('MB', 'MB'),
+                               ('GB', 'GB'))
+    ruleTypeOptions = (('filenameMatch', '"File extension/name" matches'),
+                       ('filenameNotMatch', '"File extension/name" does not match'),
+                       ('fileSizeLessThan', '"File size" is less than'),
+                       ('fileSizeGreaterThan', '"File size" is greater than'),
+                       ('accessTimeNewerThan', ' "Access time" is newer than'),
+                       ('accessTimeOlderThan', '"Access time" is older than'),
+                       ('accessTimeSyncRelative', '"Access time" is within, when syncing,'),
+                       ('createTimeNewerThan', '"Creation time" is newer than'),
+                       ('createTimeOlderThan', '"Creation time" is older than'),
+                       ('createTimeSyncRelative', '"Creation time" is within, when syncing,'),
+                       ('writeTimeNewerThan', '"Modify time" is newer than'),
+                       ('writeTimeOlderThan', '"Modify time" is older than'),
+                       ('writeTimeSyncRelative', '"Modify time" is within, when syncing,'))
+    return {
+
+        # These node entries are injected into a template that
+        # is used to create rules dynamically. Each dynamic rule
+        # contains all of the widgets necessary to form any rule.
+        # Widgets are hidden depending upon the rule type.
+
+        'rule_typeSelect': NodeEntry(
+            name='rule_typeSelect',
+            value='filenameMatch',
+            action='enableDynamicRuleWidgets()',
+            selectOptions=ruleTypeOptions),
+        'rule_filename': NodeEntry(
+            name='rule_filename',
+            validate='validatorFilenameWildCard',
+            widgetClass='wide2'),
+        'rule_filesize': NodeEntry(
+            name='rule_filesize',
+            validate=('floatInRange', '[0, 1024 * 1024 * 1024]'),
+            widgetClass='medium'),
+        'rule_filesizeUnits': NodeEntry(
+            name='rule_filesizeUnits',
+            value='MB',
+            selectOptions=syncFilesizeUnitOptions),
+        'rule_syncAbsolute': NodeEntry(
+            name='rule_syncAbsolute',
+            widgetClass='datetime',
+            validate='datetime'),
+        'rule_syncRelativeValue': NodeEntry(
+            name='rule_syncRelativeValue',
+            widgetClass='medium',
+            validate='duration'),
+
+        # Regular node entries
+
+        'addShare_account': NodeEntry(
+            name='addShare_account',
+            widgetClass='account',
+            label='Username',
+            validate='nonempty'),
+        'editShare_account': NodeEntry(
+            name='editShare_account',
+            widgetClass='account',
+            label='Username',
+            validate='nonempty'),
+        'addShare_password': NodeEntry(
+            name='addShare_password',
+            widget='password',
+            label='Password'),
+        'editShare_resetPassword': NodeEntry(
+            name='editShare_resetPassword',
+            widget='checkboxLeft',
+            label='Change Password:',
+            labelClass='labelPaddedBoth',
+            enableDiv='editPasswordDiv'),
+        'editShare_password': NodeEntry(
+            name='editShare_password',
+            widget='password'),
+        'addShare_syncMaxDuration': NodeEntry(
+            name='addShare_syncMaxDuration',
+            widgetClass='medium',
+            hint='h:m:s',
+            validate='duration',
+            inputOptional=True),
+        'editShare_syncMaxDuration': NodeEntry(
+            name='editShare_syncMaxDuration',
+            widgetClass='medium',
+            hint='h:m:s',
+            validate='duration',
+            inputOptional=True),
+        'addShare_syncMaxSize': NodeEntry(
+            name='addShare_syncMaxSize',
+            widgetClass='small',
+            validate=('floatInRange', '[0, 1024 * 1024 * 1024]'),
+            inputOptional=True),
+        'editShare_syncMaxSize': NodeEntry(
+            name='editShare_syncMaxSize',
+            widgetClass='small',
+            validate=('floatInRange', '[0, 1024 * 1024 * 1024]'),
+            inputOptional=True),
+        'addShare_syncMaxSizeUnits': NodeEntry(
+            name='addShare_syncMaxSizeUnits',
+            value='MB',
+            selectOptions=syncMaxSizeUnitOptions),
+        'editShare_syncMaxSizeUnits': NodeEntry(
+            name='editShare_syncMaxSizeUnits',
+            value='MB',
+            selectOptions=syncMaxSizeUnitOptions),
+        'addShare_syncUsing': NodeEntry(
+            name='addShare_syncUsing',
+            widget='radio',
+            value='current',
+            label={'current': 'Current Files', 'latest': 'Latest Share Snapshot'},
+            labelClass='labelPaddedBoth',
+            tooltip={'latest': 'If no snapshots are available, the current files will be used.'}),
+        'editShare_syncUsing': NodeEntry(
+            name='editShare_syncUsing',
+            widget='radio',
+            value='current',
+            label={'current': 'Current Files', 'latest': 'Latest Share Snapshot'},
+            labelClass='labelPaddedBoth',
+            tooltip={'latest': 'If no snapshots are available, the current files will be used.'}),
+        'addShare_syncStartDateTime': NodeEntry(
+            name='addShare_syncStartDateTime',
+            widgetClass='datetime',
+            validate='datetime',
+            value=FormUtils.getCurrentDateTime(),
+            label='Start Date/Time'),
+        'editShare_syncStartDateTime': NodeEntry(
+            name='editShare_syncStartDateTime',
+            widgetClass='datetime',
+            validate='datetime',
+            label='Start Date/Time'),
+        'addShare_syncFullStartDateTime': NodeEntry(
+            name='addShare_syncFullStartDateTime',
+            widgetClass='datetime',
+            validate='datetime',
+            value=FormUtils.getCurrentDateTime(),
+            label='Start Date/Time'),
+        'editShare_syncFullStartDateTime': NodeEntry(
+            name='editShare_syncFullStartDateTime',
+            widgetClass='datetime',
+            validate='datetime',
+            value=FormUtils.getCurrentDateTime(),
+            label='Start Date/Time'),
+        'addShare_syncInterval': NodeEntry(
+            name='addShare_syncInterval',
+            widgetClass='medium',
+            validate='duration',
+            hint='h:m:s',
+            inputOptional=True),
+        'editShare_syncInterval': NodeEntry(
+            name='editShare_syncInterval',
+            widgetClass='medium',
+            validate='duration',
+            hint='h:m:s',
+            inputOptional=True),
+        'addShare_syncFullInterval': NodeEntry(
+            name='addShare_syncFullInterval',
+            widgetClass='medium',
+            validate='duration',
+            hint='h:m:s',
+            inputOptional=True),
+        'editShare_syncFullInterval': NodeEntry(
+            name='editShare_syncFullInterval',
+            widgetClass='medium',
+            validate='duration',
+            hint='h:m:s',
+            inputOptional=True),
+        'addShare_comment': NodeEntry(
+            name='addShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+        'editShare_comment': NodeEntry(
+            name='editShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+        'addShare_remotePath': NodeEntry(
+            name='addShare_remotePath',
+            widgetClass='pathname',
+            label='Remote Path',
+            validate='sharePath'),
+        'addShare_sync': NodeEntry(
+            name='addShare_sync',
+            widget='checkboxLeft',
+            label='Enable Scheduled Synchronization',
+            enableDiv='syncAddDiv'),
+        'editShare_sync': NodeEntry(
+            name='editShare_sync',
+            widget='checkboxLeft',
+            label='Enable Scheduled Synchronization',
+            enableDiv='syncEditDiv'),
+        'addPolicy_name': NodeEntry(
+            name='addPolicy_name',
+            widgetClass='large',
+            label='Policy Name',
+            validate='validatorPolicyName'),
+        'editPolicy_name': NodeEntry(
+            name='editPolicy_name',
+            widgetClass='large',
+            label='Policy Name',
+            validate='validatorPolicyName'),
+        'addPolicy_description': NodeEntry(
+            name='addPolicy_description',
+            widgetClass='wide',
+            label='Description'),
+        'editPolicy_description': NodeEntry(
+            name='editPolicy_description',
+            widgetClass='wide',
+            label='Description'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# Each dynamic rule will be created from this template. First, the "{id}"
+# strings have to be replaced with a unique string for each row then the
+# template can be added to the DOM tree.
+
+ruleTemplate = '''
+  <tr id="{id}">
+    <td class="attributeCol">
+      %(rule_typeSelect)s
+    </td>
+
+    <td class="valueCol nodeEntry">
+      <div id="filenameDivId_{id}">
+        %(rule_filename)s
+        <img class="hint" id="tooltip_{id}" src="/images/A_1000_0210_N_s1.png" alt="tooltip-icon" />
+      </div>
+
+      <div id="filesizeDivId_{id}">
+        %(rule_filesize)s
+        %(rule_filesizeUnits)s
+      </div>
+
+      <div id="syncAbsDivId_{id}">
+        %(rule_syncAbsolute)s
+      </div>
+
+      <div id="syncRelDivId_{id}">
+        %(rule_syncRelativeValue)s
+        <span class="hint">h:m:s</span>
+      </div>
+    </td>
+
+    <td class="deleteCol">
+      <img src="/images/A_1000_0230_N_s1.png" alt="delete-icon" onclick="deleteRule('{id}');"/>
+    </td>
+  </tr>
+''' % {
+    'rule_typeSelect': dialogEntries['rule_typeSelect'].html_widget(self, "typeSelect_{id}"),
+    'rule_filename': dialogEntries['rule_filename'].html_widget(self, "filename_{id}"),
+    'rule_filesize': dialogEntries['rule_filesize'].html_widget(self, "filesizeValue_{id}"),
+    'rule_filesizeUnits': dialogEntries['rule_filesizeUnits'].html_widget(self, "filesizeUnits_{id}"),
+    'rule_syncAbsolute': dialogEntries['rule_syncAbsolute'].html_widget(self, "syncAbs_{id}"),
+    'rule_syncRelativeValue': dialogEntries['rule_syncRelativeValue'].html_widget(self, "syncRelValue_{id}")
+}
+
+# For dynamic rules we have to generate 2 utility functions. One function
+# creates and adds the validation code for a particular dynamic rule. The
+# other function removes the validation listeners added by the first.
+
+# This list contains the names of all the nodeEntries that need to be
+# validate for each dynamic rule.
+#
+# Each entry is (nodeEntry_name, widget_name_prefix):
+
+ruleValidationList = (('rule_filename', 'filename_'),
+                      ('rule_filesize', 'filesizeValue_'),
+                      ('rule_syncAbsolute', 'syncAbs_'),
+                      ('rule_syncRelativeValue', 'syncRelValue_'))
+
+ruleValidationAddJsTemplate = ''
+ruleValidationRemoveJsTemplate = ''
+for entry, idPrefix in ruleValidationList: {
+    validation = dialogEntries[entry].getValidationJs("%s{id}" % idPrefix)
+    if validation: {
+        ruleValidationAddJsTemplate += validation
+        ruleValidationRemoveJsTemplate += 'RBT.Validator.removeFieldValidation("#%s{id}");' % idPrefix
+    }
+}
+
+ruleValidationAddJsTemplate = ruleValidationAddJsTemplate.replace("{id}'", "' + ruleId")
+ruleValidationRemoveJsTemplate = ruleValidationRemoveJsTemplate.replace('{id}"', '" + ruleId')
+
+# Create JS functions to add and remove validation for dynamic rules
+
+self.addPageletJavascript("function addRuleValidation(ruleId) { %s } " % ruleValidationAddJsTemplate)
+self.addPageletJavascript("function removeRuleValidation(ruleId) { %s } " % ruleValidationRemoveJsTemplate)
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['cifsPrepop_enable'].html(self) %>
+      <%= nodeEntries['transparentPrepop_enable'].html(self) %>
+      <input type="hidden" name="_action_" value="setFormNodes" />
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+
+prepopulationEnabled = Nodes.present(mgmt, '/rbt/rcu/prepop/status') == 'Prepopulation enabled'
+if prepopulationEnabled: {                     # HIDE PREPOP TABLE
+
+policyTable = ajaxentrytable.AjaxEntryTable('policy',
+    headerSpec=['', 'Policy Name', ('Rules', 'rulesClass'), 'Description'],
+    emptyMessage='No policies.',
+    rowSpec="""[
+        AjaxEntryTable.tdSelectCheckbox('name', 'selectedPolicy_'),
+        AjaxEntryTable.tdEdit('name', 'name'),
+        AjaxEntryTable.tdAttr('rules', 'rulesClass'),
+        AjaxEntryTable.tdAttr('description')
+    ]""",
+    addButtonText='Add a Policy',
+    removeButtonText='Remove Selected Policies',
+    removeName='removePolicies',
+)
+
+# This block of HTML is common to both addDivContent and editDivContent.
+# It's used to layout out the part of each DIV that lays out the list of rules.
+
+ruleSectionTemplate = '''
+  <p class="note" id="%(ADD_OR_EDIT)s_EmptyRulesNote">
+    <strong>Note:</strong>
+    This policy has no rules so every file in this share will be synchronized.
+  </p>
+  <p class="note" id="%(ADD_OR_EDIT)s_NonEmptyRulesNote">
+    Synchronize files that match <strong>all</strong> of the following rules:
+  </p>
+  <div id="%(ADD_OR_EDIT)s_RuleListDiv"></div>
+  <div id="%(ADD_OR_EDIT)s_NoRulesDiv" class="midLevel indent">
+    <i>No rules.</i>
+  </div>
+  <table id="%(ADD_OR_EDIT)s_RuleListTable">
+    <tbody>
+      <tr>
+        <td> </td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="midLevel">
+    <a class="pseudoLink" href="" onclick="return addDefaultRule('%(ADD_OR_EDIT)s');">Add Rule</a>
+  </div>
+'''
+
+policyTable.addDivContent = '''
+  <input type="hidden" name="ADD_RulesList"/>
+  <div class="midLevel">
+    <table>
+      %(addPolicy_name)s
+      %(addPolicy_description)s
+    </table>
+    %(ruleSectionTemplate)s
+    %(addPolicy)s
+  </div>
+''' % {'addPolicy_name': dialogEntries['addPolicy_name'].html(self),
+       'addPolicy_description': dialogEntries['addPolicy_description'].html(self),
+       'addPolicy': FormUtils.formSubmitButtons(self, {'name': 'addPolicySubmit',
+                                                       'value': 'Add Policy',
+                                                       'onclick': 'return prepAddPolicy();'}),
+       'ruleSectionTemplate': ruleSectionTemplate % {'ADD_OR_EDIT' : 'ADD'}}
+
+policyTable.editDivContent = '''
+  <input type="hidden" name="EDIT_RulesList"/>
+  <input type="hidden" name="oldPolicyName"/>
+  <div class="midLevel">
+    <table>
+      %(editPolicy_name)s
+      %(editPolicy_description)s
+    </table>
+    %(ruleSectionTemplate)s
+    %(editPolicy)s
+  </div>
+''' % {'editPolicy_name': dialogEntries['editPolicy_name'].html(self),
+       'editPolicy_description': dialogEntries['editPolicy_description'].html(self),
+       'ruleSectionTemplate': ruleSectionTemplate % {'ADD_OR_EDIT' : 'EDIT'},
+       'editPolicy': FormUtils.formSubmitButtons(self, {'name': 'editPolicy',
+                                                        'value': 'Apply',
+                                                        'onclick': 'return prepEditPolicy();'})}
+
+prepopTable = ajaxentrytable.AjaxEntryTable('prepop',
+    url='/mgmt/xmldata?p=prepopStatus',
+    headerSpec=('', 'Remote Path', 'Next Incremental Sync', 'Next Full Sync', 'Status', 'Comment'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('remote-path', 'selectedRemotePath_'),
+ AjaxEntryTable.tdEdit('remote-path', 'remote-path'),
+ AjaxEntryTable.td([showNextSyncTime('next-inc-sync-seconds')]),
+ AjaxEntryTable.td([showNextSyncTime('next-full-sync-seconds')]),
+ AjaxEntryTable.td([showShareStatus()]),
+ AjaxEntryTable.tdAttr('comment')
+    ]""",
+    emptyMessage='No prepopulation shares.',
+    addButtonText='Add a Prepopulation Share',
+    removeButtonText='Remove Selected Shares',
+    removeName='removeShares'
+)
+
+prepopTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %(addShare_remotePath)s
+      %(addShare_account)s
+      %(addShare_password)s
+      %(addShare_comment)s
+      <tr>
+        <td class="rowMargin label">
+          Sync Time Limit:
+        </td>
+        <td class="rowMargin">
+          %(addShare_syncMaxDuration)s
+        </td>
+      </tr>
+      <tr>
+        <td>
+          Sync Size Limit:
+        </td>
+        <td class="nodeEntry">
+          %(addShare_syncMaxSize)s
+          %(addShare_syncMaxSizeUnits)s
+        </td>
+      </tr>
+      <tr>
+        <td class="nodeEntry">
+          Sync Using:
+        </td>
+        <td>
+          %(addShare_syncUsing_current)s
+          %(addShare_syncUsing_latest)s
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <p class="note">
+    <strong>Note:</strong>
+    By default, this policy will sync all files in the share.
+    To restrict the set of files eligible for syncing, create policies
+    after the share is added.
+  </p>
+
+  <div class="topLevel">
+    %(addShare_sync)s
+    <div id="syncAddDiv" class="indent">
+      <p class="note">
+        Incremental Sync:
+      </p>
+      <table class="indent">
+        %(addShare_syncStartDateTime)s
+        <tr>
+          <td>
+            Recurring Every:
+          </td>
+          <td class="nodeEntry">
+            %(addShare_syncInterval)s
+          </td>
+        </tr>
+      </table>
+      <span class="popupTitle yui3-tooltip-trigger" title="Full sync is useful when the prepopulated file data gets evicted from the data store. If a full sync and incremental sync coincide, a full sync will be performed.">
+        Full Sync:
+      </span>
+      <table class="indent">
+        %(addShare_syncFullStartDateTime)s
+        <tr>
+          <td>
+            Recurring Every:
+          </td>
+          <td class="nodeEntry">
+            %(addShare_syncFullInterval)s
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  %(addShare_apply)s
+''' % {
+       # config
+       'addShare_remotePath': dialogEntries['addShare_remotePath'].html(self),
+       'addShare_account': dialogEntries['addShare_account'].html(self),
+       'addShare_password': dialogEntries['addShare_password'].html(self),
+       'addShare_comment': dialogEntries['addShare_comment'].html(self),
+       'addShare_syncUsing_current': dialogEntries['addShare_syncUsing'].html(self, value='current', format="inline"),
+       'addShare_syncUsing_latest': dialogEntries['addShare_syncUsing'].html(self, value='latest', format="inline"),
+       'addShare_sync': dialogEntries['addShare_sync'].html(self),
+       'addShare_syncStartDateTime': dialogEntries['addShare_syncStartDateTime'].html(self),
+       'addShare_syncFullStartDateTime': dialogEntries['addShare_syncFullStartDateTime'].html(self),
+
+       'addShare_syncMaxDuration': dialogEntries['addShare_syncMaxDuration'].html(self, format="inline"),
+
+       'addShare_syncMaxSize': dialogEntries['addShare_syncMaxSize'].html(self, format="inline"),
+       'addShare_syncMaxSizeUnits': dialogEntries['addShare_syncMaxSizeUnits'].html(self, format="inline"),
+
+       'addShare_syncInterval': dialogEntries['addShare_syncInterval'].html(self, format="inline"),
+       'addShare_syncFullInterval': dialogEntries['addShare_syncFullInterval'].html(self, format="inline"),
+
+       'addShare_apply': FormUtils.formSubmitButtons(self, {'name': 'addShare', 'value': 'Add Prepopulation Share'})
+}
+
+# A shorthand way to display a bunch of label/span pairs in a common tbody.
+def reportItems(id, *labelIdPairs): {
+    html = '<tbody %s>' % (id and (' id="%s"' % id) or '')
+    for label, id in labelIdPairs: {
+        html += '<tr><td><label class="labelPaddedRight">%s:</label></td><td><span id="%s"></span></td></tr>' % (label, id)
+    }
+    html += '</tbody>\n'
+    return html
+}
+
+prepopTable.editDivContent = '''
+
+    <input type="hidden" name="editShare_remotePath" />
+
+    <div class="midLevel">
+      <div id="cifsTabControl" class="tabControl">
+        <div class="grayBorder">
+
+          %(cifsTabs)s
+
+          <div id="configTab" class="midLevel">
+            <div id="upperPanel">
+              <table>
+                %(editShare_remotePath2)s
+                <tbody>
+                  %(editShare_account)s
+                  <tr>
+                    <td>
+                      %(editShare_resetPassword)s
+                    </td>
+                    <td id="editPasswordDiv" class="nodeEntry">
+                      <div>
+                        %(editShare_password)s
+                      </div>
+                    </td>
+                  </tr>
+                  %(editShare_comment)s
+                  <tr>
+                    <td class="rowMargin">
+                      Sync Time Limit:
+                    </td>
+                    <td class="rowMargin">
+                      %(editShare_syncMaxDuration)s
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      Sync Size Limit:
+                    </td>
+                    <td class="nodeEntry">
+                      %(editShare_syncMaxSize)s
+                      %(editShare_syncMaxSizeUnits)s
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="nodeEntry">
+                      Sync Using:
+                    </td>
+                    <td>
+                      %(editShare_syncUsing_current)s
+                      %(editShare_syncUsing_latest)s
+                  </td></tr>
+                </tbody>
+              </table>
+
+              <p class="note" id="policyHasNoRules">
+                <strong>Note:</strong>
+                Every file in this share will be used to warm the datastore.
+              </p>
+
+              <p class="note" id="policyHasRules">
+                Synchronize files that meet <strong>any</strong> of the following policies:
+              </p>
+            </div>
+
+            %(policyTable)s
+
+            <div id="lowerPanel" class="topLevel">
+              %(editShare_sync)s
+              <div id="syncEditDiv" class="indent">
+                <p class="note">
+                  Incremental Sync:
+                </p>
+                <table class="indent">
+                  %(editShare_syncStartDateTime)s
+                  <tr>
+                    <td>
+                      Recurring Every:
+                    </td>
+                    <td class="nodeEntry">
+                      %(editShare_syncInterval)s
+                    </td>
+                  </tr>
+                </table>
+                <span class="popupTitle yui3-tooltip-trigger" title="Full sync is useful when the prepopulated file data gets evicted from the data store. If a full sync and incremental sync coincide, a full sync will be performed.">
+                  Full Sync:
+                </span>
+                <table class="indent">
+                  %(editShare_syncFullStartDateTime)s
+                  <tr>
+                    <td>
+                      Recurring Every:
+                    </td>
+                    <td class="nodeEntry">
+                      %(editShare_syncFullInterval)s
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+            %(editShare_apply)s
+          </div>
+
+          <div id="operationsTab" class="midLevel">
+
+            <div class="midLevel">Last Successful Sync:</div>
+
+            <div class="indent">
+              <table>
+                %(editShare_lastSync)s
+                %(shareStats_initialFile)s
+                %(statsSection_syncSend)s
+                %(statsSection_syncReceive)s
+                %(statsSection_verify)s
+                %(statsSection_totals)s
+              </table>
+            </div>
+
+            <div class="midLevel">Operations:</div>
+
+            <div class="indent">
+              <div id="actionGenericDiv">
+                <table>
+                  %(shareStats_action)s
+                </table>
+              </div>
+              <div id="initSyncInfo" class="initSyncIssue">
+                Manual syncing can only be done after the
+                <span id="initSyncSpan" class="yui3-tooltip-trigger">initial sync</span>.
+              </div>
+              <div id="actionCustomDiv">
+                <div id="actionCustomMsg"></div>
+              </div>
+
+              %(buttonGroup)s
+            </div>
+
+            <div class="midLevel">View Logs:</div>
+
+            <div class="indent">
+              <a href="" id="viewLogsRecentSyncs" class="viewLogLink">Recent Syncs</a>
+              <a href="" id="viewLogsInitialSync" class="viewLogLink">Initial Sync</a>
+              <a href="" id="viewLogsDryRun" class="viewLogLink">Last Dry Run</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+''' % {
+       'buttonGroup': FormUtils.formSubmitButtons(self,
+                                {'id': 'manualSyncAction', 'name': 'syncButton',
+                                    'value': 'Sync Now', 'class': 'buttonOperation',
+                                    'onclick': 'return shareAction("manual_sync");'},
+                                {'id': 'dryRunAction', 'name': 'dryRunButton',
+                                    'value': 'Perform Dry Run', 'class': 'buttonOperation',
+                                    'onclick': 'return shareAction("dry_run");'},
+                                {'id': 'cancelAction', 'name': 'cancelButton',
+                                    'value': 'Cancel Operation', 'class': 'buttonOperation',
+                                    'onclick': 'return shareAction("cancel");'}),
+
+       # Current Status
+       'editShare_lastSync':
+                    reportItems(None,
+                        ('Date/Time', 'editShare_lastSyncTime'),
+                        ('Status', 'editShare_lastSyncStatus')),
+
+       # Actions and Statistics
+       'shareStats_action':
+                    reportItems(None,
+                        ('Current Operation', 'shareStats_action')),
+       'shareStats_initialFile':
+                    reportItems('statsSection_initCopy',
+                        ('Current File', 'shareStats_initialFile'),
+                        ('Files Received', 'shareStats_initialFiles'),
+                        ('Directories Received', 'shareStats_initialDirs'),
+                        ('Bytes Received', 'shareStats_initialBytes')),
+       'statsSection_syncSend':
+                    reportItems('statsSection_syncSend',
+                        ('Sending', 'shareStats_syncSendFile'),
+                        ('Files Sent', 'shareStats_syncSendFiles'),
+                        ('Directories Sent', 'shareStats_syncSendDirs'),
+                        ('Bytes Sent', 'shareStats_syncSendBytes')),
+       'statsSection_syncReceive':
+                    reportItems('statsSection_syncReceive',
+                        ('Receiving', 'shareStats_syncReceiveFile'),
+                        ('Files Received', 'shareStats_syncReceiveFiles'),
+                        ('Directories Received', 'shareStats_syncReceiveDirs'),
+                        ('Bytes Received', 'shareStats_syncReceiveBytes')),
+       'statsSection_verify':
+                    reportItems('statsSection_verify',
+                        ('Comparing File', 'shareStats_syncVerifyFile'),
+                        ('Different Objects', 'shareStats_syncVerifyDiffs')),
+       'statsSection_totals':
+                    reportItems('statsSection_totals',
+                        ('Files Processed', 'shareStats_syncTotalFiles'),
+                        ('Directories Processed', 'shareStats_syncTotalDirs'),
+                        ('Different Objects', 'shareStats_syncTotalDiffs'),
+                        ('Bytes Transferred', 'shareStats_syncTotalBytes')),
+
+       # config
+       'editShare_remotePath2': reportItems(None,
+                   ('Remote Path', 'editShare_remotePath2')),
+       'editShare_account': dialogEntries['editShare_account'].html(self),
+       'editShare_resetPassword': dialogEntries['editShare_resetPassword'].html(self, format="inline"),
+       'editShare_password': dialogEntries['editShare_password'].html(self, format="inline"),
+       'editShare_comment': dialogEntries['editShare_comment'].html(self),
+       'editShare_syncUsing_current': dialogEntries['editShare_syncUsing'].html(self, value='current', format="inline"),
+       'editShare_syncUsing_latest': dialogEntries['editShare_syncUsing'].html(self, value='latest', format="inline"),
+       'editShare_sync': dialogEntries['editShare_sync'].html(self),
+       'editShare_syncStartDateTime': dialogEntries['editShare_syncStartDateTime'].html(self),
+       'editShare_syncFullStartDateTime': dialogEntries['editShare_syncFullStartDateTime'].html(self),
+       'cifsTabs': FormUtils.radioTabControl(self, 'cifsTabs',
+                                    ('config', 'Configuration', 'configTab'),
+                                    ('operations', 'Operations', 'operationsTab')),
+       'policyTable': policyTable.html(self),
+
+       'editShare_syncMaxSize': dialogEntries['editShare_syncMaxSize'].html(self, format="inline"),
+       'editShare_syncMaxSizeUnits': dialogEntries['editShare_syncMaxSizeUnits'].html(self, format="inline"),
+
+       'editShare_syncMaxDuration': dialogEntries['editShare_syncMaxDuration'].html(self, format="inline"),
+
+       'editShare_syncInterval': dialogEntries['editShare_syncInterval'].html(self, format="inline"),
+       'editShare_syncFullInterval': dialogEntries['editShare_syncFullInterval'].html(self, format="inline"),
+
+       'editShare_apply': FormUtils.formSubmitButtons(self, {'id': 'editShare_apply', 'name': 'editShare', 'value': 'Apply'})
+}
+
+%>
+
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="prepopTable">
+  <div id="prepopTableDiv">
+    <input type="hidden" name="_action_" value="prepopShares" />
+    <%= prepopTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// An AET callback that determines how to display the status of a share
+// if it has errors
+
+function showShareStatus() {
+    var validPkgEdit = AjaxEntryTable.tdChildAttr('status', 'status', 'col_status');
+
+    return function(entryTable, parent, element) {
+        var shareStatus = element.getElementsByTagName('status').item(0);
+        var status = shareStatus.getAttribute('status');
+
+        if (status == 'Share has error') {
+            var errMsg = shareStatus.getAttribute('error-message');
+
+            AjaxEntryTable.populateInvalidEntryTd(parent, status, errMsg);
+        }
+        else {
+            validPkgEdit(entryTable, parent, element);
+        }
+    }
+}
+
+function showNextSyncTime(syncAttrName) {
+    var manual = AjaxEntryTable.constantText('Manual');
+
+    return function(entryTable, parent, element) {
+        var shareConfig = element.getElementsByTagName('config').item(0);
+        var syncing = shareConfig.getAttribute('syncing');
+        var nextSyncTime = parseInt(shareConfig.getAttribute(syncAttrName));
+
+        if (syncing == 'true' && nextSyncTime > 0) {
+            var dateStr = new Date(nextSyncTime * 1000);
+            parent.appendChild(document.createTextNode(dateStr.toLocaleString()));
+        }
+        else {
+            manual(entryTable, parent, element);
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<%
+}                     # HIDE PREPOP TABLE
+%>
+
+<% self.endPagelet() %>
+
+<%
+    if 'prepopTable' in locals(): {     # HIDE JS CODE
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+prepopTable.editEntry = function(editName) {
+    var share = this.getEntryElement('remote-path', editName);
+    var shareConfig = share.getElementsByTagName('config').item(0);
+
+    setElementText('editShare_remotePath', editName);
+    setElementText('editShare_remotePath2', editName);
+    fillPrepopStats(share);
+
+    var form = document.getElementById('prepopTable');
+    setFormValue(form, 'editShare_remotePath', editName);
+    setFormValue(form, 'editShare_comment', share.getAttribute('comment'));
+    setFormValue(form, 'editShare_account', shareConfig.getAttribute('account'));
+    form.editShare_sync.checked = ('true' == shareConfig.getAttribute('syncing'));
+    setFormValue(form, 'editShare_syncStartDateTime',
+                        shareConfig.getAttribute('start-datetime'));
+    setFormValue(form, 'editShare_syncFullStartDateTime',
+                        shareConfig.getAttribute('full-start-datetime'));
+    setFormValue(form, 'editShare_syncUsing',
+                        shareConfig.getAttribute('sync-snapshot') == 'true' ? 'latest' : 'current');
+
+    // Initialize synchronization parameters
+
+    var syncInterval = shareConfig.getAttribute('sync-interval');
+    if (syncInterval == '0' || syncInterval == '') {
+        setFormValue(form, 'editShare_syncInterval', '');
+    }
+    else {
+        setFormValue(form, 'editShare_syncInterval', syncInterval);
+    }
+
+    var syncFullInterval = shareConfig.getAttribute('sync-full-interval');
+    if (syncFullInterval == '0' || syncFullInterval == '') {
+        setFormValue(form, 'editShare_syncFullInterval', '');
+    }
+    else {
+        setFormValue(form, 'editShare_syncFullInterval', syncFullInterval);
+    }
+
+    var syncMaxDuration = shareConfig.getAttribute('sync-max-duration');
+    if (syncMaxDuration == '0' || syncMaxDuration == '') {
+        setFormValue(form, 'editShare_syncMaxDuration', '');
+    }
+    else {
+        setFormValue(form, 'editShare_syncMaxDuration', syncMaxDuration);
+    }
+
+    var syncMaxSize = shareConfig.getAttribute('sync-max-size');
+    if (syncMaxSize == '0' || syncMaxSize == '') {
+        setFormValue(form, 'editShare_syncMaxSize', '');
+        setFormValue(form, 'editShare_syncMaxSizeUnits', 'MB');
+    }
+    else {
+        setFormValue(form, 'editShare_syncMaxSize', syncMaxSize);
+        setFormValue(form, 'editShare_syncMaxSizeUnits',
+                        shareConfig.getAttribute('sync-max-size-units'));
+    }
+
+    // view log buttons
+    var base = '/mgmt/gui?p=reportPrepopLog&amp;share=';
+    $('viewLogsInitialSync').href = base + editName + '&amp;log=initial-copy';
+    $('viewLogsRecentSyncs').href = base + editName + '&amp;log=last-sync';
+    $('viewLogsDryRun').href = base + editName + '&amp;log=dry-run';
+
+    // Load Policy Table
+    var url='/mgmt/xmldata?p=prepopPolicy';
+    policyTable.sendRequest(url + '&share=' + encodeURIComponent(editName));
+    policyTable.postPopulateTableHook = updatePolicyNotice;
+
+    // Tooltips
+    var recentSyncsTooltip = new RBT.Tooltip({
+        triggerNode:  '#viewLogsRecentSyncs',
+        addTriggerClass: false,
+        content:    '<p>' +
+                    'Circular buffer containing logs for the last few sync operations.' +
+                    '</p>'
+        }).render();
+
+    var initSyncTooltip = new RBT.Tooltip({
+        triggerNode:        '#initSyncSpan',
+        content:            '<p>The initial sync is the first sync to occur after a share ' +
+                            'is added to the Prepopulation table. This only happens ' +
+                            'when scheduled synchronization is configured for this ' +
+                            'share.</p> ' +
+                            '<p>Go to the "Configuration" tab, check the "Enable Scheduled ' +
+                            'Synchronization" checkbox and click the "Apply" button.</p>'
+        }).render();
+};
+
+policyTable.addEntry = function() {
+
+    deleteAllRules('ADD');
+    addDefaultRule('ADD');
+    prepopTable.update();
+};
+
+policyTable.editEntry = function(editName) {
+
+    var form = $('prepopTable');
+    setFormValue(form, 'editPolicy_name', editName);
+    setFormValue(form, 'oldPolicyName', editName);
+    var el = this.getEntryElement('name', editName);
+    setFormValue(form, 'editPolicy_description', el.getAttribute('description'));
+
+    // Destroy the existing rules on this page, then create the dynamic
+    // rules for this policy using the XML data from the backend
+
+    deleteAllRules('EDIT');
+    var policyXml = policyTable.docElement;
+    for (var child = policyXml.firstChild; child; child = child.nextSibling) {
+        if (child.getAttribute('name') == editName) {
+            for (var rule = child.firstChild; rule; rule = rule.nextSibling) {
+                addRule('EDIT',
+                        rule.getAttribute('ruleType'),
+                        rule.getAttribute('param1'),
+                        rule.getAttribute('param2'));
+            }
+        }
+    }
+    prepopTable.update();
+};
+
+// Filename wildcard validator.  Checks for valid charactors
+// for CIFS regex.
+
+validatorFilenameWildCard = function(val) {
+    // make sure it's a valid char for filenames under Windows
+    if (!val.match(/^[^:?"<>|#,&=]*$/)) {
+        throw 'The following characters are not allowed: ? " < > | # : , & =';
+    }
+};
+
+//  A valid policyname (a policyname can only contain letters, numbers, dashes and underscores).
+
+validatorPolicyName = function(val) {
+    if (!val.match(/^[\w-]+$/)) {
+        throw 'Policy names may only contain letters, numbers, dashes ("-") and underscores ("_").';
+    }
+};
+
+// Deletes all the dynamic rules from the specified rules
+// list ('ADD' or 'EDIT').
+
+function deleteAllRules(addOrEdit) {
+
+    Y.one('#' + addOrEdit + '_RuleListTable tbody').get('childNodes').each(function(node) {
+        var id = node.get('id');
+
+        // This check is necessary because when this page loads it has a blank
+        // row (<tr><td></td></tr>) in the table to pass XHTML validation. This
+        // row doesn't have an 'id' but needs to be removed.
+
+        if (id) {
+            removeRuleValidation(id);
+        }
+        node.remove(true);
+    });
+    newRuleId = 0;
+}
+
+// Serializes the list of dynamic rules for either the ADD or EDIT DIVs.
+//
+// A string for all the dynamic rules is returned to the caller. Typically,
+// this string is passed to the backend and translated into actions.
+//
+// FORMAT:  Each rule is separated with an '&' character. Within each rule,
+//          parameters are '#' separated.
+
+function serializeRuleList(addOrEdit) {
+    var tbody = $(addOrEdit + '_RuleListTable').getElementsByTagName('tbody')[0];
+    var serial = '';
+
+    for (var rule = tbody.firstChild; rule; rule = rule.nextSibling) {
+
+        var ruleType = $('typeSelect_' + rule.id).value;
+
+        serial += (serial == '' ? '' : '&') + ruleType;
+        switch(ruleType) {
+            case 'filenameMatch':
+            case 'filenameNotMatch':
+                serial += '#' + $('filename_' + rule.id).value;
+                break;
+            case 'fileSizeLessThan':
+            case 'fileSizeGreaterThan':
+                serial += '#' + $('filesizeValue_' + rule.id).value +
+                          '#' + $('filesizeUnits_' + rule.id).value;
+                break;
+            case 'accessTimeNewerThan':
+            case 'accessTimeOlderThan':
+            case 'createTimeNewerThan':
+            case 'createTimeOlderThan':
+            case 'writeTimeNewerThan':
+            case 'writeTimeOlderThan':
+                serial += '#' + $('syncAbs_' + rule.id).value;
+                break;
+            case 'accessTimeSyncRelative':
+            case 'createTimeSyncRelative':
+            case 'writeTimeSyncRelative':
+                serial += '#' + $('syncRelValue_' + rule.id).value;
+                break;
+        }
+    }
+    return serial;
+}
+
+// Determines if a given policy name is already in use.
+// Returns TRUE if so, FALSE otherwise.
+//
+// Issues a dialog warning to the user if the name is already in use.
+
+function isPolicyNameUnique(newName, newNameNode) {
+    var policyXml = policyTable.docElement;
+    for (var child = policyXml.firstChild; child; child = child.nextSibling) {
+        if (child.getAttribute('name') == newName) {
+            var content = 'This share already has a policy named "' + newName + '."';
+            var vmConfirm = new RBT.Dialog({
+                        alignNode: Y.one('input[name="' + newNameNode + '"]'),
+                        buttons: [{label: 'OK', clickFn: RBT.Dialog.dismiss}],
+                        content: content
+                        }).render();
+            return false;
+        }
+    }
+    return true;
+}
+
+// Adds a new policy to a share.
+
+function prepAddPolicy() {
+    var form = $('prepopTable');
+    var newName = getFormElement(form, 'addPolicy_name').value;
+
+    // Make sure the new policy name is not already in use
+
+    if (!isPolicyNameUnique(newName, 'addPolicy_name')) {
+        return false;
+    }
+
+    // Serialize the 'ADD' dynamic rules and pass them to the UI backend
+
+    setFormValue(form, 'ADD_RulesList', serializeRuleList('ADD'));
+    AjaxEntryTable.submitCommandField(prepopTable.tableId, 'addPolicy', 'addPolicy');
+    return false;
+}
+
+// Updates an existing policy.
+
+function prepEditPolicy() {
+    var form = $('prepopTable');
+    var oldName = getFormElement(form, 'oldPolicyName').value;
+    var newName = getFormElement(form, 'editPolicy_name').value;
+
+    // Make sure the new policy name is not already in use
+
+    if (oldName != newName && !isPolicyNameUnique(newName, 'editPolicy_name')) {
+        return false;
+    }
+
+    // Serialize the 'EDIT' dynamic rules and pass them to the UI backend
+
+    setFormValue(form, 'EDIT_RulesList', serializeRuleList('EDIT'));
+    AjaxEntryTable.submitCommandField(prepopTable.tableId, 'editPolicy', 'editPolicy');
+    return false;
+}
+
+// Handles actions for shares in an Ajaxy way
+
+function shareAction(action) {
+    // Before we send the action to the backend we should change the UI
+    // visually to let the user know that we've received his request and
+    // we're processing it. Otherwise, the user has no acknowledgement.
+    enableElements('manualSyncAction', false);
+    enableElements('dryRunAction', false);
+    setElementText('actionCustomMsg', 'Operation sent, waiting for a response ...');
+    setElementText('editShare_lastSyncTime', '');
+    setElementText('editShare_lastSyncStatus', '');
+
+    // Contacting the backend.
+    var form = document.getElementById('prepopTable');
+    var share = form.editShare_remotePath.value;
+
+    var request = newAjaxRequest('/mgmt/xmldata?p=prepopControl');
+    // alert the user if there's an error
+    setReadyStateChangeFunc(request, function() {
+        if (request.responseText.length) {
+            var closeOnDelete = true;
+            var rdoc = request.responseXML.documentElement.firstChild;
+            if ('error' == rdoc.tagName) {
+                alert('Error: ' + rdoc.childNodes[0].nodeValue);
+                closeOnDelete = false; // Do not close on delete when errors occur.
+                prepopUpdater.goose();
+            } else if (rdoc.firstChild) {
+                alert(rdoc.firstChild.nodeValue);
+            }
+        }
+    });
+    request.send('share=' + escape(share) + '&share-action=' + escape(action));
+    return false;
+}
+
+// Shows different policy message depending on whether or not this
+// policy has any rules.
+
+function updatePolicyNotice() {
+    var policyXml = policyTable.docElement;
+    var hasRules = false;
+
+    for (var child = policyXml.firstChild; child; child = child.nextSibling) {
+        if (parseInt(child.getAttribute('rules')) > 0) {
+            hasRules = true;
+            break;
+        }
+    }
+    enableElements('policyHasRules', hasRules ? true : 'hide');
+    enableElements('policyHasNoRules', !hasRules ? true : 'hide');
+}
+
+// Walks through the list of rules and for each rule show the
+// appropriate widgets based on the type of the rule.
+
+function enableDynamicRuleWidgets() {
+    var addOrEdit = 'ADD';
+    if ('edit' == policyTable.editMode) {
+        addOrEdit = 'EDIT';
+    } else if ('add' != policyTable.editMode) {
+        return;
+    }
+
+    Y.one('#' + addOrEdit + '_RuleListTable tbody').get('childNodes').each(function(node) {
+        var id = node.get('id');
+        var ruleType = $('typeSelect_' + id).value;
+
+        enableElements('filenameDivId_' + id, 'hide');
+        enableElements('filesizeDivId_' + id, 'hide');
+        enableElements('syncAbsDivId_' + id, 'hide');
+        enableElements('syncRelDivId_' + id, 'hide');
+
+        switch(ruleType) {
+            case 'filenameMatch':
+            case 'filenameNotMatch':
+                enableElements('filenameDivId_' + id, true);
+                break;
+            case 'fileSizeLessThan':
+            case 'fileSizeGreaterThan':
+                enableElements('filesizeDivId_' + id, true);
+                break;
+            case 'accessTimeNewerThan':
+            case 'accessTimeOlderThan':
+            case 'createTimeNewerThan':
+            case 'createTimeOlderThan':
+            case 'writeTimeNewerThan':
+            case 'writeTimeOlderThan':
+                enableElements('syncAbsDivId_' + id, true);
+                break;
+            case 'accessTimeSyncRelative':
+            case 'createTimeSyncRelative':
+            case 'writeTimeSyncRelative':
+                enableElements('syncRelDivId_' + id, true);
+                break;
+        }
+    });
+    RBT.Validator.validatePage();
+}
+
+// Post prepopTable.update() code to tweak the prepopTable's editDiv
+// before presenting it to the users.
+//
+// There's an AET table (policyTable) embedded inside the prepopTable's
+// editDiv. The widgets above and below policyTable are grouped into
+// DIVs called 'upperPanel' and 'lowerPanel', respectively.
+
+prepopTable.updateHook = function() {
+    if ('edit' == prepopTable.editMode) {
+        enableElements('upperPanel', !policyTable.editMode);
+        enableElements('lowerPanel', !policyTable.editMode);
+        enableElements('editShare_apply', !policyTable.editMode);
+
+        // This is a hack.
+        //
+        // After we call enableElements() on the upperPanel and lowerPanel
+        // we have to go back in and call updateUpdateables() on those
+        // DIVs if we're not in the middle of editing a policy. Otherwise,
+        // parent-child enabling won't be rendered/enforced properly.
+
+        if (!policyTable.editMode) {
+            updateUpdateables('upperPanel');
+            updateUpdateables('lowerPanel');
+        }
+    }
+};
+
+// Post policyTable.update() code to tweak the policyTable's addDiv or
+// editDiv before presenting them to the user.
+
+policyTable.updateHook = function() {
+    enableDynamicRuleWidgets();
+};
+
+// Custom setEditMode() handler for policyTable
+
+policyTable.setEditMode = function(mode, optionalEditArg) {
+
+    // Invoke the base class' setEditMode()
+
+    AjaxEntryTable.prototype.setEditMode.call(this, mode, optionalEditArg);
+
+    // If we're leaving the 'add' or 'edit' modes of the policyTable
+    // then we need to tell the prepopTable to update the contents
+    // of its editDiv
+
+    if (mode != 'add' && mode != 'edit') {
+        prepopTable.update();
+    }
+};
+
+// Enables/disables serveral DIVs (*_NoRulesDiv, *_EmptyRulesNote &
+// *_NonEmptyRulesNote) depending on whether or not there are any
+// dynamic rules on the page.
+
+function updateRulesNotice() {
+    var addOrEdit = 'ADD';
+    if ('edit' == policyTable.editMode) {
+        addOrEdit = 'EDIT';
+    } else if ('add' != policyTable.editMode) {
+        return;
+    }
+
+    var rulesFound = Y.one('#' + addOrEdit + '_RuleListTable tbody').hasChildNodes();
+
+    enableElements(addOrEdit + '_NoRulesDiv', rulesFound ? 'hide' : true);
+    enableElements(addOrEdit + '_EmptyRulesNote', rulesFound ? 'hide' : true);
+    enableElements(addOrEdit + '_NonEmptyRulesNote', rulesFound ? true : 'hide');
+}
+
+// Renders the status information of a share when no operation is
+// running on the share as well as when the share is being synced.
+
+function fillPrepopStats(share) {
+    if (!share) {
+        return;
+    }
+    var shareStatus = share.getElementsByTagName('status').item(0);
+    var stats = share.getElementsByTagName('stats').item(0);
+
+    // current status
+    setElementText('editShare_status', shareStatus.getAttribute('status'));
+    setElementText('editShare_errorMessage', shareStatus.getAttribute('error-message'));
+    setElementText('editShare_lastSyncTime', shareStatus.getAttribute('last-sync-time'));
+    setElementText('editShare_lastSyncStatus', shareStatus.getAttribute('last-sync-status'));
+
+    // actions and statistics
+    var action = stats.getAttribute('action');
+    var showGenericMsg = false;
+    var actionRunning = action != 'none';
+    var status = shareStatus.getAttribute('status');
+    var shareHasError = status == 'Share has error';
+    var showSyncHelp = (status == 'Share Registered') || (status == 'Share Registering ...');
+
+    // Update the 'Status' column in the AET so we stay in sync.
+    Y.all('table[id="prepopTable_table"] .ajaxEntryTable_editArea_topHalf td[class="col_status"]').setHTML(status);
+
+    if (!actionRunning) {
+        setElementText('actionCustomMsg', 'There is no operation running on this share.');
+    }
+    else if (action == 'FULL_SYNC') {
+        setElementText('actionCustomMsg', 'Performing a sync on this share.');
+    }
+    else if (action == 'DRY_RUN_SHARE') {
+        setElementText('actionCustomMsg', 'Performing a dry run on this share.');
+    }
+    else if (action == 'GET_INITIAL_COPY') {
+        setElementText('actionCustomMsg', 'Performing initial sync on this share.');
+    }
+    else if (action == 'REGISTER_SHARE') {
+        setElementText('actionCustomMsg', 'Share is being registered.');
+    }
+    else {
+        // This is a catch-all. It's to ensure that our UI won't break in case
+        // the backend boys decide to add something new.
+
+        setElementText('shareStats_action', action);
+        showGenericMsg = true;
+    }
+    enableElements('actionCustomDiv', !showGenericMsg || 'hide');
+    enableElements('actionGenericDiv', showGenericMsg || 'hide');
+    enableElements('manualSyncAction', !actionRunning && !shareHasError && !showSyncHelp);
+    enableElements('dryRunAction', !actionRunning && !shareHasError);
+    enableElements('cancelAction', actionRunning);
+    enableElements('initSyncInfo', showSyncHelp || 'hide');
+
+    var action_initCopy = 'GET_INITIAL_COPY' == action;
+    var action_syncSend = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                          'local' == share.getAttribute('mode');
+    var action_syncReceive = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                              'local' != share.getAttribute('mode');
+    var action_verify = 'VERIFY_SHARE' == action;
+
+    var stats_filesProcessed = stats.getAttribute('files_processed');
+    var stats_directoriesProcessed = stats.getAttribute('directories_processed');
+    var stats_objectsDifferent = stats.getAttribute('objects_different');
+    var stats_bytesTransferred = stats.getAttribute('bytes_transferred');
+
+    $('statsSection_initCopy').style.display = (action_initCopy) ? '' : 'none';
+    $('statsSection_syncSend').style.display = (action_syncSend) ? '' : 'none';
+    $('statsSection_syncReceive').style.display = (action_syncReceive) ? '' : 'none';
+    $('statsSection_verify').style.display = (action_verify) ? '' : 'none';
+    $('statsSection_totals').style.display = (stats_filesProcessed || stats_directoriesProcessed || stats_objectsDifferent || stats_bytesTransferred) ? '' : 'none';
+
+    setElementText('shareStats_initialFile', stats.getAttribute('receiving') || '');
+    setElementText('shareStats_initialFiles', stats.getAttribute('files_received') || '');
+    setElementText('shareStats_initialDirs', stats.getAttribute('directories_received') || '');
+    setElementText('shareStats_initialBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('shareStats_syncSendFile', stats.getAttribute('sending') || '');
+    setElementText('shareStats_syncSendFiles', stats.getAttribute('files_sent') || '');
+    setElementText('shareStats_syncSendDirs', stats.getAttribute('directories_sent') || '');
+    setElementText('shareStats_syncSendBytes', stats.getAttribute('bytes_sent') || '');
+
+    setElementText('shareStats_syncReceiveFile', stats.getAttribute('receiving') || '');
+    setElementText('shareStats_syncReceiveFiles', stats.getAttribute('files_received') || '');
+    setElementText('shareStats_syncReceiveDirs', stats.getAttribute('directories_received') || '');
+    setElementText('shareStats_syncReceiveBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('shareStats_syncVerifyFile', stats.getAttribute('comparing') || '');
+    setElementText('shareStats_syncVerifyDiffs', stats.getAttribute('objects_different') || '');
+
+    setElementText('shareStats_syncTotalFiles', stats_filesProcessed || '');
+    setElementText('shareStats_syncTotalDirs', stats_directoriesProcessed || '');
+    setElementText('shareStats_syncTotalDiffs', stats_objectsDifferent || '');
+    setElementText('shareStats_syncTotalBytes', stats_bytesTransferred || '');
+}
+
+// This is another hack.
+//
+// This is a complicated page in that we have an AET inside another AET.
+// Furthermore, the editDiv of the outer AET has two DIVs ('upperPanel' &
+// 'lowerPanel') that need to be enabled/disabled if the inner AET is in
+// add or edit mode. On top of that each of those two DIVs contain widgets
+// in a parent-child relationship. The parent is a checkbox which enables
+// the child DIV. The parent-child widgets have to be rendered using
+// updateUpdateables().
+//
+// And, this page is updated with Ajax more aggressively than most other
+// UI pages.
+//
+// Wrapped around the outer AET is a DIV which controls whether or not the
+// AET is visible to the user. We hide the AET if the Enable CIFS Prepop
+// flag is false. The moral of the story is that this DIV should be
+// enabled/disabled with enableElements() sparingly. In other words, don't
+// enable the DIV if it's already enabled. Doing so would cause side-
+// effects like widgets getting grayed out but stil editable.
+//
+// This var is used to track the current state of the DIV--whether or not
+// the outer AET is visible.
+
+var currentPrepopTableStatusEnabled = true;
+
+// This is the auto updating code. The reason we do not use the AET to auto update
+// is because that will cause the AET to close any opened edit div (reopening it
+// every few seconds would annoy the user).
+var prepopUpdater = new AjaxUpdater('/mgmt/xmldata?p=prepopStatus');
+prepopUpdater.update = function(request) {
+    if (!request.responseXML) {
+        return;
+    }
+    var doc = request.responseXML.documentElement.firstChild;
+    if ('error' != doc.tagName) {
+        var prepopStatus = doc.getAttribute('status');
+        var prepopStatusEnabled = ('Prepopulation enabled' == prepopStatus)
+
+        if ((prepopStatusEnabled && !currentPrepopTableStatusEnabled) ||
+            (!prepopStatusEnabled && currentPrepopTableStatusEnabled)) {
+            enableElements('prepopTableDiv', prepopStatusEnabled ? true : 'hide');
+            oldEnableStatus = prepopStatusEnabled;
+        }
+        if (prepopStatusEnabled && 'edit' == prepopTable.editMode) {
+            // for edit mode, update the stats only
+            for (var share = doc.firstChild; share; share = share.nextSibling) {
+                if (share.getAttribute('remote-path') == prepopTable.editName) {
+                    fillPrepopStats(share);
+                    break;
+                }
+            }
+        }
+    }
+
+    // If the status no longer contains any "Registration in progress..." statuses,
+    // then remove the "Share registration in progress ..." message box (if present).
+    if (request.responseText.indexOf('status="Registration in progress..."') == -1) {
+        hideActionMessageBox('Share registration in progress');
+    }
+};
+
+prepopTable.updateRow = function(oldEl, newEl, row) {
+    var tds = row.getElementsByTagName('td');
+    if (oldEl.getAttribute('remote-path') != newEl.getAttribute('remote-path')) {
+        return false;
+    }
+    tds.item(2).firstChild.data = newEl.getElementsByTagName('config').item(0).getAttribute('syncing');
+    tds.item(3).firstChild.data = newEl.getElementsByTagName('status').item(0).getAttribute('status');
+    return true;
+};
+
+var newRuleId = 0;          // Used to make sure each dynamic rule has a unique ID
+
+// Adds a default rule to either the ADD or EDIT dynamic rules list.
+
+function addDefaultRule(addOrEdit) {
+    addRule(addOrEdit, 'filenameMatch', '', undefined);
+    return false;
+}
+
+// Adds a new dynamic rule (including the associated validators) to
+// the DOM tree.
+
+function addRule(addOrEdit, ruleType, param1, param2) {
+
+    // Generate a new ID for this rule
+
+    newRuleId++;
+    var ruleId = addOrEdit + "_RULE_" + newRuleId;
+
+    // Create a template by escaping single quotes, removing newlines and
+    // injecting the a unique rule ID into the template.
+
+    var ruleTemplate = '<%= ruleTemplate.replace('\n', '').replace("'", "\\'") %>';
+    ruleTemplate = ruleTemplate.replace(/{id}/g, ruleId);
+    var newRuleElement = Y.Node.create(ruleTemplate);
+
+    // Add the raw HTML to the DOM
+
+    Y.one('#' + addOrEdit + '_RuleListTable tbody').appendChild(newRuleElement);
+
+    // Populate the rule's widgets based on its type
+
+    $('typeSelect_' + ruleId).value = ruleType;
+    $('syncAbs_' + ruleId).value = '<%=FormUtils.getCurrentDateTime()%>';
+    switch(ruleType) {
+        case 'filenameMatch':
+        case 'filenameNotMatch':
+            if (param1 != undefined) {
+                $('filename_' + ruleId).value = param1;
+            }
+            break;
+        case 'fileSizeLessThan':
+        case 'fileSizeGreaterThan':
+            if (param1 != undefined) {
+                $('filesizeValue_' + ruleId).value = param1;
+                $('filesizeUnits_' + ruleId).value = param2;
+            }
+            break;
+        case 'accessTimeNewerThan':
+        case 'accessTimeOlderThan':
+        case 'createTimeNewerThan':
+        case 'createTimeOlderThan':
+        case 'writeTimeNewerThan':
+        case 'writeTimeOlderThan':
+            if (param1 != undefined) {
+                $('syncAbs_' + ruleId).value = param1;
+            }
+            break;
+        case 'accessTimeSyncRelative':
+        case 'createTimeSyncRelative':
+        case 'writeTimeSyncRelative':
+            if (param1 != undefined) {
+                $('syncRelValue_' + ruleId).value = param1;
+            }
+            break;
+    }
+
+    // Add regex tooltip for the [i] icon
+
+    var filenameTooltip = new RBT.Tooltip({
+        triggerNode:    '#tooltip_' + ruleId,
+        addTriggerClass: false,
+        content:        '<p>' +
+                        'Accepted formats:' +
+                        '</p>' +
+                        '<ul>' +
+                        '  <li>*.extension</li>' +
+                        '  <li>*string*.extension (e.g. *old*.pdf)</li>' +
+                        '</ul>' +
+                        '<p>' +
+                        'Use semicolons to separate multiple values.' +
+                        '</p>'
+        }).render();
+
+    // Add validation code for all widgets in the rule
+
+    addRuleValidation(ruleId);
+
+    // Tweak the page for proper presentation to the user
+
+    updateRulesNotice();
+    enableDynamicRuleWidgets();
+}
+
+// Deletes the given rule from the DOM tree
+
+function deleteRule(ruleId) {
+
+    removeRuleValidation(ruleId);
+
+    // Now we can safely remove the dynamic rule itself and all the
+    // widgets it contains
+
+    Y.one('#' + ruleId).remove(true);
+
+    RBT.Validator.validatePage();
+    updateRulesNotice();
+}
+
+// ]]>
+</script>
+
+<% }      # HIDE JS CODE       %>

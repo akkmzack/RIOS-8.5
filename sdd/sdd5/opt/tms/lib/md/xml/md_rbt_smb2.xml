@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sport_smb2                                          -->
+<!--   Module Root: /rbt/sport/smb2                                         -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_smb2.c           -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/smb2/config/myconfig</name>                    -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sport_smb2">
+    <config>
+        <name>/rbt/sport/smb2/config/enable</name>
+        <description>Enable Blade</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/force_basic_dialect</name>
+        <description>Disable Lease support by forcing dialect 2.002</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/applock</name>
+        <description>Applock enabled</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/ss_after_idle</name>
+        <description>Perform TCP slow start after idle</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/negotiate_whitelist/enable</name>
+        <description>Restrict negotiated dialects to a whitelist</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/negotiate_whitelist/dialects</name>
+        <description>Allowed dialects to propagate to server</description>
+        <value type="string">0x202,0x210,0x300</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/nodes/per_garbage_collection</name>
+        <description>Nodes to examine in one garbage collection run</description>
+        <value type="uint16">1000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/metadata/timeout/minimum</name>
+        <description>Minimum attribute caching time in msec</description>
+        <value type="uint32">500</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/metadata/timeout/maximum</name>
+        <description>Maximum attribute caching time in msec</description>
+        <value type="uint32">2000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/metadata/timeout/multiplier</name>
+        <description>RTT Multiplier to compute caching time</description>
+        <value type="uint32">20</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/access_check/enable</name>
+        <description>Use access checking to provide local responses</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/access_check/clear_timestamp</name>
+        <description>Force the server to provide max access info</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/short_name_checking/enable</name>
+        <description>Enable resolution of short names</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/strip_8dot3</name>
+        <description>Strip short names from find data</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/metadata/cache/fsinfo_caching</name>
+        <description>Enable FS info caching</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/metadata/cache/secinfo_prefetch</name>
+        <description>Prefetch Security Info</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/disk_threshold/enable</name>
+        <description>Enable query to disk for threshold info</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/disk_threshold/poll_period</name>
+        <description>Frequency with which to poll for disk pressure in sec</description>
+        <value type="uint16">30</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/disk_threshold/low_watermark</name>
+        <description>Low watermark for disk threshold in MB </description>
+        <value type="uint32">2048</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/disk_threshold/high_watermark</name>
+        <description>High watermark for disk threshold in MB</description>
+        <value type="uint32">4096</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/write_behind/enable</name>
+        <description>Enable write behind</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/write_behind/global_limit</name>
+        <description>Maximum pre-ack'd data in KB for the appliance</description>
+        <value type="uint32">20480</value>  <!-- FIXME appliance dependent default -->
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/write_behind/connection_limit</name>
+        <description>Maximum pre-ack'd data in KB per connection</description>
+        <value type="uint32">2048</value><!-- default: 2048 KB -->
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/write_behind/request_limit</name>
+        <description>Maximum number of write requests pre-ack'd</description>
+        <value type="uint16">20</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/read_ahead/enable</name>
+        <description>Enable read ahead</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/read_ahead/prefetch_size</name>
+        <description>Data size in MB to fetch before current client reads</description>
+        <value type="uint32">8</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/read_ahead/holdback_window</name>
+        <description>Window size in MB between the current read ahead to hold
+                                                back read reqs</description>
+        <value type="uint32">2</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/read_ahead/max_random_seq_window</name>
+        <description>Distance in KB between two reads labeled sequential</description>
+        <value type="uint32">64</value>
+    </config>
+    <config><!-- Node might be removed -->
+        <name>/rbt/sport/smb2/config/read_ahead/increment_size</name>
+        <description>Increment size in MB</description>
+        <value type="uint32">2</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/read_ahead/read_request_size</name>
+        <description>Size of read request in KB</description>
+        <value type="uint32">64</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/batch_prediction/enable</name>
+        <description>Enable batch prediction</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/batch_prediction/hit_count</name>
+        <description>Number of filename matches to kickoff batch prediction</description>
+        <value type="uint32">4</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/batch_prediction/batch_size</name>
+        <description>Number of files to open in a batch</description>
+        <value type="uint32">16</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/batch_prediction/read_ahead_size</name>
+        <description>Read ahead size in KB</description>
+        <value type="uint32">512</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/batch_prediction/object_timeout</name>
+        <description>Object timeout in seconds</description>
+        <value type="uint16">10</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/blacklist/timeout</name>
+        <description>Blacklist timeout in minutes</description>
+        <value type="uint32">20</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/credit_manager/max_synthetic</name>
+        <description>Number of false credits that will be allocated</description>
+        <value type="uint16">10</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/credit_manager/good_client</name>
+        <description>Minimum credit count to attempt to maintain</description>
+        <value type="uint16">30</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/credit_manager/throttle_credits</name>
+        <description>Throttle the max credits we give clients</description>
+        <value type="bool">false</value>
+    </config>
+        <config>
+        <name>/rbt/sport/smb2/config/credit_manager/max_client_credits</name>
+        <description>Max credits we will give a client</description>
+        <value type="uint16">10</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/data_manager/enable</name>
+        <description>Enable data caching</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/data_manager/encode_limit</name>
+        <description>Limit in KB of cached data pending names encoding</description>
+        <value type="uint32">50000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/data_manager/encode_max_txn</name>
+        <description>Limit of transactions pending names encoding</description>
+        <value type="uint16">1000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/data_manager/retain_data</name>
+        <description>Keep file data even after handles are closed</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_responses/negative_single</name>
+        <description>Allow local STATUS_NO_SUCH_FILE responses to find single</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_caching/enable</name>
+        <description>Enable find data caching</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_caching/mem_limit</name>
+        <description>Global limit in MB of find data that will be cached</description>
+        <value type="uint32">10</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_caching/max_bytes_per_dir</name>
+        <description>Max size of a dir to cache in bytes</description>
+        <value type="uint32">500000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_prefetch/enable</name>
+        <description>Enable prefetch dir content</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/find_prefetch/window_size</name>
+        <description>Min count of directory content to buffer when prefetching</description>
+        <value type="uint16">512</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/negative_response_from_find_data</name>
+        <description>Allow negative response from find data</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+      <name>/rbt/sport/smb2/config/local_ioctl_resp/unsupported</name>
+      <description>Allow NT_STATUS_NOT_SUPPORTED responses for unsupported ioctl requests</description>
+      <value type="bool">true</value>
+    </config>
+    <config>
+      <name>/rbt/sport/smb2/config/local_ioctl_resp/invalid</name>
+      <description>Allow NT_STATUS_INVALID_PARAMETER responses for ioctl requests using an invalid FID</description>
+      <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/ipc_opt/getinfo</name>
+        <description>Allow local responses to getinfos on IPC$</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/ipc_opt/ioctl</name>
+        <description>Allow local responses to ioctls on IPC$</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/idle_foi/enable</name>
+        <description>Enable idle FOI</description>
+        <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/idle_foi/timeout</name>
+        <description>Idle FOI timeout</description>
+        <value type="uint32">2000</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/fix_server/notify_header</name>
+        <description>Fix broken interim notify responses from NetApp servers</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/fix_server/set_root_dir_bit</name>
+        <description>Set directory bit for create response for root share</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smb2/config/smb3/enable</name>
+        <description>Enable optimization of SMB3 connections</description>
+        <value type="bool">false</value>
+    </config>
+    <external-state-wildcard>
+         <name>/rbt/sport/smb2/state/blacklist/*</name>
+         <description>List of blocked connection in SMB2 blacklist</description>
+         <value type="uint32"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+    <external-state>
+         <name>/rbt/sport/smb2/state/blacklist/*/cli_addr</name>
+         <description>Client address of blocked connection in SMB2 blacklist</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/smb2/state/blacklist/*/srv_addr</name>
+         <description>Server address of blocked connection in SMB2 blacklist</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/smb2/state/blacklist/*/sh_addr</name>
+         <description>Steelhead address of blocked connection in SMB2 blacklist</description>
+         <value type="ipv4addr"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/smb2/state/blacklist/*/reason</name>
+         <description>SMB2 blacklist reason</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <passthrough>
+        <name>/rbt/sport/smb2/action/*</name>
+        <description>SMBv2 Action to passthrough to sport</description>
+        <value type="string"/>
+        <passthrough-provider>sport</passthrough-provider>
+    </passthrough>
+</node-list>

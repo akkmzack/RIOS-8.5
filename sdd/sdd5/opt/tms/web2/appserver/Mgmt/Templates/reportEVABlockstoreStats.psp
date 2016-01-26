@@ -1,0 +1,384 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Christine Wang
+##
+## Blockstore Metrics
+%>
+
+<%@page imports="Nodes, PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, json, UserConfig, eva, ve" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="pageletNodes">
+    return [ '/rbt/eva/ext/*' ]
+</psp:method>
+
+<psp:method name="getLUNOptions">
+    options = [('0', 'All')]
+    mgmt = self.session().value('mgmt')
+    basePath = eva.getStateNodePrefix(self.request().fields())
+    luns = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/lun-list/non-ss-lun' % basePath)
+    for lun in luns:
+        lunId = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/state/%s/subclass_id' % (basePath, lun))
+        alias = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/config/%s/alias' % (basePath, lun))
+        lun_serial = ve.unEscapeLUNSerial(lun)
+        if alias:
+            options.append((lunId, '%s (%s)' % (alias, lun_serial)))
+        else:
+            options.append((lunId, lun_serial))
+    return options
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'report': FormUtils.NodeEntry(
+            name='report',
+            label='Blockstore Report',
+            userPath='eva/web/reports/blockstore_graph',
+            userConfigAutoSave=True,
+            widget='select',
+            selectOptions=(('readHitMiss', 'Read Hit/Miss'),
+                           ('uncommitted', 'Uncommitted Data'),
+                           ('commitThroughput', 'Commit Throughput'),
+                           ('commitDelay', 'Commit Delay')),
+            action='paramChanged();'
+        )
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    lunOptions = self.getLUNOptions()
+    return {
+        'lid': FormUtils.NodeEntry(
+            name='lid',
+            label='LUN',
+            widget='select',
+            selectOptions=lunOptions,
+            userPath='eva/web/reports/blockstore_graph_lun',
+            userConfigAutoSave=True,
+            action='updateTimestamps(); paramChanged();'
+        )
+    }
+</psp:method>
+
+<psp:method name="css">
+    return '''
+.clearRight, .clearRight > div { clear: right; }
+'''
+</psp:method>
+<%
+self.beginPagelet()
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+lun = UserConfig.get(self.session(), 'eva/web/reports/blockstore_graph_lun')
+self.hasHelp = True
+
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+lun_type = ''
+lastWriteTimestamp = 'n/a'
+lastCommitTimestamp = 'n/a'
+
+# only for EVA or Steelhead EX
+if not eva.isCMC: {
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('RBT.VE.refreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<psp:include path="/Templates/evaHAHeader.psp">
+
+<div id="blkstrTimestamp" style="display: none;">
+  <table>
+  <tr><td class="label">Last Write Timestamp:</td><td id="writeTimestamp"></td></tr>
+  <tr><td class="label">Last Commit Timestamp:</td><td id="commitTimestamp"></td></tr>
+  </table>
+</div>
+
+<div class="horizReportControls clearRight">
+<%= nodeEntries['report'].html(self, format='block') %>
+<%= dialogEntries['lid'].html(self, format='block') %>
+</div>
+
+<div id="timeSeriesChart" class="clearRight"></div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart,
+    seriesNames = <%= json.dumps(eva.REPORTS['BLOCKSTORE']) %>;
+
+Y.on('domready', function () {
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        dataFormatterFn: dataFormatter,
+        options: assembleChartOptions(),
+        statsFn: summaryData,
+        topPaneHeightPercent: 65,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+
+    updateTimestamps();
+});
+
+function updateTimestamps() {
+    var blkstrTimestamp = Y.one('#blkstrTimestamp'),
+        lunId = Y.one('select[name="lid"]').get('value'),
+        dataUrl = '/mgmt/jsondata?p=edgeWriteCommitTimes';
+
+    blkstrTimestamp.hide();
+    dataUrl = addQueryStringParameter(dataUrl, 'lunId', lunId);
+    RBT.rpc({
+        url: dataUrl,
+        successFn: function (response) {
+            if (response.lunType === 'iscsi') {
+                Y.one('#writeTimestamp').setContent(response.lastWrite);
+                Y.one('#commitTimestamp').setContent(response.lastCommit);
+                blkstrTimestamp.show();
+            }
+        }
+    });
+}
+
+function assembleDataUrl() {
+    var report = Y.one('select[name="report"]').get('value'),
+        lunId = Y.one('select[name="lid"]').get('value'),
+        dataUrl;
+    dataUrl = '<%= Reports2.constructDataUrl("evaBlockstoreStats") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'displayGraph', report);
+    dataUrl = addQueryStringParameter(dataUrl, 'lunId', lunId);
+    return dataUrl;
+}
+
+function assembleChartOptions() {
+    var options,
+        report = Y.one('select[name="report"]').get('value');
+    switch(report) {
+    case 'readHitMiss':
+        options = RBT.Reports2.defaultHighstockOptions(true);
+        options.yAxis[0].title.text = 'Data (B/s)';
+        options.yAxis[2].title.text = 'Hit Rate (%)';
+        options.yAxis[2].max = 100;
+        options.series = [{name: seriesNames.READ_HIT,
+                           color: RBT.Reports2.BLUE},
+                          {name: seriesNames.READ_MISS,
+                           color: RBT.Reports2.AQUA},
+                          {name: seriesNames.READ_HIT_RATE,
+                           yAxis: 2,
+                           color: RBT.Reports2.GREEN}];
+        break;
+    case 'uncommitted':
+        options = RBT.Reports2.defaultHighstockOptions(true);
+
+        options.yAxis[0].minPadding = 0;
+        options.yAxis[2].minPadding = 0;
+
+        options.yAxis[0].title.text = 'Data (B)';
+        options.yAxis[2].title.text = 'Data (B)';
+
+        delete options.yAxis[0].min;
+        delete options.yAxis[2].min;
+
+        options.series = [{name: seriesNames.DATA_WRITTEN,
+                           zIndex: 2,
+                           color: RBT.Reports2.BLUE},
+                          {name: seriesNames.DATA_COMMITTED,
+                           type: 'area',
+                           zIndex: 1,
+                           color: RBT.Reports2.GRAY_MEDIUM},
+                          {name: seriesNames.DATA_UNCOMMITTED,
+                           type: 'area',
+                           yAxis: 2,
+                           color: RBT.Reports2.AQUA}];
+        options.plotOptions.area.threshold = null;
+        options.plotOptions.series.connectNulls = true;
+        break;
+    case 'commitThroughput':
+        options = RBT.Reports2.defaultHighstockOptions();
+        options.yAxis[0].title.text = 'Throughput (B/s)';
+        options.series = [{name: seriesNames.COMMIT_TPUT,
+                           color: RBT.Reports2.BLUE}];
+        break;
+    case 'commitDelay':
+        options = RBT.Reports2.defaultHighstockOptions();
+        options.yAxis[0].title.text = 'Delay (s)';
+        options.series = [{name: seriesNames.COMMIT_DELAY,
+                           color: RBT.Reports2.BLUE}];
+        break;
+    default:
+        options = RBT.Reports2.defaultHighstockOptions();
+        break;
+    }
+    return options;
+}
+
+function dataFormatter(value, seriesName) {
+    if (seriesName === seriesNames.DATA_WRITTEN ||
+            seriesName === seriesNames.DATA_COMMITTED ||
+            seriesName === seriesNames.DATA_UNCOMMITTED) {
+        return RBT.Reports2.scale(value, 1, 'si', 'B');
+    } else if (seriesName === seriesNames.READ_HIT ||
+                seriesName === seriesNames.READ_MISS) {
+        return RBT.Reports2.scale(value, 1, 'si', 'B/s');
+    } else if (seriesName === seriesNames.READ_HIT_RATE) {
+        return RBT.Reports2.roundWithPadding(value, 1) + '%';
+    } else if (seriesName === seriesNames.COMMIT_DELAY) {
+        return englishTimeInterval(value);
+    } else if (seriesName === seriesNames.COMMIT_TPUT) {
+        return RBT.Reports2.scale(value, 1, 'si', 'B/s');
+    } else {
+        return RBT.Reports2.roundWithPadding(value, 1);
+    }
+}
+
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl(),
+        options: assembleChartOptions()
+    });
+}
+
+function averageHitRate(hitSeries, missSeries) {
+    var totalHit = 0.0,
+        totalMiss = 0.0;
+    Y.each(hitSeries, function (hitData, i) {
+        if (hitData.y > 0 || missSeries[i].y > 0) {
+            totalHit += hitData.y;
+            totalMiss += missSeries[i].y;
+        }
+    });
+    if (totalHit > 0 || totalMiss > 0) {
+        return 100 * totalHit / (totalHit + totalMiss);
+    } else {
+        return 100;
+    }
+}
+
+function summaryData(allSeriesData) {
+    var report = Y.one('select[name="report"]').get('value'),
+        writeTotal = 0,
+        commitTotal = 0,
+        summary = [];
+
+    switch (report) {
+    case 'readHitMiss':
+        summary = [
+            ['Total: ' + RBT.Reports2.scale(
+                RBT.Reports2.integrate(allSeriesData[0]),
+                1,
+                'si',
+                'B'
+            )],
+            ['Total: ' + RBT.Reports2.scale(
+                RBT.Reports2.integrate(allSeriesData[1]),
+                1,
+                'si',
+                'B'
+            )],
+            ['Average: ' + dataFormatter(
+                averageHitRate(allSeriesData[0], allSeriesData[1]),
+                seriesNames.READ_HIT_RATE
+            )]
+        ];
+        break;
+    case 'uncommitted':
+        if (allSeriesData[0].length > 0) {
+            writeTotal = allSeriesData[0][allSeriesData[0].length - 1].y -
+                         allSeriesData[0][0].y;
+        }
+        if (allSeriesData[1].length > 0) {
+            commitTotal = allSeriesData[1][allSeriesData[1].length - 1].y -
+                          allSeriesData[1][0].y;
+        }
+        summary = [
+            ['Total: ' + dataFormatter(writeTotal, seriesNames.DATA_WRITTEN)],
+            ['Total: ' + dataFormatter(commitTotal, seriesNames.DATA_COMMITTED)],
+            ['Average: ' + dataFormatter(
+                RBT.Reports2.avg(allSeriesData[2]),
+                seriesNames.DATA_UNCOMMITTED
+            )]
+        ];
+        break;
+    case 'commitThroughput':
+        summary = [
+            ['Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[0]), seriesNames.COMMIT_TPUT)
+            ],
+            [],
+            []
+        ];
+        break;
+    case 'commitDelay':
+        summary = [
+            ['Average: ' +
+                dataFormatter(RBT.Reports2.avg(allSeriesData[0]), seriesNames.COMMIT_DELAY)
+            ],
+            [],
+            []
+        ];
+        break;
+    }
+    return summary;
+}
+
+/**
+ * Override default primary yaxis formatter to scale beyond M (Mega)
+ * NOTE: Remove this when we upgrade to a version newer than highstock version 1.1.6
+ */
+RBT.Reports2._defaultPrimaryYaxisOptions = (function () {
+    var origFunc = RBT.Reports2._defaultPrimaryYaxisOptions;
+    return function () {
+        var options = origFunc();
+        options.labels.formatter = function () {
+            var axis = this.axis,
+                value = this.value,
+                categories = axis.categories,
+                tickInterval = axis.tickInterval,
+                dateTimeLabelFormat = this.dateTimeLabelFormat,
+                ret,
+                // NOTE: the following vars are renamed to match the highcharts src
+                math = Math,
+                dateFormat = Highcharts.dateFormat,
+                numberFormat = Highcharts.numberFormat;
+
+            if (categories) {
+                ret = value;
+            } else if (dateTimeLabelFormat) { // datetime axis
+                ret = dateFormat(dateTimeLabelFormat, value);
+            } else if (tickInterval < 1) { // small tick interval, could be large numbers
+                ret = RBT.Reports2.scale(value, 0, 'si', '');
+            } else if (tickInterval % math.pow(10, 15) === 0) { // use P abbreviation
+                ret = (value / math.pow(10, 15)) + 'P';
+            } else if (tickInterval % math.pow(10, 12) === 0) { // use T abbreviation
+                ret = (value / math.pow(10, 12)) + 'T';
+            } else if (tickInterval % math.pow(10, 9) === 0) { // use G abbreviation
+                ret = (value / math.pow(10, 9)) + 'G';
+            } else if (tickInterval % 1000000 === 0) { // use M abbreviation
+                ret = (value / 1000000) + 'M';
+            } else if (tickInterval % 1000 === 0) { // use k abbreviation
+                ret = (value / 1000) + 'k';
+            } else if (value >= 1000) { // add thousands separators
+                ret = numberFormat(value, 0);
+            } else { // small numbers
+                ret = numberFormat(value, -1);
+            }
+            return ret;
+        };
+        return options;
+    };
+})();
+// ]]>
+</script>

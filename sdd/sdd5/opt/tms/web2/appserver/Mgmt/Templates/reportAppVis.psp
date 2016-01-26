@@ -1,0 +1,345 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Ariel Katz
+##
+## Application Visibility Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, Reports2Controls, FormUtils, RVBDUtils, Nodes, qos, UserConfig" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.relatedPages = ('reportAppStats', 'setupAdvNet_netflow') %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#appControls label {
+  font-weight: bold;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    nodes = {}
+
+    nodes['interface']= FormUtils.NodeEntry(
+        name='interface',
+        label='Interface',
+        widget='select',
+        userPath='sh/web/reports/appvis/interface',
+        userConfigAutoSave=True,
+        selectOptions=qos.getIfaceSelectOptions()
+    )
+    nodes['direction']= FormUtils.NodeEntry(
+        name='direction',
+        label='Direction',
+        widget='select',
+        userPath='sh/web/reports/appvis/direction',
+        userConfigAutoSave=True,
+        selectOptions=(('outbound', 'Outbound'),
+                       ('inbound', 'Inbound'))
+    )
+    return nodes
+</psp:method>
+
+<psp:method name="applicationSelectorsHtml">
+    html = ''
+    i = 1
+    fields = self.request().fields()
+
+    if fields.has_key('apps') and fields['apps']:
+        # get the app names from the GET values
+        chartAppNames = fields['apps'].split(',')
+        UserConfig.set(self.session(), 'sh/web/reports/appvis/graphedapps', fields['apps'])
+    else:
+        # get the app names from the user config
+        chartAppNames = UserConfig.get(self.session(), 'sh/web/reports/appvis/graphedapps').split(',')
+
+    # Limit the number we display.
+    chartAppNames = chartAppNames[:self.MAX_APPLICATIONS]
+
+    # Remove apps that don't exist.
+    chartAppNames = [appName for appName in chartAppNames if appName in qos.getPyqosAppNames()]
+
+    # Default to showing the "All" stats instead of no stats.
+    if len(chartAppNames) == 0 and 'All' in qos.getPyqosAppNames():
+        chartAppNames = ['All']
+
+    # Pad out chartAppNames so the length is equal to self.MAX_APPLICATIONS.
+    chartAppNames += max(0, self.MAX_APPLICATIONS - len(chartAppNames)) * ['']
+
+    for chartAppName in chartAppNames:
+        html += FormUtils.NodeEntry(
+            name='app%d' % i,
+            label='Application %d' % i,
+            validate='validateAppName',
+            widget='text',
+            widgetClass='wide2',
+            inputOptional=True,
+            value=chartAppName).html(self, format='stacked')
+        i += 1
+
+    return html
+</psp:method>
+
+<%
+appVisFeatureEnabled = Nodes.present(self.session().value('mgmt'), '/rbt/app_vis/config/enable') == 'true'
+self.MAX_APPLICATIONS = 7
+allAppNames = qos.getPyqosAppNames()
+allAppNames.sort(FormUtils.alphanumericCompare)
+
+autocompleteOptions = [{'name': appName, 'description': ''}
+                       for appName in allAppNames]
+%>
+
+<% self.beginPagelet() %>
+<%
+if not appVisFeatureEnabled: {
+%>
+    <div class="midLevel">
+      Application Visibility is currently disabled. Application Visibility can be enabled on the <a href="/mgmt/gui?p=setupAdvNet_netflow">Flow Statistics</a> page.
+    </div>
+<%
+}
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+<div id="timeSeriesChart"></div>
+<div id="reportControls" style="display: none">
+  <div>
+  <%= self.nodeEntries()['interface'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['direction'].html(self, format='stacked') %>
+  </div>
+  <div id="appControls">
+  <%= self.applicationSelectorsHtml() %>
+  <%= FormUtils.renderButton(self, {'name': 'update',
+                                    'value': 'Update Chart',
+                                    'filter': 'validateAllAppNames',
+                                    'onclick': 'paramChanged(); return false'}) %>
+  </div>
+</div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+function validateAllAppNames() {
+    try {
+        Y.all('#appControls input[type=text]').each(function(appInput) {
+            if (appInput.get('value') != '') {
+                validateAppName(appInput.get('value'))
+            }
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+var allAppNames = <%= RVBDUtils.jsonizeAndEscapeForJs(allAppNames) %>;
+var autocompleteOptions = <%= RVBDUtils.jsonizeAndEscapeForJs(autocompleteOptions) %>;
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Set up the autocomplete widgets.
+    Y.all('#appControls input[type="text"]').each(
+        function(node, i, nodeList) {
+            RBT._AutoComplete.makeAutoComplete(node.get('name'), autocompleteOptions);
+        }
+    );
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        hideLegend: true,
+        dataUrl: assembleDataUrl(),
+        options: getReplaceChartParams(),
+        topPaneHeightPercent: 50,
+        dataFormatterFn: dataFormatter,
+        customControlDiv: Y.one('div#reportControls'),
+        boundariesChangedFn: setReports2ChartWindow,
+        updateInterval: 30,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    // Collect user input.
+    var interface = Y.one('select[name="interface"]').get('value');
+    var direction = Y.one('select[name="direction"]').get('value');
+
+    var chartAppNames = getCurrentlySelectedApps();
+
+    // Construct the data URL.
+    var dataUrl = '<%= Reports2.constructDataUrl("reportAppVis") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'interface', interface);
+    dataUrl = addQueryStringParameter(dataUrl, 'direction', direction);
+    dataUrl = addQueryStringParameter(dataUrl, 'chartAppNames', chartAppNames.join(','));
+    return dataUrl;
+}
+
+
+function getReplaceChartParams() {
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    highstockOptions.lazyLoading = true;
+
+    highstockOptions.yAxis[0].title.text = 'App Throughput (bps)';
+    highstockOptions.yAxis[2].title.text = 'Per-Flow Throughput (bps)';
+
+    highstockOptions.series = [];
+
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.type = 'area';
+
+    // The standard colors list.
+    var colors = RBT.Reports2.defaultHighstockOptions()['colors'];
+
+    // Colorize labels.
+    Y.all('#appControls label').each(
+        function(node, i, nodeList) {
+            var seriesColor = colors[i % colors.length];
+            var textColor = RBT.Reports2.getTextColor(seriesColor);
+            node.setStyle('color', textColor);
+        }
+    );
+
+    // Need nColors for modulus computation.
+    var nColors = colors.length;
+
+    var allAppNames = <%= qos.getPyqosAppNames() %>
+
+    var el, idx;
+    // Iterate over all the application text fields.
+    Y.all('#appControls input[type="text"]').each(
+
+        function(el, idx) {
+
+            // The value of the current text field is the app name.
+            var appName = el.get('value');
+
+            if (arrayContains(allAppNames, appName)) {
+
+                // Each app has a diferent graph color.
+                var appColor = colors[idx % nColors];
+
+                // Push configuration data for each series onto
+                // the series list.
+                //
+                // Note that the name fields here must match those
+                // in support_qos.reportAppVis(), exactly.
+                highstockOptions.series.push(
+                    {name: appName + ' Throughput Peak',
+                    type: 'line',
+                    color: appColor,
+                    dataGrouping: {approximation: 'high'}}
+                );
+                highstockOptions.series.push(
+                    {name: appName + ' Throughput Avg',
+                    type: 'line',
+                    color: appColor}
+                );
+                highstockOptions.series.push(
+                    {name: appName + ' Per-Flow Peak',
+                    type: 'line',
+                    color: appColor,
+                    dataGrouping: {approximation: 'high'},
+                    yAxis: 2}
+                );
+                highstockOptions.series.push(
+                    {name: appName + ' Per-Flow Avg',
+                    type: 'line',
+                    color: appColor,
+                    yAxis: 2}
+                );
+            }
+        }
+    );
+
+    return highstockOptions;
+}
+
+function getCurrentlySelectedApps() {
+    var chartAppNames = [];
+    Y.all('#appControls input[type="text"]').each(
+        function(el, idx) {
+            if (el.get('value') !== '') {
+                chartAppNames.push(el.get('value'));
+            }
+        });
+    return chartAppNames;
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    // Ensure that no apps are selected more than once.  This might seem
+    // harmless, but actually cascades into some nasty Highstock issues that
+    // are very hard to debug.  See bug 112878 for more info.
+    var selectedApps = {};
+    var duplicateAppsFound = false;
+    Y.all('#appControls input[type="text"]').each(
+        function(node, i, nodeList) {
+            var appName = node.get('value');
+
+            // Ignore empty text fields.
+            if (appName == '') {
+                return;
+            }
+
+            // If we've already found an app that's been selected more than
+            // once, don't do any more processing since a dialog is already
+            // being shown.
+            if (duplicateAppsFound) {
+                return;
+            }
+
+            if (appName in selectedApps) {
+                duplicateAppsFound = true;
+                RBT.Reports2.showErrorMessage(
+                    appName + ' has already been selected.',
+                    { affinity: RBT.Dialog.AFFINITY_SE,
+                      alignNode: node }
+                );
+            } else {
+                selectedApps[appName] = true;
+            }
+        }
+    );
+
+    // If an app has been selected more than once, don't do the update.
+    if (duplicateAppsFound) {
+        return;
+    }
+
+
+    // update the user config nodes for the selected apps
+    setUserConfig({'sh/web/reports/appvis/graphedapps': getCurrentlySelectedApps().join(',')});
+
+    chart.replaceChart({
+        options: getReplaceChartParams(),
+        dataUrl: assembleDataUrl()
+    });
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    return RBT.Reports2.scale(value, 1, 'si', 'bps');
+}
+
+// validator for autocomplete app fields
+function validateAppName(val) {
+    if (!arrayContains(allAppNames, val)) {
+        throw 'Select an application from the list.'
+    }
+}
+
+// ]]>
+</script>

@@ -1,0 +1,163 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Andrew Hao
+##
+## setupServiceProtocolsICA.psp
+## This is the template for Citrix ICA protocol settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupPortLabels',) %>
+
+<psp:method name="nodeEntries">
+
+    citrixNodes = {}
+
+    # MultiPort priority widgets are created first
+    for x in xrange(4):
+        citrixNodes.update( {
+                'multiportPriority%s' % x : FormUtils.NodeEntry(
+                name='multiportPriority%s' % x,
+                path='/rbt/citrix/config/multiport/prio/%s/port' % x,
+                label='Priority %s Port' % x,
+                type='uint16',
+                labelClass='label-fixed-indent',
+                widgetClass='port',
+                validate='port',
+                inputOptional=True)
+            }
+        )
+    citrixNodes.update(
+        {
+        'enable': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Citrix Optimization',
+            enableDiv='enableSubsection'),
+        'basicICAPort': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/ica_port',
+            type='uint16',
+            validate='port',
+            widgetClass='port',
+            labelClass='label-fixed label',
+            label='ICA Port'),
+        'sessionReliabilityPort': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/sess_port',
+            type='uint16',
+            widgetClass='port',
+            validate='port',
+            labelClass='label-fixed label',
+            label='Session Reliability (CGP) Port'),
+        'secureICA': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/secure_ica',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SecureICA Encryption'),
+        'enableCDM': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/cdm/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Citrix CDM Optimization'),
+        'enableMultiPort': FormUtils.NodeEntry(
+            path='/rbt/citrix/config/multiport_enabled',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable MultiPort ICA',
+            enableDiv='multiportSubsection'),
+        }
+    )
+    return citrixNodes
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+# Warning text for error condition when ICA/CGP ports
+# exist in Interactive port list.
+portWarning = ''
+
+# Only check for this error on SH. It's not possible on the CMC
+# because portlabels are a different policy type.
+if not policyType: {
+
+    # Grab the port labels
+    path = pathPrefix + '/rbt/portlabel/config/Interactive/port'
+    interactivePortLabels = Nodes.getMgmtSetEntries(mgmt, path)
+
+    # Read the ICA/CGP port values
+    icaPort = int(Nodes.present(mgmt, pathPrefix + '/rbt/citrix/config/ica_port'))
+    cgpPort = int(Nodes.present(mgmt, pathPrefix + '/rbt/citrix/config/sess_port'))
+
+    # Compute whether ICA/CGP port exists in port value list by
+    # checking whether they fall in certain ranges.
+    icaPortInList = False
+    cgpPortInList = False
+
+    for rangee in interactivePortLabels.values(): {
+        start = int(rangee.get('start', '0'))
+        end = int(rangee.get('end', '0'))
+        if not icaPortInList: {
+            icaPortInList = start <= icaPort <= end
+        }
+        if not cgpPortInList: {
+            cgpPortInList = start <= cgpPort <= end
+        }
+    }
+
+    if icaPortInList or cgpPortInList: {
+        portWarning = '''
+    <p class="warning">
+      Please visit the <a href="/mgmt/gui?p=setupPortLabels">Port Labels</a> page to ensure that both ICA port <strong>%(icaPort)s</strong> and CGP port <strong>%(cgpPort)s</strong> are removed from the Interactive Port Label list.
+      <br />
+      Citrix ICA optimization will not function properly until you have done so.
+    </p>
+    ''' % {'icaPort': icaPort,
+           'cgpPort': cgpPort}
+    }
+} # end CMC exclude
+
+%>
+
+<% self.beginPagelet() %>
+
+<%= portWarning %>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="icaForm">
+  <fieldset class="topLevel">
+    <input type="hidden" name="_action_" value="setupServiceProtocolsCitrix" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enable'].html(self) %>
+      <div id="enableSubsection" class="indent">
+        <table>
+          <%= nodeEntries['basicICAPort'].html(self) %>
+          <%= nodeEntries['sessionReliabilityPort'].html(self) %>
+        </table>
+        <%= nodeEntries['secureICA'].html(self) %>
+        <%= nodeEntries['enableCDM'].html(self) %>
+        <%= nodeEntries['enableMultiPort'].html(self) %>
+        <div class="midLevel">
+          <div id="multiportSubsection" class="indent">
+            <table>
+              <%= nodeEntries['multiportPriority0'].html(self) %>
+              <%= nodeEntries['multiportPriority1'].html(self) %>
+              <%= nodeEntries['multiportPriority2'].html(self) %>
+              <%= nodeEntries['multiportPriority3'].html(self) %>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

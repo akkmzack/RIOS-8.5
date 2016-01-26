@@ -1,0 +1,53 @@
+
+from rvbd.restdispatch.auth import AuthModule
+
+class MySampleAuthModule(AuthModule):
+
+    def __init__(self, engine):
+        AuthModule.__init__(self, engine)
+
+    def get_access_code(self, jti):
+        """
+        Get the access code for the given jti.
+        Return the access code stored inside the product specific database.
+        None if not a valid code.
+        """
+        access_code = None
+
+        try:
+            access_code = 'foo'
+        except Exception, e:
+            get_engine().log_error('Internal error getting access code.')
+
+        return access_code
+
+    def get_access_token(self, jti):
+        """
+        Get the access token for the given jti.
+        Return the access token stored inside the product specific database.
+        None if not a valid token.
+        """
+        access_token = None
+
+        try:
+            access_token = 'foo'
+        except Exception, e:
+            get_engine().log_error('Internal error getting access code.')
+
+        return access_token
+
+    def store_access_token(self, code_claims, token_claims, token):
+        """
+        Store the given access token.
+        The code_claims and token_claims are provided as additional
+        meta data. The token parameter is the one that needs to be
+        stored.
+        Return True if successful or False if unsuccessful.
+        """
+        try:
+            # store it
+        except Exception, e:
+            get_engine().log_error('Internal error storing access token.')
+            return False
+
+        return True

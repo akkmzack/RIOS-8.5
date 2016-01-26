@@ -1,0 +1,312 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupAdministrationWeb.psp
+##
+## Web Settings
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="certdialog, SSLUtils, RVBDUtils, Nodes, FormUtils, PagePresentation:Pagelet, RVBDUtils:isGW" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    if isGW():
+        loginPath = '/rbt/gw/web/prefs/config/login/default'
+    else:
+        loginPath = '/rbt/prefs/web/login/default'
+
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+
+    # See bug 103361; for appliance page on CMC, set to default value
+    # if appliance policy node path does not exists.
+    cmcDefault = policyType or ''
+
+    return {
+        'defaultId': FormUtils.NodeEntry(
+            path=loginPath,
+            value=cmcDefault and 'admin',
+            widgetClass='account',
+            label='Default Web Login ID'),
+        'allowTimeouts': FormUtils.NodeEntry(
+            path='/wsm/auto_refresh_timeout',
+            value=cmcDefault and 'true',
+            type='bool',
+            widget='checkboxLeft',
+            label='Allow Session Timeouts When Viewing Auto-Refreshing Pages',
+            tooltip='Disabling this will keep you logged in indefinitely on ' \
+                    'pages that are set to auto-refresh (like reports).  ' \
+                    'This may be a security risk.')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+
+    # See bug 103361; for appliance page on CMC, set to default value
+    # if appliance policy node path does not exists.
+    cmcDefault = policyType or ''
+
+    return {
+        'inactivityTimeout': FormUtils.NodeEntry(
+            path='/wsm/inactivity_timeout',
+            value=cmcDefault and '900',
+            name='inactivityTimeout',
+            filter=lambda a: str(int(a or '0') / 60),
+            validate=('intInRange', '[0, 43200]'),
+            widgetClass='small',
+            label='Web Inactivity Timeout (minutes)',
+            tooltip='<p>Enter 0 to disable the inactivity timeout.</p>' \
+                    '<p>Note: If the maximum session count is exceeded, the ' \
+                    'least-recently-used session will be expired regardless ' \
+                    'of its idle time.</p>')
+    }
+</psp:method>
+
+
+<%
+mgmt = self.session().value('mgmt')
+
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# If the backend code explicitly caught and set an action message,
+# display it and remove it from the session.
+if self.session().hasValue('webCertReplaceMessage'): {
+    self.getPagePresentationServlet().setActionMessage(
+        self.session().value('webCertReplaceMessage'))
+    self.session().delValue('webCertReplaceMessage')
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %> ">
+  <fieldset class="topLevel">
+    <legend>Web Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['defaultId'].html(self) %>
+        <%= dialogEntries['inactivityTimeout'].html(self) %>
+      </table>
+      <%= nodeEntries['allowTimeouts'].html(self) %>
+    </div>
+  </fieldset>
+  <div>
+    <input type="hidden" name="_action_" value="webAction" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+vaultUnlocked = 'true' == Nodes.present(mgmt, '/secure_vault/state/unlocked')
+# For appliance policy page on CMC, web certificate information is stored in secure vault.
+# Rest of the appliance policy page requires secure vault to be unlocked.
+if policyType and not vaultUnlocked: {
+%>
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+<%
+    self.endPagelet()
+} else: {
+    cert = mgmt.getChildren(pathPrefix + '/web/state/httpd/ssl/cert')
+%>
+
+<div class="topLevel">
+  <h3>Web Certificate:</h3>
+  <div class="midLevel">
+    <div class="tabControl" id="certRadioTabs">
+      <div class="grayBorder">
+<%
+if not policyType: {
+%>
+        <%= FormUtils.radioTabControl(
+                self,
+                'certTabs',
+                ('details', 'Details', 'certTab_details'),
+                ('pem', 'PEM', 'certTab_pem'),
+                ('replace', 'Replace', 'certTab_replace'),
+                ('csr', 'Generate CSR', 'certTab_csr')) %>
+
+<%
+} else: {
+%>
+        <%= FormUtils.radioTabControl(
+                self,
+                'certTabs',
+                ('details', 'Details', 'certTab_details'),
+                ('pem', 'PEM', 'certTab_pem'),
+                ('replace', 'Replace', 'certTab_replace')) %>
+
+<% } %>
+        <div class="midLevel" id="certTab_details">
+          <%= SSLUtils.presentCert(cert) %>
+        </div>
+
+        <div class="midLevel" id="certTab_pem">
+          <pre class="cert_pem"><%= cert.get('raw', '--') %></pre>
+        </div>
+
+        <div class="midLevel" id="certTab_replace">
+          <form id="replaceForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>">
+            <div id="replaceContainer" class="liveStatusAttachPoint">
+              <%= certdialog.certDialog(self, '', defaultCSR=cert, needCommonName=False) %>
+            </div>
+          </form>
+        </div>
+
+
+        <div class="midLevel" id="certTab_csr">
+<%
+if not policyType: {
+%>
+          <form method="post" action="/mgmt/ssldata">
+            <%= certdialog.csrDialog(self, '', needCommonName=True) %>
+            <div>
+              <input type="hidden" name="action" value="generateCSRSSLDataWeb" />
+            </div>
+            <%= FormUtils.formSubmitButtons(self, {'name': 'generateCSR', 'value': 'Generate CSR'}) %>
+          </form>
+<% } %>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<% } %>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var liveStatus = null;
+
+Y.on('domready', function() {
+
+    // This is a bit sneaky.  We want to display a confirmation dialog
+    // before submitting the form so we attach a handler to the button
+    // to intercept the click.
+    Y.on('click', certReplaceClickHandler, '#certButton');
+
+    liveStatus = new LiveStatus({
+        attachPoint: '#replaceContainer'
+    }).render();
+});
+
+// Click handler for the cert replacement button.  This shows the
+// confirmation dialog.
+function certReplaceClickHandler(evt) {
+
+    // Only show the confirmation dialogue when not editing a CMC appliance
+    // policy (since no httpd restart is needed in that case).
+    <% if not policyType: { %>
+        new RBT.Dialog({
+            alignNode: '#certButton',
+            content: 'The web server will be restarted after installing the new certificate.  This may temporarily disrupt access to the management console.',
+            buttons: [
+                { label: 'Replace Certificate', clickFn: replaceCertAjax },
+                { label: 'Cancel', clickFn: RBT.Dialog.dismiss }
+            ]
+        }).render();
+    <% } else: { %>
+        replaceCertAjax();
+    <% } %>
+
+    evt.halt();
+}
+
+// Trigger the cert replacement via AJAX after the user has confirmed.
+function replaceCertAjax(evt) {
+
+    <% if not policyType: { %>
+        // hide the confirmation dialog
+        this.hide();
+    <% } %>
+    liveStatus.show('Replacing certificate.');
+
+    // Helper function that waits 8 seconds for httpd to restart (if not
+    // editing a CMC appliance policy) and then reloads the page.
+    function pauseAndReload() {
+        <% if not policyType: { %>
+            Y.later(8000, null, function() { window.location.reload(true); });
+        <% } else: { %>
+            // for CMCs, reload as soon as the backend returns.
+            window.location.reload(true);
+        <% } %>
+    }
+
+    // Helper function that handles successful RPCs.  If the response
+    // indicates that the cert was replaced, reload the page.
+    // Otherwise display the error message.
+    function successHandler(response) {
+        if (response.success) {
+            pauseAndReload();
+        }
+        else {
+            liveStatus.show(response.errorMsg, true);
+        }
+    }
+
+    // Helper function for handling out-of-band RPC errors.  Due to
+    // the httpd HUP, an OOB error really indicates success so reload
+    // the page.
+    function failureHandler(errorMsg) {
+        pauseAndReload();
+    }
+
+    // Are we editing an appliance policy?
+    var pathPrefix = '<%= FormUtils.escapeForJsString(pathPrefix) %>';
+    var pathPrefixParam = (pathPrefix) ?
+        'appliancePolicyPrefix=' + pathPrefix : '';
+
+    Y.io('/mgmt/jsondata?p=webCertReplace', {
+        method: 'POST',
+        data: pathPrefixParam,
+        timeout: 4000,
+        form: {
+            id: Y.one('#replaceForm'),
+            upload: true
+        },
+        on: {
+            complete: function(id, response, args) {
+
+                // try to parse the response, which should be JSON
+                try {
+                    var wrapper = Y.JSON.parse(response.responseText);
+                }
+
+                // response was not valid JSON; call error handler
+                catch (e) {
+                    if (!response) {
+                      failureHandler('no response received');
+                    }
+                    else {
+                      failureHandler('unable to parse response: ' +
+                          response.responseText);
+                    }
+                    return;
+                }
+
+                // response was valid JSON; check to see if an OOB
+                // error was caught
+                if (wrapper.success) {
+                    successHandler(wrapper.response);
+                }
+                else {
+                    failureHandler(wrapper.errorMsg);
+                }
+            }
+        }
+    });
+}
+
+// ]]>
+</script>
+

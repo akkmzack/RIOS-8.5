@@ -1,0 +1,223 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## supportHelp.psp
+##
+## Support and Help page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="gclsession:NonZeroReturnCodeException, wsm, Nodes, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%
+# wsm.mgmt is used here instead of the user's mgmt object to fix bug
+# 24202.  The better fix would probably be to make the system info
+# readable by all users.
+
+if Nodes.present(wsm.mgmt, '/rbt/model_capability/mfg_type') == 'rvbd_cloud_amazon': {
+    # When it comes to AWS Models, the manufacturing database does not apply.
+    model = Nodes.present(wsm.mgmt, '/system/model')
+}
+else: {
+    model = Nodes.present(wsm.mgmt, '/rbt/manufacture/model')
+}
+
+revision = Nodes.present(wsm.mgmt, '/hwtool/state/revision')
+serialNumber = Nodes.present(wsm.mgmt, '/rbt/manufacture/serialnum')
+if Nodes.present(wsm.mgmt, '/rbt/model_capability/mfg_type') == 'rvbd_cloud_amazon': {
+    # When it comes to AWS Models, reading the boot version from a partition does not apply.
+    bootVersion = Nodes.present(wsm.mgmt, '/system/version/simple')
+}
+else: {
+    # this fails if the flash disk is down (bug 78299, affects 5050,
+    # 6050, and 7050)
+    try: {
+        bootPart = Nodes.present(wsm.mgmt, '/image/boot_location/booted/location_id')
+        bootVersion = Nodes.present(wsm.mgmt,
+                '/image/info/installed_image/curr_device/location_id/%s/build_prod_version' % bootPart)
+    }
+    except NonZeroReturnCodeException, e: {
+        self.getPagePresentationServlet().setFormError(str(e))
+        bootVersion = 'unknown'
+    }
+}
+
+flexSupport = Nodes.present(wsm.mgmt, '/hw/hal/spec/state/supported' , 'false')
+if flexSupport == 'true': {
+    flexModel = Nodes.present(wsm.mgmt, '/hw/hal/spec/state/current/name')
+    if flexModel: {
+        model = '%s (%s)' % (model, flexModel)
+    }
+}
+
+self.beginPagelet()
+%>
+
+<fieldset>
+  <legend>Online Help</legend>
+  <div class="midLevel">
+    <a href="/help/"><img alt="View the help pages" src="/images/icon_help.gif" /></a>&nbsp;
+    <a href="/help/">Browser-based online help</a>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>Technical Support</legend>
+  <div class="midLevel">
+    <table class="support">
+      <tr>
+        <td class="label">Support Web Site:</td>
+        <td><a href="http://support.riverbed.com/">http://support.riverbed.com/</a></td>
+      </tr>
+      <tr>
+        <td class="label">Support Account Registration:</td>
+        <td><a href="https://support.riverbed.com/account/registration/register.htm">https://support.riverbed.com/account/registration/register.htm</a></td>
+      </tr>
+      <tr>
+        <td class="label">Support Email:</td>
+        <td><a href="mailto:support@riverbed.com">support@riverbed.com</a></td>
+      </tr>
+      <tr>
+        <td class="label" valign="top">Phone:</td>
+        <td>
+          <b>1-888-RVBD-TAC</b> (1-888-782-3822) in the US and Canada
+          <br />
+          <b>1-415-247-7381</b> outside the US and Canada
+        </td>
+      </tr>
+      <tr>
+        <td class="label">Documentation:</td>
+        <td><a href="https://support.riverbed.com/docs/index.htm">https://support.riverbed.com/docs/index.htm</a></td>
+      </tr>
+    </table>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>Appliance Details</legend>
+  <div class="midLevel">
+    <table class="support">
+      <tr>
+        <td class="label">Model:</td>
+        <td><%= model %></td>
+      </tr>
+      <tr>
+        <td class="label">Revision:</td>
+        <td><%= revision %></td>
+      </tr>
+      <tr>
+        <td class="label">Serial&nbsp;Number:</td>
+        <td><%= serialNumber %></td>
+      </tr>
+
+<%
+if RVBDUtils.isBOB(): {
+%>
+
+      <tr>
+        <td class="label">IQN:</td>
+        <td><%= Nodes.present(wsm.mgmt, '/rbt/rsp3/state/host_initiator_iqn') %></td>
+      </tr>
+
+<%
+}
+%>
+
+    </table>
+  </div>
+</fieldset>
+
+<%
+if RVBDUtils.isBOB() or RVBDUtils.isEX(): {
+%>
+
+<fieldset>
+  <legend>Software Versions</legend>
+  <div class="midLevel">
+    <table class="support">
+      <tr>
+        <td class="label">Steelhead&nbsp;EX:</td>
+        <td><%= bootVersion %></td>
+      </tr>
+
+<%
+    if RVBDUtils.isBOB(): {
+%>
+
+      <tr>
+        <td class="label">Hypervisor:</td>
+        <td><%= Nodes.present(wsm.mgmt, '/system/version/component/esxi') %></td>
+      </tr>
+
+<%
+    }
+%>
+
+      <tr>
+        <td class="label">RiOS:</td>
+        <td><%= Nodes.present(wsm.mgmt, '/system/version/component/rios') %></td>
+      </tr>
+
+<%
+    if RVBDUtils.isGraniteSupported(): {
+%>
+
+      <tr>
+        <td class="label">Granite:</td>
+        <td><%= Nodes.present(wsm.mgmt, '/system/version/component/granite') %></td>
+      </tr>
+
+<%
+    }
+%>
+
+    </table>
+  </div>
+</fieldset>
+
+<%
+} else: {
+%>
+
+<fieldset>
+  <legend>Software Version</legend>
+  <div class="midLevel">
+    <%= bootVersion %>
+  </div>
+</fieldset>
+
+<%
+}
+%>
+
+<fieldset>
+  <legend>MIB Files</legend>
+  <div class="midLevel">
+    <a href="/mibs/RBT-MIB.txt"><img alt="View the mib file" src="/images/icon_help.gif" /></a>&nbsp;
+    <a href="/mibs/RBT-MIB.txt">RBT-MIB.txt</a>
+
+<%
+if RVBDUtils.isBOB() or RVBDUtils.isEX(): {
+%>
+
+    <br />
+    <a href="/mibs/STEELHEAD-EX-MIB.txt"><img alt="View the mib file" src="/images/icon_help.gif" /></a>&nbsp;
+    <a href="/mibs/STEELHEAD-EX-MIB.txt">STEELHEAD-EX-MIB.txt</a>
+
+<%
+} else: {
+%>
+
+    <br />
+    <a href="/mibs/STEELHEAD-MIB.txt"><img alt="View the mib file" src="/images/icon_help.gif" /></a>&nbsp;
+    <a href="/mibs/STEELHEAD-MIB.txt">STEELHEAD-MIB.txt</a>
+
+<%
+}
+%>
+
+  </div>
+</fieldset>
+
+<% self.endPagelet() %>

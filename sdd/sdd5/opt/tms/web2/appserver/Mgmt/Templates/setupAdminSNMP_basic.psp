@@ -1,0 +1,418 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## setupAdminSNMP_basic.psp
+## Basic SNMP Server Settings Page
+##
+## Notification Settings, Receiver Table
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+
+input.text {
+  width: 200px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enable': NodeEntry(
+            path='/snmp/traps/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SNMP Traps'),
+        'systemContact': NodeEntry(
+            path='/snmp/syscontact',
+            widget='textarea',
+            rows=2,
+            cols=50,
+            label='System Contact'),
+        'systemLocation': NodeEntry(
+            path='/snmp/syslocation',
+            widget='textarea',
+            rows=2,
+            cols=50,
+            label='System Location'),
+        'readonlyName': NodeEntry(
+            path='/snmp/access/rocommunity',
+            label='Read-Only Community String'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addReceiver_host': NodeEntry(
+            name='addReceiver_host',
+            widgetClass='ipaddr',
+            label='Receiver',
+            validate='hostnameIpv4OrIpv6Addr',
+            labelClass='label-fixed-small',
+            hint='(hostname, IPv4 address or IPv6 address)'),
+        'addReceiver_dstPort': NodeEntry(
+            name='addReceiver_port',
+            widgetClass='small',
+            label='Destination Port',
+            value='162',
+            validate='port'),
+        'addReceiver_version': NodeEntry(
+            name='addReceiver_version',
+            selectOptions=(('trap-v1', 'v1'), ('trap-v2c', 'v2c'), ('trap-v3', 'v3')),
+            value='trap-v1',
+            label='Receiver Type',
+            action='updateUpdateables("receiverTableForm")'),
+        'addReceiver_user': NodeEntry(
+            name='addReceiver_user',
+            label='Remote User',
+            validate='nonempty'),
+        'addReceiver_mode': NodeEntry(
+            name='addReceiver_mode',
+            selectOptions=(('password', 'Supply a Password'),
+                           ('key', 'Supply a Key')),
+            label='Authentication',
+            value='password',
+            action='setAuthPrivacyText()'),
+        'addReceiver_protocol': NodeEntry(
+            name='addReceiver_protocol',
+            selectOptions=('MD5', 'SHA'),
+            value='MD5',
+            label='Authentication Protocol',
+            action='updateUpdateables("receiverTableForm")'),
+        'addReceiver_password': NodeEntry(
+            name='addReceiver_password',
+            widget='password',
+            label='Password',
+            validate=('password', '[8]'),
+            hint='(at least 8 characters)'),
+        'addReceiver_passwordConfirm': NodeEntry(
+            name='addReceiver_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[8]')),
+        'addReceiver_keyMD5': NodeEntry(
+            name='addReceiver_key',
+            widgetClass='wide3',
+            label='MD5 Key',
+            hint='(MD5 Key, 32 hex digits)',
+            validate='validateMD5'),
+        'addReceiver_keySHA': NodeEntry(
+            name='addReceiver_key',
+            widgetClass='wide3',
+            label='SHA Key',
+            hint='(SHA Key, 40 hex digits)',
+            validate='validateSHA'),
+        'addReceiver_auth': NodeEntry(
+            name='addReceiver_auth',
+            selectOptions=(('noauth', 'No Auth'),
+                           ('auth', 'Auth'),
+                           ('authpriv', 'AuthPriv')),
+            label='Security Level',
+            action='setAuthPrivacyText()'),
+        'addReceiver_community': NodeEntry(
+            name='addReceiver_community',
+            widgetClass='hostname',
+            label='Community'),
+        'addReceiver_enable': NodeEntry(
+            name='addReceiver_enable',
+            type='bool',
+            widget='checkbox',
+            label='Enable Receiver',
+            units='Enabled'),
+        'addReceiver_privacyMode': NodeEntry(
+            name='addReceiver_privacyMode',
+            widget='select',
+            selectOptions=(('authPrivacy',''),
+                           ('password', 'Supply a Password'),
+                           ('key', 'Supply a Key')),
+            label='Privacy',
+            value='authPrivacy',
+            action='updateUpdateables("receiverTableForm")'),
+        'addReceiver_privacyProtocol': NodeEntry(
+            name='addReceiver_privacyProtocol',
+            widget='select',
+            selectOptions=('AES','DES'),
+            label='Privacy Protocol'),
+        'addReceiver_privacyPassword': NodeEntry(
+            name='addReceiver_privacyPassword',
+            widget='password',
+            label='Privacy Password',
+            validate=('password', '[8]'),
+            hint='(at least 8 characters)'),
+        'addReceiver_privacyPasswordConfirm': NodeEntry(
+            name='addReceiver_privacyPasswordConfirm',
+            widget='password',
+            label='Privacy Password Confirm',
+            validate=('password', '[8]')),
+        'addReceiver_privacyKeyMD5': NodeEntry(
+            name='addReceiver_privacyKey',
+            widgetClass='wide3',
+            label='Privacy MD5 Key',
+            hint='(MD5 Key, 32 hex digits)',
+            validate='validateMD5'),
+        'addReceiver_privacyKeySHA': NodeEntry(
+            name='addReceiver_privacyKey',
+            widgetClass='wide3',
+            label='Privacy SHA Key',
+            hint='(SHA Key, 40 hex digits)',
+            validate='validateSHA'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+name, pathPrefix, mode = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+receiverTable = ajaxentrytable.AjaxEntryTable('receivers',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=snmpTrapReceivers'),
+    titleText='Trap Receivers',
+    headerSpec=('', 'Receiver', 'Version', 'Port', 'Community / User', 'Enabled'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('host', 'ck_'),
+ AjaxEntryTable.tdAttr('host'),
+ AjaxEntryTable.tdAttr('version'),
+ AjaxEntryTable.tdAttr('port'),
+ AjaxEntryTable.tdAttr('desc'),
+ AjaxEntryTable.tdActiveSelect('enabled', 'Receiver_', 'host', [['enabled', 'Enabled'], ['disabled', 'Disabled']], 'sendReceiverEnabledControl(this)')]""",
+    emptyMessage='No trap receivers.',
+    removeName='removeReceivers',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_',
+    addButtonText='Add a New Trap Receiver',
+    addButtonName='addReceiver')
+
+receiverTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      <tbody>
+        %(host)s
+        %(port)s
+        %(version)s
+        <tr><td colspan="2">&nbsp;</td></tr>
+      </tbody>
+      <tbody id="addReceiverDiv_v1v2">
+        %(community)s
+      </tbody>
+      <tbody id="addReceiverDiv_v3">
+        %(user)s
+	%(mode)s
+	%(protocol)s
+      </tbody>
+      <tbody id="addReceiverDiv_v3Password">
+        %(password)s
+        %(passwordConfirm)s
+      </tbody>
+      <tbody id="addReceiverDiv_v3KeyMD5">
+        %(MD5Key)s
+      </tbody>
+      <tbody id="addReceiverDiv_v3KeySHA">
+        %(SHAKey)s
+      </tbody>
+      <tbody id="addReceiverDiv_v3a">
+        %(securityLevel)s
+      </tbody>
+      <tbody id="addReceiver_v3Privacy">
+        %(privacyProtocol)s
+        %(privacy)s
+      </tbody>
+      <tbody id="addReceiver_v3PrivacyPassword">
+        %(privacyPassword)s
+        %(privacyPasswordConfirm)s
+      </tbody>
+      <tbody id="addReceiver_v3PrivacyMD5Key">
+        %(privacyMD5Key)s
+      </tbody>
+      <tbody id="addReceiver_v3PrivacySHAKey">
+        %(privacySHAKey)s
+      </tbody>
+      <tbody>
+        <tr><td colspan="2">&nbsp;</td></tr>
+        %(enable)s
+      </tbody>
+    </table>
+  </div>
+''' % {'host': dialogEntries['addReceiver_host'].html(self),
+       'port': dialogEntries['addReceiver_dstPort'].html(self),
+       'version': dialogEntries['addReceiver_version'].html(self),
+
+       'community': dialogEntries['addReceiver_community'].html(self),
+
+       'user': dialogEntries['addReceiver_user'].html(self),
+       'mode': dialogEntries['addReceiver_mode'].html(self),
+       'protocol': dialogEntries['addReceiver_protocol'].html(self),
+
+       'password': dialogEntries['addReceiver_password'].html(self),
+       'passwordConfirm': dialogEntries['addReceiver_passwordConfirm'].html(self),
+
+       'MD5Key': dialogEntries['addReceiver_keyMD5'].html(self),
+       'SHAKey': dialogEntries['addReceiver_keySHA'].html(self),
+
+       'securityLevel': dialogEntries['addReceiver_auth'].html(self),
+
+       'privacyProtocol': dialogEntries['addReceiver_privacyProtocol'].html(self),
+       'privacy': dialogEntries['addReceiver_privacyMode'].html(self),
+
+       'privacyPassword': dialogEntries['addReceiver_privacyPassword'].html(self),
+       'privacyPasswordConfirm': dialogEntries['addReceiver_privacyPasswordConfirm'].html(self),
+
+       'privacyMD5Key': dialogEntries['addReceiver_privacyKeyMD5'].html(self),
+
+       'privacySHAKey': dialogEntries['addReceiver_privacyKeySHA'].html(self),
+
+       'enable': dialogEntries['addReceiver_enable'].html(self)}
+
+%>
+
+<% self.beginPagelet() %>
+
+<% if Nodes.present(mgmt, '/pm/monitor/process/snmpd/state') != 'running': { %>
+<p class="warning">
+  Note: Cannot generate an authentication key for a new v3 Trap Receiver
+  because the SNMP subsystem is not running.
+</p>
+<% } %>
+
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>SNMP Server Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enable'].html(self) %>
+      <table>
+        <%= nodeEntries['systemContact'].html(self) %>
+        <%= nodeEntries['systemLocation'].html(self) %>
+        <%= nodeEntries['readonlyName'].html(self) %>
+      </table>
+    </div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="receiverTableForm">
+  <div class="topLevel">
+    <input type="hidden" name="_action_" value="snmpAction" />
+    <%= receiverTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% if not pathPrefix: {  # the Test button doesn't apply to policy pages %>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      class="topLevel">
+  <fieldset>
+    <legend>SNMP Trap Test</legend>
+    <div class="midLevel">
+      <p>
+        Run a trap test.
+      </p>
+      <input type="button" value="Run" onclick="return runTrapTest(this)" />
+    </div>
+  </fieldset>
+</form>
+<% } %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+function validateMD5(val) {
+    if (!val.match(/^[A-Fa-f0-9]{32}$/)) {
+        throw 'MD5 key must be 32 hexadecimal digits.';
+    }
+}
+
+function validateSHA(val) {
+    if (!val.match(/^[A-Fa-f0-9]{40}$/)) {
+        throw 'SHA key must be 40 hexadecimal digits.';
+    }
+}
+
+function setAuthPrivacyText() {
+    var form = $('receiverTableForm');
+    var mode = form.addReceiver_mode.value;
+    if ('password' == mode)
+        form.addReceiver_privacyMode.options[0].text = 'Same as Authentication Password';
+    else if ('key' == mode)
+        form.addReceiver_privacyMode.options[0].text = 'Same as Authentication Key';
+    updateUpdateables("receiverTableForm");
+}
+
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    var form = $('receiverTableForm');
+    var version = form.addReceiver_version.value;
+    var mode = form.addReceiver_mode.value;
+    var protocol = form.addReceiver_protocol.value;
+    var auth = form.addReceiver_auth.value;
+    var privacyMode = form.addReceiver_privacyMode.value;
+    switch (div) {
+        case 'addReceiverDiv_v1v2':
+            return 'trap-v3' != version;
+        case 'addReceiverDiv_v3':
+        case 'addReceiverDiv_v3a':
+            return 'trap-v3' == version;
+        case 'addReceiverDiv_v3Password':
+            return ('trap-v3' == version) && ('password' == mode);
+        case 'addReceiverDiv_v3KeyMD5':
+            return ('trap-v3' == version) && ('key' == mode) && ('MD5' == protocol);
+        case 'addReceiverDiv_v3KeySHA':
+            return ('trap-v3' == version) && ('key' == mode) && ('SHA' == protocol);
+        case 'addReceiver_v3Privacy':
+            return ('trap-v3' == version) && ('authpriv' == auth);
+        case 'addReceiver_v3PrivacyPassword':
+            return ('trap-v3' == version) && ('authpriv' == auth) && ('password' == privacyMode);
+         case 'addReceiver_v3PrivacyMD5Key':
+            return ('trap-v3' == version) && ('authpriv' == auth) && ('key' == privacyMode) && ('MD5' == protocol);
+         case 'addReceiver_v3PrivacySHAKey':
+            return ('trap-v3' == version) && ('authpriv' == auth) && ('key' == privacyMode) && ('SHA' == protocol);
+    }
+}
+addUpdateable('display', displayControl, 'addReceiverDiv_v1v2');
+addUpdateable('display', displayControl, 'addReceiverDiv_v3');
+addUpdateable('display', displayControl, 'addReceiverDiv_v3a');
+addUpdateable('display', displayControl, 'addReceiverDiv_v3Password');
+addUpdateable('display', displayControl, 'addReceiverDiv_v3KeyMD5');
+addUpdateable('display', displayControl, 'addReceiverDiv_v3KeySHA');
+addUpdateable('display', displayControl, 'addReceiver_v3Privacy');
+addUpdateable('display', displayControl, 'addReceiver_v3PrivacyPassword');
+addUpdateable('display', displayControl, 'addReceiver_v3PrivacyMD5Key');
+addUpdateable('display', displayControl, 'addReceiver_v3PrivacySHAKey');
+
+// To note the one that was changed.
+function sendReceiverEnabledControl(opt) {
+   opt.name = "control" + opt.name;
+   opt.form.submit();
+}
+
+
+function runTrapTest(el) {
+    var req = newAjaxRequest('/mgmt/xmldata?p=snmpTrapTest');
+    setReadyStateChangeFunc(req, function() {
+        if (req.responseText) {
+            var rdoc = req.responseXML.documentElement.firstChild;
+            alert(getTextNodeText(rdoc));
+        }
+    });
+    var form = el.form;
+    req.send('');
+    return false;
+}
+
+// -->
+</script>
+

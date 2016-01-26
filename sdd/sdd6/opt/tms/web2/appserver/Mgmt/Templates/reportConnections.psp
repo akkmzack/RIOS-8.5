@@ -1,0 +1,983 @@
+<%
+
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## reportConnections
+## This is the template to display the current connections report.
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, iph:iph, Nodes, FormUtils, RbtUtils, OSUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet, ctypes:*, tms_error:tms_errcheck" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceInpathRules',) %>
+
+<psp:method name="css">
+    return '''
+#connSummaryTable_main { width: 100%; }
+#estSummaryTable_main { width: 100%; }
+'''
+</psp:method>
+
+<psp:file>
+# Generate a list of strings '<input type="radio"...' with
+# name="name", values and text to the right from options [(option, pretty)...],
+# and checked="checked" for the option that matches the currentValue.
+def radioSequence(name, options, currentValue=None):
+    result = []
+    for option in options:
+        optionPretty = option
+        if hasattr(option, '__iter__'):
+            optionPretty = option[1]
+            option = option[0]
+        checked = ""
+        if currentValue is not None and (currentValue == option):
+            checked = ' checked="checked"'
+        result.append((
+            '<input type="radio"%(checked)s name="%(name)s" value="%(option)s" /> ' +
+            '<span class="labelPaddedRight">%(optionPretty)s</span>') % locals())
+    return result
+
+# Construct the mapping of passthrough reason codes to pretty strings.
+librbt = CDLL('librbt.so')
+
+class lcEnumStringMap(Structure):
+    _fields_ = [('enum', c_uint32), ('pretty', c_char_p)]
+
+passReasonOutputFirst = lcEnumStringMap.in_dll(librbt,
+  'lrc_pass_reason_output_map')
+passReasonOutputMap = []
+for codeToStr in pointer(passReasonOutputFirst):
+    if codeToStr.pretty:
+        passReasonOutputMap.append((codeToStr.enum, codeToStr.pretty))
+    else:
+        break
+
+# Construct a Javascript version of the mapping of passthrough reason codes
+# to pretty strings.
+passReasonOutputMapJS = '{%s}' % \
+    ',\n'.join(['"%d": "%s"' % (enum, pretty)
+                for enum, pretty in passReasonOutputMap])
+
+</psp:file>
+
+<psp:method name="nodeEntries">
+    # For the sake of permissions.
+    entries = {
+        'discard': FormUtils.NodeEntry(
+            path='/rbt/sport/connection/state/count/discard',
+            type='uint32'),
+        'deny': FormUtils.NodeEntry(
+            path='/rbt/sport/connection/state/count/deny',
+            type='uint32')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="makeFetchURL" params="lineLimit, filterBy, filterRe, typeFilter, sortMode">
+    return '"/mgmt/reportConnections?' + '&'.join((
+        'lim=%s' % lineLimit,
+        'by=%s' % FormUtils.escapeForJsString(filterBy),
+        're=%s' % FormUtils.escapeForJsString(filterRe),
+        't=%s' % FormUtils.escapeForJsString(typeFilter),
+        'sort=%s' % FormUtils.escapeForJsString(sortMode))) + '"'
+</psp:method>
+
+<psp:method name="makeSortURL" params="sortField, displayText">
+    return '<a href="/mgmt/gui?p=myAccount" class="pseudoLink" title="Sort by %(displayText)s" onclick="connectionHeaderClick(\'%(sortField)s\'); return false;">%(displayText)s</a>' % locals()
+</psp:method>
+
+<%
+
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+# Filter fields
+lineLimit = fields.get('lim', '100')
+filterBy = fields.get('by', 're')
+typeFilter = fields.get('t', 'opt')
+sortMode = fields.get('s', "state")
+filterRe = fields.get('re', "")
+
+scpsEnabled = Nodes.present(
+    mgmt, '/rbt/sport/vegas/config/sat_opt/scps/licensed') == 'true'
+
+# connection type filter options
+connectionTypeOptionSeq = (
+    ('all', 'All'),
+    ('opt', 'All Optimized'),
+    ('est', 'All Established'),
+    ('est-se', 'Single-Ended Established'),
+    ('ho', 'Half-Open'),
+    ('hc', 'Half-Closed'),
+    ('pt', 'All Passthrough'),
+    ('ipt', 'Intentional Passthrough'),
+    ('upt', 'Unintentional Passthrough'),
+    ('fwd', 'Forwarded'))
+
+connectionTypeOptions = FormUtils.selectOptions(connectionTypeOptionSeq,
+                                                currentValue=typeFilter)
+
+filterByOptionSeq = (
+    ('re', 'Regular Expression'),
+    ('app', 'Application Protocol'),
+    ('src', 'Source IP:Port'),
+    ('dst', 'Destination:Port'),
+    ('ipp', 'Either IP:Port'))
+filterByOptions = FormUtils.selectOptions(filterByOptionSeq,
+                                          currentValue=filterBy)
+
+typeFilterPretty = dict(connectionTypeOptionSeq).get(typeFilter, 'opt')
+filterByPretty = dict(filterByOptionSeq).get(filterBy, 're')
+if filterRe: {
+    filterByPretty += ' %s' % FormUtils.escapeForJsString(filterRe)
+} else: {
+    filterByPretty = ' empty ' + filterByPretty
+}
+
+
+# Constrain the lineLimit to be a number in the set defined by limitOptions.
+limitOptions = [20, 100, 250, 1000, 4000]
+lineLimit = int(lineLimit.isdigit() and lineLimit or str(min(limitOptions)))
+lineLimit = max([x for x in limitOptions if x <= lineLimit])
+# Radio HTML looks like this, but with one radio button checked:
+#       <input type="radio" name="lim" value="20" />20
+#       <input type="radio" name="lim" value="100" />100
+#       <input type="radio" name="lim" value="250" />250
+#       <input type="radio" name="lim" value="1000" />1000
+#       <input type="radio" name="lim" value="4000" />4000
+lineLimitRadios = radioSequence('lim',
+    [str(x) for x in limitOptions], currentValue=str(lineLimit))
+lineLimitRadios = '\n'.join(lineLimitRadios)
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# connection summary table:
+connSummaryTable = ajaxentrytable.AjaxEntryTable('connSummary',
+    # NOTE: no url. We fetch the data explicitly.
+    headerSpec=('''<img alt="Established (Optimized)"
+        title="Established (Optimized)"
+        src="/images/icon_optimized_full.gif"
+        width="13" height="13" /> Established''',
+      '''<img alt="Half-Open (Optimized)"
+        title="Half-Open (Optimized)"
+        src="/images/icon_opening.gif"
+        width="13" height="13" /> Half-Open''',
+      '''<img alt="Half-Closed (Optimized)"
+        title="Half-Closed (Optimized)"
+        src="/images/icon_closing.gif"
+        width="13" height="13" /> Half-Closed''',
+      '''<img alt="Passthrough"
+        title="Passthrough"
+        src="/images/icon_passthrough.gif"
+        width="13" height="13" /> Passthrough''',
+      '''<img alt="Forwarded"
+        title="Forwarded"
+        src="/images/icon_forwarded.gif"
+        width="13" height="13" /> Forwarded''',
+      'Total Optimized',
+      'Total',
+      'Discarded',
+      'Denied',
+      'Total Rejected'),
+    # NOTE: AET.JSONText is defined in reportConnections.js.
+    rowSpec='''
+[AjaxEntryTable.td([AjaxEntryTable.JSONText(0)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(1)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(2)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(3)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(4)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(5)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(6)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(7)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(8)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(9)])]''',
+    emptyMessage='No connection summary available',
+    dataType='JSON')
+
+# connections table:
+connectionsTable = ajaxentrytable.AjaxEntryTable('connections',
+    # NOTE: no url. We fetch the data explicitly.
+    headerSpec=('',
+                self.makeSortURL('state', 'Type'),
+                self.makeSortURL('srcip', 'Source') + ':' +
+                self.makeSortURL('srcport', 'Port'),
+                self.makeSortURL('dstip', 'Destination') + ':' +
+                self.makeSortURL('dstport', 'Port'),
+                self.makeSortURL('reduction', 'Reduction'),
+                self.makeSortURL('lan', 'LAN KB') + '/' +
+                self.makeSortURL('wan', 'WAN KB'),
+                self.makeSortURL('since', 'Data Start Time'),
+                self.makeSortURL('app', 'Application'),
+                'Notes'),
+    # NOTE: These AET rowSpec functions are defined in reportConnections.js.
+    rowSpec='''
+[AjaxEntryTable.td([AjaxEntryTable.JSONEdit('View connection details',
+                                            'View connection details')]),
+ // state (ie. optimized, passthrough, etc.)
+ AjaxEntryTable.td([AjaxEntryTable.JSONMappedIcon(6, stateToIcon)]),
+ // srcIp:Port
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(0)], 'connectionIpPort'),
+ // dstIp:Port
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(1)], 'connectionIpPort'),
+ AjaxEntryTable.td([AjaxEntryTable.JSONStringSubstitutionIcon(
+    '/images/icon_percent_bar_%(8)s.gif', '%(3)s%', '%(3)s%', ' (%(3)s%)')]),
+ // byte ratio
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(2)]),
+ // since
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(5)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONText(4)]),
+ AjaxEntryTable.td([AjaxEntryTable.JSONMappedIconSeries(7, notesToIcon)])]''',
+    emptyMessage="No %s connections for %s filter." %
+                  (typeFilterPretty, filterByPretty),
+    dataType='JSON')
+
+# The edit div content is different for passthrough vs. optimized connections.
+connectionsTable.editDivContent='''
+    <div id="connection_optimized">
+      <div id="connectionsView_update_status_optimized" class="actionMessage hidden"></div>
+      <div class="ajaxEntryTable_editDivContent">
+        <div class="ajaxEntryTable_editDivTitle">Connection Information</div>
+        <table>
+          <tbody>
+            <tr>
+              <td class="label-fixed-small">Type:</td>
+              <td id="connectionsView_state_optimized">replace with item[6]
+                <img width="13" height="13" alt="Connection type" src="" /></td>
+            </tr>
+            <tr id="connectionsView_scps_init_row">
+              <td class="label-fixed-small">SCPS Initiate:</td>
+              <td id="connectionsView_scps_init">replace with item[16]</td>
+            </tr>
+            <tr id="connectionsView_scps_term_row">
+              <td class="label-fixed-small">SCPS Terminate:</td>
+              <td id="connectionsView_scps_term">replace with item[17]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Source:</td>
+              <td id="connectionsView_src_optimized">replace with item[0]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Destination:</td>
+              <td id="connectionsView_dst_optimized">replace with item[1]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Application:</td>
+              <td id="connectionsView_app_optimized">replace with item[4]</td>
+            </tr>
+            <tr id="connectionsView_errorContainer">
+              <td class="label-fixed-small">Error:</td>
+              <td><span id="connectionsView_errorMessage">replace with ajax[29]</span></td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Connected Since:</td>
+              <td id="connectionsView_since_optimized">replace with item[5]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Reduction:</td>
+              <td id="connectionsView_reduction">
+                <img width="49" height="7" alt="replace with item[8]" src="" /> (<span>replace with item[3]</span>%)
+              </td>
+            </tr>
+            <tr id="connectionsView_localPort_row">
+              <td id="connectionsView_localPort_field_name" class="label-fixed-small">Inner Local Port:</td>
+              <td id="connectionsView_localPort">replace with ajax[6]</td>
+            </tr>
+            <tr id="connectionsView_peer_row">
+              <td id="connectionsView_peer_field_name" class="label-fixed-small">Peer Appliance:</td>
+              <td id="connectionsView_peer">replace with ajax[7]</td>
+            </tr>
+            <tr id="connectionsView_outerLocal_row">
+              <td id="connectionsView_outerLocal_field_name" class="label-fixed-small">Outer Local:</td>
+              <td id="connectionsView_outerLocal">replace with ajax[8]</td>
+            </tr>
+            <tr id="connectionsView_outerRemote_row">
+              <td id="connectionsView_outerRemote_field_name" class="label-fixed-small">Outer Remote:</td>
+              <td id="connectionsView_outerRemote">replace with ajax[9]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Client-Side:</td>
+              <td id="connectionsView_client_optimized">replace with ajax[11]</td>
+            </tr>
+            <tr id="connectionsView_visibility_optimized_row">
+              <td id="connectionsView_visibility_optimized_field_name" class="label-fixed-small">WAN Visibility Mode:</td>
+              <td id="connectionsView_visibility_optimized">replace with item[9]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Is In-Path:</td>
+              <td id="connectionsView_inpath">replace with ajax[10]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">WAN Congestion Control:</td>
+              <td id="connectionsView_WANcongestion_control">replace with item[28]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ajaxEntryTable_editDivContent">
+        <div class="ajaxEntryTable_editDivTitle">LAN-side Statistics</div>
+        <table>
+          <tbody>
+            <tr>
+              <td class="label-fixed-small">LAN Bytes:</td>
+              <td id="connectionsView_LANbytes">replace with ajax[4]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Packets:</td>
+              <td id="connectionsView_LANpackets">replace with ajax[18]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Retransmitted:</td>
+              <td id="connectionsView_LANretransmitted">replace with ajax[19]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Fast Retransmitted:</td>
+              <td id="connectionsView_LANfast_retransmitted">replace with ajax[20]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Timeouts:</td>
+              <td id="connectionsView_LANtimeouts">replace with ajax[21]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Congestion Window:</td>
+              <td id="connectionsView_LANcongestion">replace with ajax[22]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ajaxEntryTable_editDivContent">
+        <div class="ajaxEntryTable_editDivTitle">WAN-side Statistics</div>
+        <table>
+          <tbody>
+            <tr>
+              <td class="label-fixed-small">WAN Bytes:</td>
+              <td id="connectionsView_WANbytes">replace with ajax[5]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Packets:</td>
+              <td id="connectionsView_WANpackets">replace with ajax[23]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Retransmitted:</td>
+              <td id="connectionsView_WANretransmitted">replace with ajax[24]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Fast Retransmitted:</td>
+              <td id="connectionsView_WANfast_retransmitted">replace with ajax[25]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Timeouts:</td>
+              <td id="connectionsView_WANtimeouts">replace with ajax[26]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Congestion Window:</td>
+              <td id="connectionsView_WANcongestion">replace with ajax[27]</td>
+            </tr>
+            <!-- We need Packets, Retransmitted, Fast Retransmitted,
+                 Timeouts, and Congestion Window -->
+          </tbody>
+        </table>
+      </div>
+      <form method="post" action="''' + self.thisPageletRequest() + '''">
+        <div class="midLevel">
+          <input type="hidden" name="_action_" value="singleOptimizedConnection" />
+          <input type="hidden" name="singleOptimized_localIp" value="replace with ajax[0]" />
+          <input type="hidden" name="singleOptimized_localPort" value="replace with ajax[1]" />
+          <input type="hidden" name="singleOptimized_remoteIp" value="replace with ajax[2]" />
+          <input type="hidden" name="singleOptimized_remotePort" value="replace with ajax[3]" />
+          <input type="submit" name="singleOptimized_keepAlive" value="Send Keep-Alive" />
+          <input type="submit" name="singleOptimized_reset" value="Reset Connection" />
+          <span id="connection_client_mapi_prepop" class="hidden hint">Client side MAPI PREPOP connections cannot be reset or sent keep alive messages.</span>
+        </div>
+      </form>
+    </div>
+    <div id="connection_passthrough">
+      <div id="connectionsView_update_status_passthrough" class="actionMessage hidden"></div>
+      <div class="ajaxEntryTable_editDivContent">
+        <div class="ajaxEntryTable_editDivTitle">Connection Information</div>
+        <table>
+          <tbody>
+            <tr>
+              <td class="label-fixed-small">Type:</td>
+              <td id="connectionsView_state_passthrough">replace with item[6]
+                <img width="13" height="13" alt="Connection type" src="" /></td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Source:</td>
+              <td id="connectionsView_src_passthrough">replace with item[0]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Destination:</td>
+              <td id="connectionsView_dst_passthrough">replace with item[1]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Application:</td>
+              <td id="connectionsView_app_passthrough">replace with item[4]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Connected Since:</td>
+              <td id="connectionsView_since_passthrough">replace with ajax[12]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Client-Side:</td>
+              <td id="connectionsView_client_passthrough">replace with ajax[11]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Pre-Existing:</td>
+              <td id="connectionsView_preexisting_passthrough">replace with ajax[13]</td>
+            </tr>
+            <tr>
+              <td class="label-fixed-small">Reason:</td>
+              <td id="connectionsView_reason_for_passthrough">replace with ajax[14]</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <form method="post" action="''' + self.thisPageletRequest() + '''">
+        <div>
+          <input type="hidden" name="_action_" value="singlePassthroughConnection" />
+          <input type="hidden" name="singlePassthrough_sourceIp" value="replace with ajax[0]" />
+          <input type="hidden" name="singlePassthrough_sourcePort" value="replace with ajax[1]" />
+          <input type="hidden" name="singlePassthrough_destinationIp" value="replace with ajax[2]" />
+          <input type="hidden" name="singlePassthrough_destinationPort" value="replace with ajax[3]" />
+          <input type="submit" name="singlePassthrough_reset" value="Reset Connection" />
+        </div>
+      </form>
+    </div>'''
+%>
+<%= connSummaryTable.html(self, cssClass="topLevel") %>
+
+<%
+# The Established Connection Summary Table is primarily used for
+# displaying SCPS connection related information. SCPS is used
+# primarily in sattelite related deployments and is not commonly used
+# in the majority of most SH configs. Due to the uncommon use of SCPS,
+# the Established Connection Summary Table is only shown when SCPS is
+# enabled.
+#
+# ****NOTE This table is removed for malta*****
+#
+#if scpsEnabled: {
+#
+#    # Established connection summary table:
+#    estSummaryTable = ajaxentrytable.AjaxEntryTable('estSummary',
+#        # NOTE: no url. We fetch the data explicitly.
+#        headerSpec=('RiOS Only',
+#          'SCPS Only',
+#          'RiOS & SCPS',
+#          'TCP Proxy',
+#          'SCPS Initiate',
+#          'SCPS Terminate',
+#          'SCPS Initiate & Terminate',
+#          'Total SCPS'),
+#        # NOTE: AET.JSONText is defined in reportConnections.js.
+#        rowSpec='''
+#    [AjaxEntryTable.td([AjaxEntryTable.JSONText(10)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(11)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(12)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(13)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(14)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(15)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(16)]),
+#     AjaxEntryTable.td([AjaxEntryTable.JSONText(17)])]''',
+#        titleText='Established Connections Summary',
+#        emptyMessage='No established connection summary available',
+#        dataType='JSON')
+#%#>
+#    <#%= estSummaryTable.html(self, cssClass="topLevel") %#>
+#<#% } %#>#
+%>
+
+<form method="get"
+  id="re_filterWidget"
+  class="filterWidget"
+  action="/mgmt/gui">
+  <div class="topLevel">
+    <input type="hidden" name="p" value="reportConnections" />
+    <input type="hidden" name="s" value="<%= cgi.escape(sortMode, True) %>" />
+
+    <div class="nodeEntry">
+      <span class="labelPaddedRight">Display:</span>
+      <%= lineLimitRadios %>
+      <span class="labelPaddedRight">Connections of Type:</span>
+      <select name="t"><%= connectionTypeOptions %></select>
+    </div>
+    <div class="nodeEntry">
+      <span class="labelPaddedRight">Filter by:</span>
+      <select name="by"><%= filterByOptions %></select>
+      <span class="labelPaddedLeft labelPaddedRight"><input type="text" class="wide2 enterKeySubmits" name="re" value="<%= cgi.escape(filterRe, True) %>" /></span>
+      <span class="labelPaddedLeft"><input type="submit" value="Update Display" /></span>
+    </div>
+  </div>
+</form>
+
+<%= connectionsTable.html(self, cssClass="midLevel") %>
+
+<div class="iconKey topLevel">
+<table style="margin-left: auto; margin-right: auto; width: 80%;">
+   <tr>
+     <td style="width: 33%;"><img alt="SDR Enabled" title="SDR Enabled"
+       src="/images/icon_conn_sdr_on.gif"
+       width="13" height="13" />/<img alt="SDR Disabled" title="SDR Disabled"
+       src="/images/icon_conn_sdr_off.gif"
+       width="13" height="13" /> SDR Enabled</td>
+     <td style="width: 33%;"><img alt="Encryption Enabled on WAN"
+       title="Encryption Enabled on WAN"
+       src="/images/icon_conn_encryption_on.gif"
+       width="13" height="13" />/<img alt="Encryption Disabled on WAN"
+       title="Encryption Disabled on WAN"
+       src="/images/icon_conn_encryption_off.gif"
+       width="13" height="13" /> Encryption Enabled on WAN</td>
+     <td style="width: 33%;"><img alt="Protocol Error" title="Protocol Error"
+       src="/images/icon_conn_error_on.gif"
+       width="13" height="13" />/<img alt="No Protocol Error"
+       title="No Protocol Error"
+       src="/images/icon_conn_error_off.gif"
+       width="13" height="13" /> Protocol Error</td>
+   </tr>
+   <tr>
+     <td style="width: 33%;"><img alt="Compression Enabled"
+       title="Compression Enabled"
+       src="/images/icon_conn_compression_on.gif"
+       width="13" height="13" />/<img alt="Compression Disabled"
+       title="Compression Disabled"
+       src="/images/icon_conn_compression_off.gif"
+       width="13" height="13" /> Compression Enabled</td>
+<%
+#     <td style="width: 33%;"><img alt="SCPS Enabled" title="SCPS Enabled"
+#       src="/images/icon_conn_scps_on.gif"
+#       width="13" height="13" />/<img alt="SCPS Disabled" title="SCPS Disabled"
+#       src="/images/icon_conn_scps_off.gif"
+#       width="13" height="13" /> SCPS Enabled</td>
+#    <td style="width: 33%;"><img alt="TCP Proxy Enabled" title="TCP Proxy Enabled"
+#      src="/images/icon_conn_tcp_proxy_on.gif"
+#      width="13" height="13" />/<img alt="TCP Proxy Disabled" title="TCP Proxy Disabled"
+#      src="/images/icon_conn_tcp_proxy_off.gif"
+#      width="13" height="13" /> TCP Proxy Enabled</td>
+%>
+     <td></td>
+     <td></td>
+
+   </tr>
+</table>
+<br />
+<table style="margin-left: auto; margin-right: auto; width: 80%;">
+  <tr>
+    <td style="width: 33%;"><img alt="Established (Optimized)"
+      title="Established (Optimized)"
+      src="/images/icon_optimized_full.gif"
+      width="13" height="13" /> Established&nbsp;(Optimized)</td>
+    <td style="width: 33%;"><img alt="Half-Open (Optimized)"
+      title="Half-Open (Optimized)"
+      src="/images/icon_opening.gif"
+      width="13" height="13" /> Half-Open&nbsp;(Optimized)</td>
+    <td style="width: 33%;"><img alt="Half-Closed (Optimized)"
+      title="Half-Closed (Optimized)"
+      src="/images/icon_closing.gif"
+      width="13" height="13" /> Half-Closed&nbsp;(Optimized)</td>
+  </tr>
+  <tr>
+    <td style="width: 33%;"><img alt="Intentional Passthrough"
+      title="Intentional Passthrough"
+      src="/images/icon_passthrough.gif"
+      width="13" height="13" /> Intentional&nbsp;Passthrough</td>
+    <td style="width: 33%;"><img alt="Unintentional Passthrough"
+      title="Unintentional Passthrough"
+      src="/images/icon_unintentional.gif"
+      width="13" height="13" /> Unintentional&nbsp;Passthrough</td>
+    <td style="width: 33%;"><img alt="Forwarded"
+      title="Forwarded"
+      src="/images/icon_forwarded.gif"
+      width="13" height="13" /> Forwarded</td>
+  </tr>
+</table>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+nonConfigForms.push('re_filterWidget');
+
+passReasonToTextMap = <%= passReasonOutputMapJS %>;
+
+// stateToIcon is indexed by the state attribute in connection[6]
+stateToIcon = [
+    {img: "/images/icon_opening.gif", alt: "Half-open (Optimized)"},
+    {img: "/images/icon_optimized_full.gif", alt: "Established : (Optimized)"},
+    {img: "/images/icon_optimized_full.gif", alt: "Established : (Single-Ended Optimized)"},
+    {img: "/images/icon_closing.gif", alt: "Half-closed (Optimized)"},
+    {img: "/images/icon_passthrough.gif", alt: "Intentional Passthrough"},
+    {img: "/images/icon_unintentional.gif", alt: "Unintentional Passthrough"},
+    {img: "/images/icon_forwarded.gif", alt: "Forwarded"},
+    {img: "/images/icon_x.gif", alt: "Unknown State"}
+];
+notesToIcon = [
+    {img: "",
+         alt: "Pending"},
+    {img: "/images/icon_conn_sdr_on.gif",
+         alt: "SDR is enabled"},
+    {img: "/images/icon_conn_sdr_off.gif",
+         alt: "SDR is disabled"},
+    {img: "/images/icon_conn_compression_on.gif",
+         alt: "LZ Compression is enabled"},
+    {img: "/images/icon_conn_compression_off.gif",
+         alt: "LZ Compression is disabled"},
+    {img: "/images/icon_conn_error_on.gif",
+         alt: "A protocol or transport error occurred"},
+    {img: "/images/icon_conn_error_off.gif",
+         alt: "Transmission was error-free"},
+    {img: "/images/icon_conn_encryption_on.gif",
+         alt: "Encryption Enabled on WAN"},
+    {img: "/images/icon_conn_encryption_off.gif",
+         alt: "Encryption Disabled on WAN"},
+];
+
+// Define icon maps before table javascriptCode,
+// so that rowSpec is fully defined.
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+connectionsTable.editEntry = function(editName) {
+    // Fetch the connection data for editName.
+    var zoomLinkEl = this.editLink;
+    if (!zoomLinkEl) {
+        alert("editEntry: No zoom link element.");
+        return;
+    }
+    var zoomLinkTR = getParentOfType(zoomLinkEl, 'TR');
+    if (!zoomLinkTR) {
+        alert("editEntry: No zoom link TR.");
+        return;
+    }
+    var connection = this.itemList[editName];
+    if (!connection) {
+        alert("editEntry: zoom link TR has no connection reference.");
+        return;
+    }
+    // Done fetching the connection data. Now apply it to the edit div.
+    var editDiv = document.getElementById('connections_each_Table_editDiv');
+    var cstate = parseInt(connection[6], 10);
+    var optimizedDetailDiv = document.getElementById('connection_optimized');
+    var passthroughDetailDiv = document.getElementById('connection_passthrough');
+    // Optimized connections
+    if (cstate < 4) {
+        enableElements(passthroughDetailDiv, 'hide');
+        this.editOptimized(connection, optimizedDetailDiv);
+    }
+    // Passthrough connections
+    else {
+        enableElements(optimizedDetailDiv, 'hide');
+        this.editPassthrough(connection, passthroughDetailDiv);
+    }
+}
+
+connectionsTable.editOptimized = function(connection, div) {
+    // Disable the form until connection specific info is ajaxed in.
+    var formList = div.getElementsByTagName('form');
+    var formEl = formList.item(0);
+    enableElements(div, false);
+
+    var cstate = parseInt(connection[6], 10);
+    var lanwanbytes = connection[2].split('/', 2);
+    var stateMap = stateToIcon[cstate];
+    var stateTitle = stateMap.title || stateMap.alt;
+    var tdEl = document.getElementById('connectionsView_state_optimized');
+    if (tdEl) {
+        var textNode = tdEl.firstChild;
+        if (textNode) {
+            textNode.nodeValue = stateTitle + ' ';
+        }
+        var img = tdEl.lastChild;
+        if (img) {
+            img.setAttribute('alt', stateTitle);
+            img.setAttribute('src', stateMap.img);
+        }
+    }
+
+    setElementText('connectionsView_src_optimized', connection[0]);
+    setElementText('connectionsView_dst_optimized', connection[1]);
+    setElementText('connectionsView_visibility_optimized', connection[9]);
+    setElementText('connectionsView_app_optimized', connection[4]);
+    setElementText('connectionsView_since_optimized', connection[5]);
+    tdEl = document.getElementById('connectionsView_reduction');
+    var elList = tdEl.getElementsByTagName('img');
+    if (elList.length) {
+        elList.item(0).setAttribute('alt', connection[3] + '%');
+        elList.item(0).setAttribute('src', '/images/icon_percent_bar_' +
+                                           connection[8] + '.gif');
+    }
+    elList = tdEl.getElementsByTagName('span');
+    if (elList.length && elList.item(0).firstChild) {
+        elList.item(0).firstChild.nodeValue = connection[3];
+    }
+
+    // Data that requires an additional request from the server
+    // needs to show some sort of status until the response comes back.
+
+    function setAjaxedElementsText(newText) {
+        if (!newText) {
+            newText = 'Fetching...';
+        }
+
+        setElementText('connectionsView_scps_init', newText);
+        setElementText('connectionsView_scps_term', newText);
+
+        setElementText('connectionsView_LANbytes', newText);
+        setElementText('connectionsView_WANbytes', newText);
+        setElementText('connectionsView_localPort', newText);
+        setElementText('connectionsView_peer', newText);
+        setElementText('connectionsView_outerLocal', newText);
+        setElementText('connectionsView_outerRemote', newText);
+        setElementText('connectionsView_client_optimized', newText);
+        setElementText('connectionsView_inpath', newText);
+
+        setElementText('connectionsView_LANpackets', newText);
+        setElementText('connectionsView_LANretransmitted', newText);
+        setElementText('connectionsView_LANfast_retransmitted', newText);
+        setElementText('connectionsView_LANtimeouts', newText);
+        setElementText('connectionsView_LANcongestion', newText);
+        setElementText('connectionsView_WANpackets', newText);
+        setElementText('connectionsView_WANretransmitted', newText);
+        setElementText('connectionsView_WANfast_retransmitted', newText);
+        setElementText('connectionsView_WANtimeouts', newText);
+        setElementText('connectionsView_WANcongestion', newText);
+        setElementText('connectionsView_WANcongestion_control', newText);
+        setElementText('connectionsView_errorMessage', newText);
+        enableElements($('connectionsView_errorContainer'), 'hide');
+
+        document.getElementById('connectionsView_scps_init_row').setAttribute('class', '');
+        document.getElementById('connectionsView_scps_term_row').setAttribute('class', '');
+    }
+    setAjaxedElementsText();
+
+    // Additional data we need from the server-side support method:
+    // - WAN and LAN exact byte counts, not just KB or MB ratios.
+    // - The rest of the LAN and WAN-side statistics.
+    // - Client-Side, peer appliance, local port, outer local & remote
+    //   for Connection Information.
+
+    function entryHandler(request) {
+        var response = eval(request.responseText);
+
+        setFormValue(formEl, 'singleOptimized_localIp', response[0]);
+        setFormValue(formEl, 'singleOptimized_localPort', response[1]);
+        setFormValue(formEl, 'singleOptimized_remoteIp', response[2]);
+        setFormValue(formEl, 'singleOptimized_remotePort', response[3]);
+
+        setElementText('connectionsView_scps_init', response[16]);
+        setElementText('connectionsView_scps_term', response[17]);
+
+        setElementText('connectionsView_LANbytes', response[4]);
+        setElementText('connectionsView_WANbytes', response[5]);
+        setElementText('connectionsView_localPort', response[6]);
+        setElementText('connectionsView_peer', response[7]);
+        setElementText('connectionsView_outerLocal', response[8]);
+        setElementText('connectionsView_outerRemote', response[9]);
+        setElementText('connectionsView_client_optimized', response[11]);
+        setElementText('connectionsView_inpath', response[10]);
+
+        setElementText('connectionsView_LANpackets', response[18]);
+        setElementText('connectionsView_LANretransmitted', response[19]);
+        setElementText('connectionsView_LANfast_retransmitted', response[20]);
+        setElementText('connectionsView_LANtimeouts', response[21]);
+        setElementText('connectionsView_LANcongestion', response[22]);
+        setElementText('connectionsView_WANpackets', response[23]);
+        setElementText('connectionsView_WANretransmitted', response[24]);
+        setElementText('connectionsView_WANfast_retransmitted', response[25]);
+        setElementText('connectionsView_WANtimeouts', response[26]);
+        setElementText('connectionsView_WANcongestion', response[27]);
+        setElementText('connectionsView_WANcongestion_control', response[28]);
+        // If this connection is client-side (response[11])
+        // and application (connection[4]) is 'MAPI-PREPOP'
+        // then neither reset nor keep-alive works on it.
+        var isClientMapiPrepop = ('Yes' == response[11] &&
+                                  'MAPI-PREPOP' == connection[4]);
+        // enable the div first, then override recursion.
+        enableElements(div, !isClientMapiPrepop);
+        enableElements($('connection_client_mapi_prepop'),
+                        isClientMapiPrepop ? true : 'hide');
+        if ('--' == response[29]) {
+            enableElements($('connectionsView_errorContainer'), 'hide');
+        } else {
+            setElementText('connectionsView_errorMessage', response[29]);
+            enableElements($('connectionsView_errorContainer'), true);
+        }
+
+        // Handle Displaying SCPS Initiate & Terminate Info
+        if ((response[15] == 'Yes') || ((response[15] == 'No') &&
+            ((response[16] != 'OFF') || (response[17] != 'OFF')))) {
+            // Show SCPS Initiate & Terminate Status
+            setElementClass($('connectionsView_scps_init_row'), '');
+            setElementClass($('connectionsView_scps_term_row'), '');
+         } else {
+            // Hide SCPS Initiate & Terminate Status
+            setElementClass($('connectionsView_scps_init_row'), 'hidden');
+            setElementClass($('connectionsView_scps_term_row'), 'hidden');
+         }
+
+        // If Single Ended Splice
+        if (response[15] == 'Yes') {
+            // Hide Peer & Visibility Status Rows
+            setElementClass($('connectionsView_peer_row'), 'hidden');
+            setElementClass($('connectionsView_visibility_optimized_row'), 'hidden');
+
+            // Show WAN/LAN Local & Remote Stats
+            setElementText('connectionsView_localPort_field_name', 'WAN Local Port:');
+            setElementText('connectionsView_outerLocal_field_name', 'LAN Local:');
+            setElementText('connectionsView_outerRemote_field_name', 'LAN Remote:');
+        } else {
+            // Show Peer & Visibility Status Rows
+            setElementClass($('connectionsView_peer_row'), '');
+            setElementClass($('connectionsView_visibility_optimized_row'), '');
+
+            // Show Inner/Outer Local & Remote Stats
+            setElementText('connectionsView_localPort_field_name', 'Inner Local Port:');
+            setElementText('connectionsView_outerLocal_field_name', 'Outer Local:');
+            setElementText('connectionsView_outerRemote_field_name', 'Outer Remote:');
+        }
+    }
+
+    var request = newAjaxRequest('/mgmt/reportConnections');
+    setReadyStateChangeFunc(request, function() {
+        if ((200 <= request.status && request.status < 300) ||  0 == request.status) {
+            enableElements('connectionsView_update_status_optimized', 'hide');
+            entryHandler(request);
+        } else {
+            setElementText('connectionsView_update_status_optimized', request.statusText);
+            enableElements('connectionsView_update_status_optimized', true);
+            setAjaxedElementsText('Unavailable');
+        }
+    });
+    request.send('s=' + connection[6] + '&' +
+                 'src=' + connection[0] + '&' +
+                 'dst=' + connection[1]);
+}
+
+connectionsTable.editPassthrough = function(connection, div) {
+    var formList = div.getElementsByTagName('form');
+    var formEl = formList.item(0);
+
+    // Some fields must be filled in by a new ajax request.
+    var cstate = parseInt(connection[6], 10);
+    var lanwanbytes = connection[2].split('/', 2);
+    var stateMap = stateToIcon[cstate];
+    var stateTitle = stateMap.title || stateMap.alt;
+    var source = connection[0].split(':', 2);
+    var destination = connection[1].split(':', 2);
+    var tdEl = document.getElementById('connectionsView_state_passthrough');
+    if (tdEl) {
+        var textNode = tdEl.firstChild;
+        if (textNode) {
+            textNode.nodeValue = stateTitle + ' ';
+        }
+        var img = tdEl.lastChild;
+        if (img) {
+            img.setAttribute('alt', stateTitle);
+            img.setAttribute('src', stateMap.img);
+        }
+    }
+    setElementText('connectionsView_src_passthrough', connection[0]);
+    setElementText('connectionsView_dst_passthrough', connection[1]);
+    setElementText('connectionsView_app_passthrough', connection[4]);
+    setElementText('connectionsView_reduction_passthrough', connection[3]);
+
+    setFormValue(formEl, 'singlePassthrough_sourceIp', source[0]);
+    setFormValue(formEl, 'singlePassthrough_sourcePort', source[1]);
+    setFormValue(formEl, 'singlePassthrough_destinationIp', destination[0]);
+    setFormValue(formEl, 'singlePassthrough_destinationPort', destination[1]);
+
+    enableElements(div, true);
+
+    // Data that requires an additional request from the server
+    // needs to show some sort of status until the response comes back.
+
+    function setAjaxedElementsText(newText) {
+        if (!newText) {
+            newText = 'Fetching...';
+        }
+        setElementText('connectionsView_client_passthrough', newText);
+        setElementText('connectionsView_since_passthrough', newText);
+        setElementText('connectionsView_preexisting_passthrough', newText);
+        setElementText('connectionsView_reason_for_passthrough', newText);
+    }
+    setAjaxedElementsText();
+
+    function entryHandler(request) {
+        var response = eval(request.responseText);
+
+        setElementText('connectionsView_client_passthrough', response[11]);
+        setElementText('connectionsView_since_passthrough', response[12]);
+        setElementText('connectionsView_preexisting_passthrough', response[13]);
+        setElementText('connectionsView_reason_for_passthrough',
+            passReasonToTextMap[response[14]]);
+    }
+    var request = newAjaxRequest('/mgmt/reportConnections');
+    setReadyStateChangeFunc(request, function() {
+        if ((200 <= request.status && request.status < 300)
+        ||  0 == request.status) {
+            enableElements('connectionsView_update_status_passthrough', 'hide');
+            entryHandler(request);
+        } else {
+            setElementText('connectionsView_update_status_passthrough', request.statusText);
+    enableElements('connectionsView_update_status_passthrough', true);
+            setAjaxedElementsText('Unavailable');
+        }
+    });
+    request.send('s=' + connection[6] + '&' +
+                 'src=' + connection[0] + '&' +
+                 'dst=' + connection[1]);
+}
+
+/*
+ * Ajax in connection summary and data JSON.
+ */
+function connectionSendRequest(url) {
+    var request = newAjaxRequest(url);
+    setReadyStateChangeFunc(request, function() {
+        if ((200 <= request.status && request.status < 300) || (0 == request.status)) {
+            var responseList = request.responseText.split('\n');
+            for (var i = 0; i < responseList.length; i++) {
+                responseList[i] = eval(responseList[i]);
+            }
+            // Enclose the summary list in a list, to conform with
+            // JSON itemList expectations.
+            connSummaryTable.setJSONData([responseList[0]]);
+<% if scpsEnabled: { %>
+            //estSummaryTable.setJSONData([responseList[0]]); // removed this table for malta
+<% } %>
+            // An empty list is fine;
+            // A list containing and empty list is not.
+            connectionsTable.setJSONData(
+                1 < responseList.length ? responseList.slice(1) : []);
+        }
+    });
+    request.send('');
+}
+
+connectionSendRequest(
+    <%= self.makeFetchURL(lineLimit, filterBy, filterRe, typeFilter, sortMode) %>);
+
+/**
+ * Utilities
+ */
+
+// For sorting by clicking on a column header.
+connectionHeaderClick = function(sortField) {
+    var filterForm = document.getElementById('re_filterWidget');
+    setFormValue(filterForm, 's', sortField);
+    submitPrep(filterForm.s);
+    filterForm.submit();
+}
+
+// ]]>
+</script>

@@ -1,0 +1,526 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: virtualized-generic
+#
+# Functions:
+#    VOID get_platform()
+#
+#       Returns CMC, for instance.
+#
+#    VOID init_hardware_phase0(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+#           "true" if a boot flash disk is supported
+#           "false" if a boot flash disk is not supported
+#           "error" if an error occurred determining flash support.
+#
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+HWTOOL=/opt/hal/bin/hwtool.py
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+MODPROBE=/sbin/modprobe
+RMMOD=/sbin/rmmod
+HAL_CACHE=/var/opt/tms/hal_cache
+CACHED_MOBO=${HAL_CACHE}/motherboard
+
+HP_CTL_BIN=/opt/hal/bin/hp_ctl
+
+HAL_LOG_WARN="/usr/bin/logger -p user.warn -t hal"
+HAL_LOG_ERROR="/usr/bin/logger -p user.err -t hal"
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#------------------------------------------------------------------------------
+
+init_hardware_phase0()
+{
+    /sbin/insmod /opt/rbt/lib/modules/i2c-qs.ko
+
+    # if the HP service is not chkconfig'd then 
+    # chkconfig it so it will be started.
+    /sbin/chkconfig --list espd >> /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        /sbin/chkconfig --add espd
+    fi
+
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    MOBO=`get_motherboard`
+    PLATFORM=`get_platform`
+
+    #use intel coretemp mod
+    ${MODPROBE} coretemp > /dev/null 2>&1
+    ${MODPROBE} button > /dev/null 2>&1 
+
+    case "${MOBO}" in
+        "CMP-00HP1")
+            if [ "${PLATFORM}" = "SH" ]; then
+                # initialize watchdog
+                rm -f /dev/watchdog
+            fi
+
+            ${MODPROBE} i8xx_tco2 > /dev/null 2>&1
+            mknod /dev/watchdog c 10 130
+            ;;
+        *)
+            echo "Unknown motherboard."
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "/var/opt/rbt/no-temperature-logging" ]; then
+        /opt/hal/bin/sensors/start-temperature-logging.sh
+    fi
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    ${RMMOD} coretemp > /dev/null 2>&1
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    ROOTDIR="/sys/devices/platform"
+    TEMPERATURE=0
+    FILE=
+    for f in `ls ${ROOTDIR}`; do
+        if [ -d ${ROOTDIR}/${f} ]; then
+            if [ -f ${ROOTDIR}/${f}/name ]; then
+                NAME_OUT=`cat ${ROOTDIR}/${f}/name`
+                if [ "$NAME_OUT" == "coretemp" ]; then
+                    FILE=${ROOTDIR}/$f/temp1_input
+                    NEW_TEMP=`cat ${FILE}`
+                    if [ ${TEMPERATURE} -lt ${NEW_TEMP} ]; then
+                        TEMPERATURE=$NEW_TEMP
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    if [ "x${FILE}" = "x" ]; then
+        ${HAL_LOG_WARN} "HAL - unknown motherboard returned from hwtool in get_temperature"
+        echo "Unknown motherboard."
+        exit 1
+    fi
+
+    if [ "x${TEMPERATURE}" = "x" -o ${TEMPERATURE} -lt 0 -o ${TEMPERATURE} -ge 127000 ]; then
+        ${HAL_LOG_WARN} "HAL - invalid temperature value read (${TEMPERATURE}) in get_temperature"
+        echo "Bad temperature read."
+        exit 1
+    fi
+
+    echo `expr ${TEMPERATURE} "/" 1000`
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "true"
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+
+get_ecc_ram_support()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+
+uses_fan_status()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_flash_disk
+#------------------------------------------------------------------------------
+
+uses_flash_disk()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+
+uses_disk_led()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_power
+#------------------------------------------------------------------------------
+
+uses_disk_power()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_system_led_color
+#------------------------------------------------------------------------------
+
+get_system_led_color()
+{
+    return 1
+}
+
+#------------------------------------------------------------------------------
+# get_hardware_pass_support
+# This hal function is called by mgmt do check whether
+# the machine supports hardware passthrough for UDP.
+#------------------------------------------------------------------------------
+get_hardware_pass_support()
+{
+        echo "false"
+}
+
+#------------------------------------------------------------------------------
+# set_zsp_name
+# Set the zone service policy name used by RiOS
+#------------------------------------------------------------------------------
+set_zsp_name()
+{
+    ${HP_CTL_BIN} set_zsp_name "$1"
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "Unable to configure ZSP name [$1]"
+        exit 1
+    fi
+
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# set_ntp_enabled
+# Set the zone service policy name used by RiOS
+#------------------------------------------------------------------------------
+set_ntp_enabled()
+{
+    STATE="$1"
+
+    if [ "x${STATE}" = "xtrue" ]; then
+        ${HP_CTL_BIN} ntp_enabled
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Cannot update the ntp state in rvbd_espd_server"
+            exit 1
+        fi
+    elif [ "x${STATE}" = "xfalse" ]; then
+        ${HP_CTL_BIN} ntp_disabled
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Cannot update the ntp state in rvbd_espd_server"
+            exit 1
+        fi
+    else
+        ${HAL_LOG_WARN} "Unable NTP state [${STATE}]"
+        exit 1
+    fi
+
+    return 0
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+. /opt/hal/bin/hal_common.sh
+
+case "${FUNCTION}" in
+
+    "init_hardware_phase0")
+        init_hardware_phase0
+        ;;
+
+    "init_hardware_phase1")
+        init_hardware_phase1
+        ;;
+
+    "init_hardware_phase2")
+        init_hardware_phase2
+        ;;
+
+    "deinit_hardware_phase1")
+        deinit_hardware_phase1
+        ;;
+
+    "deinit_hardware_phase2")
+        deinit_hardware_phase2
+        ;;
+
+    "get_num_raid_arrays")
+        get_num_raid_arrays
+        ;;
+
+    "get_temperature")
+        get_temperature
+        ;;
+
+    "uses_power_supplies")
+        uses_power_supplies
+        ;;
+
+    "uses_fan_status")
+        uses_fan_status
+        ;;
+
+    "uses_flash_disk")
+        uses_flash_disk
+        ;;
+
+    "uses_hardware_wdt")
+        uses_hardware_wdt
+        ;;
+	
+    "uses_disk_led")
+        uses_disk_led
+        ;;
+
+    "uses_disk_power")
+        uses_disk_power
+        ;;
+
+    "get_ecc_ram_support")
+        get_ecc_ram_support
+        ;;
+    "get_running_arch")
+        get_running_arch
+        ;;
+
+    "get_if_type")
+        get_if_type ${ARGS}
+        ;;
+
+    "get_if_status")
+        get_if_status ${ARGS}
+        ;;
+
+    "get_if_wdt_status")
+        get_generic_if_wdt_status ${ARGS}
+        ;;
+    "set_if_wdt_block")
+        set_if_wdt_block ${ARGS}
+        ;;
+
+    "set_if_wdt_bypass")
+        set_if_wdt_bypass ${ARGS}
+        ;;
+
+    "set_if_bypass")
+        set_if_bypass ${ARGS}
+        ;;
+    "set_if_normal")
+        set_if_normal ${ARGS}
+        ;;
+    "set_if_block")
+        set_if_block ${ARGS}
+        ;;
+    "get_if_block_cap")
+        get_if_block_cap ${ARGS}
+        ;;
+
+    "get_hw_if_status")
+        get_hw_if_status ${ARGS}
+        ;;
+
+    "get_er_if_status")
+        get_er_if_status ${ARGS}
+        ;;
+
+    "get_er_if_wdt_status")
+        get_er_if_wdt_status ${ARGS}
+        ;;
+
+    "get_hw_if_wdt_status")
+        get_hw_if_wdt_status ${ARGS}
+        ;;
+    "get_motherboard")
+        get_motherboard
+        ;;
+	
+    "get_model")
+        get_model
+        ;;
+
+    "get_system_led_color")
+        get_system_led_color
+        ;;
+    "get_avail_speed_duplex")
+        get_avail_speed_duplex ${ARGS}
+        ;;
+    "get_default_speed_duplex")
+        get_default_speed_duplex ${ARGS}
+        ;;
+    "set_speed_duplex")
+        set_speed_duplex ${ARGS}
+        ;;
+    "check_update_bios")
+       check_update_bios ${ARGS}
+       ;;
+    "get_hardware_pass_support")
+        get_hardware_pass_support
+        ;;
+    "set_zsp_name")
+        set_zsp_name ${ARGS}
+        ;;
+    "set_ntp_enabled")
+        set_ntp_enabled ${ARGS}
+        ;;
+    "get_default_ipmi_wdt_timeout")
+        get_default_ipmi_wdt_timeout
+        ;;
+    "get_platform")
+       get_platform
+       ;;
+    *)
+        echo "Not implemented."
+        exit 128
+        ;;
+
+esac

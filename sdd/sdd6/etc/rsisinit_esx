@@ -1,0 +1,80 @@
+# This file is sourced by /etc/rc.d/init.d/rsisinit, and is the
+# implementation of RSIS for private ESX clouds. It generates
+# the metadata for the license client.
+
+# Variables
+DATE=/bin/date
+UNAME=/bin/uname
+
+RETVAL=0
+
+# Pull in variables including the version and architecture
+. /etc/build_version.sh
+
+do_customer_metadata()
+{
+    rm -f $1
+
+    echo "type=ESX" >>$1
+
+    echo -n "hostname=" >>$1
+    $MDDBREQ -v /config/db/`cat /config/db/active` query get - \
+             /system/hostname >>$1
+
+    # We can't use /system/version/architecture here because mgmtd may not be
+    # running yet, and that's a monitor node, not a config node.
+    echo "arch=${BUILD_TARGET_ARCH_LC}" >>$1
+
+    # Do boot time, but it may not exist if start() was never called.
+    if [ -f "$BOOTTIME_FILE" ]; then
+        echo -n "boot_time=" >>$1
+        cat "$BOOTTIME_FILE" >>$1
+    fi
+
+    # We can't use /system/version/simple work because mgmtd may not be running yet.
+    echo "version=${BUILD_PROD_RELEASE}" >>$1
+
+    # Send back the unique identifier for the VM.
+    echo -n "uuid=" >>$1
+    /usr/sbin/dmidecode 2> /dev/null | grep "UUID" | cut -d ' ' -f 2  >>$1
+
+    # Interface IP addresses.
+    primary_ip=`/sbin/ifconfig primary | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
+    if [ -n "$primary_ip" ]; then
+        echo "primary_ip=${primary_ip}" >>$1
+    fi
+    aux_ip=`/sbin/ifconfig aux | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
+    if [ -n "$aux_ip" ]; then
+        echo "aux_ip=${aux_ip}" >>$1
+    fi
+
+    # Memory and CPU count.
+    memory=`cat /proc/meminfo | grep MemTotal | awk '{ print $2 }'`
+    echo "memory=${memory}" >>$1
+    cpu_count=`cat /proc/cpuinfo | grep "^processor" | wc -l`
+    echo "cpu_count=${cpu_count}" >>$1
+}
+
+start() {
+	echo -n $"Executing $prog: "
+
+        mkdir -p $CLOUD_OUTPUT_DIR
+
+        # start() is synonomous with boot time.
+        $DATE +%s >$BOOTTIME_FILE
+
+        do_customer_metadata $METADATA_FILE
+
+	return 0
+}
+
+stop() {
+	echo -n $"Stopping $prog: "
+	return $RETVAL
+}
+
+metadata() {
+    echo -n $"Generating metadata using $prog: "
+    do_customer_metadata $METADATA_FILE
+    return 0
+}

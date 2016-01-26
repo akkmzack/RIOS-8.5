@@ -1,0 +1,144 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## This is the template for the Peers report page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, iph:iph, FormUtils, Nodes, ajaxentrytable:AjaxEntryTable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+table#optionsTable {
+  width: 800px;
+}
+td#displayCount {
+  text-align: right;
+  vertical-align: bottom;
+  padding-bottom: 6px;
+}
+div#peerTable_main {
+  width: 800px;
+  margin-top: 6px;
+}
+td.incompatible {
+  color: #D00000;
+  font-weight: bold;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'Peers': FormUtils.NodeEntry(
+            path='/rbt/sport/peer',
+            type='string',
+            label='Peers For RBA')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'filterDisconnected': FormUtils.NodeEntry(
+            name='filterDisconnected',
+            widget='checkboxLeft',
+            label='Hide Disconnected Peers',
+            action='filterPeers()'),
+        'filterSHM': FormUtils.NodeEntry(
+            name='filterSHM',
+            widget='checkboxLeft',
+            label='Hide Steelhead Mobile Peers',
+            action='filterPeers()')
+    }
+</psp:method>
+
+<%
+dialogEntries = self.dialogEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<%
+peerTable = AjaxEntryTable('peer', '/mgmt/xmldata?p=peers')
+peerTable.headerSpec = ('',
+                        ('Name',       '', "sortAttrib('hostname')"),
+                        ('IP Address', '', "sortAttrib('ipAddr')"),
+                        ('Model',      '', "sortAttrib('model')"),
+                        ('Version',    '', "sortAttrib('version')"),
+                        'Licenses')
+peerTable.rowSpec = """[
+    AjaxEntryTable.tdIcon('icon', 'iconAltText', ""),
+    AjaxEntryTable.tdLink('hostLink', 'hostname', 'Click to open console in a new window.', true),
+    AjaxEntryTable.tdLink('ipLink', 'ipAddr', 'Click to open console in a new window.', true),
+    AjaxEntryTable.tdAttr('model'),
+    AjaxEntryTable.td([AjaxEntryTable.attrText('version')], 'versionClass'),
+    AjaxEntryTable.tdAttr('licenses')
+]"""
+peerTable.emptyMessage = 'No peers.'
+%>
+
+<table id="optionsTable">
+  <tr>
+    <td>
+      <%= dialogEntries['filterDisconnected'].html(self) %>
+      <%= dialogEntries['filterSHM'].html(self) %>
+    </td>
+    <td id="displayCount">
+      <strong><span id="totalDisplayed"></span></strong> Peer<span id="plural"></span> Displayed
+    </td>
+  </tr>
+</table>
+
+<%= peerTable.html(self, cssClass="topLevel") %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+peerTable.postPopulateTableHook = function() {
+    updateTotalDisplayed();
+}
+
+function filterPeers() {
+    var hideDisconnectedPeers = Y.Node.getDOMNode(Y.one('input[name="filterDisconnected"]')).checked;
+    var hideSHMPeers = Y.Node.getDOMNode(Y.one('input[name="filterSHM"]')).checked;
+
+    for (var i = 0; i < peerTable.rowList.length; ++i) {
+        var trEl = peerTable.rowList[i][0];
+        var xmlData = peerTable.rowList[i][1];
+        var peerIsDisconnected = xmlData.getAttribute('connected') != 'true';
+        var peerIsSHM = xmlData.getAttribute('model') == 'Steelhead Mobile';
+
+        if (hideDisconnectedPeers && peerIsDisconnected) {
+            trEl.style.display = 'none';
+        } else if (hideSHMPeers && peerIsSHM) {
+            trEl.style.display = 'none';
+        } else {
+            trEl.style.display = 'table-row';
+        }
+    }
+
+    peerTable.colorRows();
+    updateTotalDisplayed();
+}
+
+function updateTotalDisplayed() {
+    var totalDisplayed = 0;
+    for (var i = 0; i < peerTable.rowList.length; ++i) {
+        var trEl = peerTable.rowList[i][0];
+        if (trEl.style.display != 'none') {
+            totalDisplayed++;
+        }
+    }
+    setElementText('totalDisplayed', totalDisplayed);
+    setElementText('plural', (totalDisplayed == 1 ? '' : 's'));
+}
+
+// ]]>
+</script>

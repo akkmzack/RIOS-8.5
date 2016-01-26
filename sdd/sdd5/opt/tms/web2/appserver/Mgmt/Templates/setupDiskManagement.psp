@@ -1,0 +1,380 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## This page lets the user switch between the various applicable disk layouts.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, PagePresentation:Pagelet, GraphUtils, RVBDUtils, vsp" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupBranchStorage', 'setupVSP') %>
+
+<psp:method name="css">
+    return '''
+div#issues {
+    width: 614px;
+    padding: 12px;
+    border: 1px solid #D98282;
+    background-color: #FCE0E0;
+}
+div#issues p {
+    margin-top: 0
+}
+
+div#issues ul {
+    margin-left: 12px
+}
+table#diskLayoutOptionsTable th {
+    padding: 6px 6px;
+    border: 1px solid #BBBBBB;
+    text-align: center;
+    font-weight: bold
+}
+table#diskLayoutOptionsTable th.empty {
+    border: none
+}
+table#diskLayoutOptionsTable th.mode {
+    min-width: 275px
+}
+table#diskLayoutOptionsTable th.volume {
+    width: 100px
+}
+table#diskLayoutOptionsTable td {
+    padding: 6px 6px;
+    border: 1px solid #BBBBBB
+}
+table#diskLayoutOptionsTable td.numeric {
+    padding-right: 12px;
+    text-align: right;
+}
+tr.current {
+    font-weight: bold;
+}
+tr.selected {
+    background-color: #DDDDDD
+}
+img#warningImage {
+  left: 30px;
+  position: absolute;
+  top: 30px;
+}
+p.warningMessage {
+  margin-left: 65px;
+  margin-top: 0;
+}
+
+div#applyDiv {
+  margin-top: 10px;
+}
+
+div#applyDiv img {
+  margin-left: 5px;
+  vertical-align: middle;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    mgmt = self.session().value('mgmt')
+
+    # This file is under rbt_sh/, which means it gets included on all Steelheads
+    # (EX and non-EX alike).  The RBM permissioning code looks at all PSP
+    # files, even if they're not in the menu, which means this nodeEntries()
+    # function will be executed on a regular Steelhead, which doesn't have
+    # the /hw/hal/resman/* nodes that an EX has.  To prevent that query (which
+    # will pollute the logs with errors), we perform an EX check here.
+    if not RVBDUtils.isEX():
+        return {}
+
+    # Create a dictionary where the keys are disk layout names and the values
+    # are empty strings.
+    layoutsDetails = Nodes.getTreeifiedSubtree(mgmt, '/hw/hal/resman/get/available/layouts')
+    layoutNames = {}
+    for i in layoutsDetails.keys():
+        layoutNames[layoutsDetails[i]['layout']] = ''
+
+    # The current layout is not included with the list of available layouts.
+    currentLayout = Nodes.present(mgmt, '/hw/hal/resman/get/current/layout')
+    layoutNames[currentLayout] = ''
+
+    return {
+        'diskLayout': NodeEntry(
+            widget='radio',
+            path='/hw/hal/resman/get/current/layout',
+            name='diskLayout',
+            label=layoutNames),
+
+        # For RBM
+        'availableLayouts': NodeEntry(
+            path='/hw/hal/resman/get/available/layouts'),
+        'diskConfigStatus': NodeEntry(
+            path='/rbt/disk_config/state/validate_status'),
+        'veLicensed': NodeEntry(
+            path='/rbt/eva/main/config/licensed'),
+        'changeDiskLayoutAction': NodeEntry(
+            path='/rbt/disk_config/action/switch_config',
+            type='action'),
+        'safeToRestartCode': FormUtils.NodeEntry(
+            path='/rbt/vsp/state/esxi/runtime/safe_to_restart_code')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+
+self.beginPagelet()
+
+# Check if the system is ready to make a disk layout change.  The value of this
+# node is either 'Ready' or a pipe-delimited list of issues.
+nodeMissingMessage = 'The management system is not functioning properly.'
+diskLayoutStatus = Nodes.present(mgmt, '/rbt/disk_config/state/validate_status', nodeMissingMessage)
+if diskLayoutStatus != 'Ready': {
+    issues = diskLayoutStatus.strip('|').split('|')
+    listHtml = ''
+    for issue in issues: {
+        listHtml += '<li>%s</li>' % issue.strip()
+    }
+%>
+
+<div id="issues">
+  <p>
+    The following conditions must be addressed before a disk layout change
+    can be made:
+  </p>
+  <ul>
+    <%= listHtml %>
+  </ul>
+</div>
+
+<%
+}
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="diskManagementForm" class="liveStatusAttachPoint">
+  <fieldset id="diskLayout">
+    <legend>Disk Layout</legend>
+    <div class="midLevel">
+      <table id="diskLayoutOptionsTable">
+        <thead>
+          <tr>
+            <th class="empty" />
+            <th class="mode">Mode</th>
+            <th class="volume">VSP Volume</th>
+            <th class="volume">Granite Volume</th>
+          </tr>
+        </thead>
+        <tbody>
+
+<%
+layoutsDetails = Nodes.getTreeifiedSubtree(mgmt, '/hw/hal/resman/get/available/layouts')
+veLicensed = Nodes.present(mgmt, '/rbt/eva/main/config/licensed') == 'true'
+
+# The current layout is not included with the list of available layouts.
+currentLayoutDetails = Nodes.getTreeifiedSubtree(mgmt, '/hw/hal/resman/get/current')
+if currentLayoutDetails: {
+    layoutsDetails['0'] = currentLayoutDetails
+}
+
+# Build the table rows dynamically from the disk layout nodes.  The rows are
+# sorted by description.
+for i in sorted(layoutsDetails.keys(), key=(lambda x: layoutsDetails[x]['description'])): {
+    name = layoutsDetails[i]['layout']
+    desc = layoutsDetails[i]['description']
+
+    # Search through the volumes for the VSP and VE volumes.
+    vspSizeMB = 0
+    veSizeMB = 0
+    for j in layoutsDetails[i]['volumes'].keys(): {
+        volumeDetails = layoutsDetails[i]['volumes'][j]
+        if volumeDetails['name'] == 'vsp3': {
+            vspSizeMB = int(volumeDetails['usable_size_mb'])
+        } elif volumeDetails['name'] == 've': {
+            veSizeMB = int(volumeDetails['size_mb'])
+        }
+    }
+
+    vspSizePretty = GraphUtils.scale(vspSizeMB * 1024 * 1024,
+                                     GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+    veSizePretty = GraphUtils.scale(veSizeMB * 1024 * 1024,
+                                    GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+
+    # Check if this disk layout is available.
+    if i == '0': {
+        # The current layout is always shown as available (JavaScript prevents
+        # the user from trying to switch to it).
+        available = True
+    } elif layoutsDetails[i]['upgradeable'] != 'true': {
+        # We don't have any more info in this case, so just display a generic
+        # but possibly helpful message.
+        available = False
+        reason = 'This layout is incompatible with the current hardware ' \
+                 'configuration.'
+    } elif layoutsDetails[i]['featurekey'] == 'GRANITE' and not veLicensed: {
+        # The VE license also governs which disk layouts are available.
+        available = False
+        reason = 'This layout requires a Granite license.'
+    } else: {
+        available = True
+    }
+
+    radioButton = nodeEntries['diskLayout']
+
+    # The current layout is always stored in element '0' in the dictionary.
+    cssClasses = (i == '0') and ['current', 'selected'] or []
+
+    # Disable the layout (but still display it) if it's not available.
+    if available: {
+        radioButton.disabled = False
+        labelTag = '<label>'
+    } else: {
+        cssClasses.append('dimmed')
+        radioButton.disabled = True
+        labelTag = '<label class="popupTitle" title="%s">' % reason
+    }
+%>
+
+          <tr class="<%= ' '.join(cssClasses) %>">
+            <td><%= radioButton.html(self, value=name, format='inline') %></td>
+            <td><%= labelTag %><%= desc %></label></td>
+            <td class="numeric"><%= vspSizePretty %></td>
+            <td class="numeric"><%= veSizePretty %></td>
+          </tr>
+
+<%
+}
+%>
+
+        </tbody>
+      </table>
+      <input type="hidden" name="_action_" value="setupDiskManagement" />
+      <div id="applyDiv">
+        <%= FormUtils.renderButton(self, {'id': 'applyButton',
+                                         'name': 'changeDiskLayout',
+                                         'value': 'Apply',
+                                         'filter': 'disableApplyButton',
+                                         'onclick': 'applyClicked(); return false;'}) %>
+        <img src="/images/icon_test_running.gif" alt="" style="display: none" />
+      </div>
+    </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var liveStatus = null;
+var confirmationDialog = null;
+
+Y.on('domready', function() {
+    Y.all('input[name="diskLayout"]').on('click', onRadioChange);
+
+    // If the 'issues' div exists, it means the system isn't ready yet for a
+    // disk layout change, so disable the entire form.
+    if (Y.one('div#issues') != null) {
+        enableElements('diskManagementForm', false);
+    } else {
+        // Tie each label in the table to the radio button in the same row.
+        Y.all('table#diskLayoutOptionsTable tbody tr').each(function(node) {
+            node.one('label').setAttribute('for', node.one('input').get('id'));
+        });
+    }
+});
+
+function applyClicked() {
+    // Make it clear that something important is happening.
+    Y.one('div#applyDiv img').setStyle('display', 'inline');
+    Y.all('div#applyDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', 'disabled');
+    });
+
+    dialogContent = '<img src="/images/exclamation_warning_large.png" alt="" id="warningImage"> \
+                     <p class="warningMessage"> \
+                       This will result in the loss of all VSP and Granite \
+                       data. The appliance will be rebooted immediately and \
+                       the disk layout will be changed during the boot \
+                       process. \
+                     </p> \
+                     <p class="warningMessage"> \
+                       The ESXi datastore will be destroyed during this \
+                       process and will have to be created manually after the \
+                       appliance reboots. \
+                     </p>';
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkIfSafeToShutDownESXi',
+        successFn: function(response) {
+
+            if (response != '') {
+                dialogContent += '<p class="warningMessage">' + response + '</p>';
+            }
+
+            dialogContent += '<p class="warningMessage">Are you sure you wish to continue?</p>';
+
+            confirmationDialog = new RBT.Dialog({
+                alignNode: $('applyButton'),
+                affinity: RBT.Dialog.AFFINITY_SW,
+                content: dialogContent,
+                buttons: [
+                    {
+                        label: 'Change Layout and Reboot',
+                        clickFn: function() { changeLayout(); }
+                    },
+                    {
+                        label: 'Cancel',
+                        clickFn: cancelAction
+                    }
+                ]
+            }).render();
+        }
+    });
+}
+
+// Reset everything back to the way it was before the user clicked a button.
+function cancelAction() {
+    confirmationDialog.hide();
+    Y.one('div#applyDiv img').setStyle('display', 'none');
+    Y.all('div#applyDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', '');
+    });
+}
+
+// This function is invoked by the validator framework when the page is loaded.
+// Since we know that the current disk layout will also be the selected disk
+// layout, disable the Apply button.
+function disableApplyButton() {
+    return false;
+}
+
+// Enable/disable the form button and perform full-row selection in the table
+// based on what radio button is selected.
+function onRadioChange(e) {
+    var currentDiskLayout = '<%= Nodes.present(mgmt, '/hw/hal/resman/get/current/layout') %>';
+    var newDiskLayout = e.currentTarget.get('value');
+    enableElements('applyButton', (currentDiskLayout != newDiskLayout));
+
+    // Highlight the row of the selected radio button.
+    Y.all('input[name="diskLayout"]').get('parentNode').get('parentNode').removeClass('selected');
+    e.currentTarget.get('parentNode').get('parentNode').addClass('selected');
+}
+
+function changeLayout() {
+    confirmationDialog.hide();
+    Y.one('div#applyDiv img').setStyle('display', 'none');
+    Y.all('div#applyDiv input').each(function(node, i, nodeList) {
+        node.set('disabled', '');
+    });
+    setTimeout('showLiveStatus()', 0);
+    $('diskManagementForm').submit();
+}
+
+function showLiveStatus() {
+    liveStatus.show('Changing disk layout.');
+}
+
+// ]]>
+</script>

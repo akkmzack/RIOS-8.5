@@ -1,0 +1,282 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsNFS.psp
+## This is the template for the NFS protocol settings.
+##
+## Settings
+##
+## Override Table
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportNFSStatistics',) %>
+
+<psp:method name="css">
+    return '''
+#volConfigTable_main,
+#serverVolumeTable_main {
+  width: 480px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enable': FormUtils.NodeEntry(
+            path='/rbt/sport/nfs/config/enabled',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable NFS Optimization',
+            enableDiv='enableSubsection'),
+        'enablev2v4': FormUtils.NodeEntry(
+            path='/rbt/sport/nfs/config/v2_v4_alarm_enabled',
+            type='bool',
+            widget='checkbox',
+            label='NFS v2 and v4 Alarms',
+            units='Enable'),
+        'serverPolicy': FormUtils.NodeEntry(
+            path='/rbt/sport/nfs/config/server/default/policy',
+            selectOptions=(('', 'Custom'), 'Global Read-Write', 'Read Only'),
+            label='Default Server Policy'),
+        'volumePolicy': FormUtils.NodeEntry(
+            path='/rbt/sport/nfs/config/server/default/volume/default/policy',
+            selectOptions=(('', 'Custom'), 'Global Read-Write', 'Read Only'),
+            label='Default Volume Policy'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addServer_name': FormUtils.NodeEntry(
+            name='addNFSServer_name',
+            widgetClass='ipaddr',
+            label='Server Name',
+            validate='nonempty'),
+        'addServer_ips': FormUtils.NodeEntry(
+            name='addNFSServer_ips',
+            widgetClass='wide3',
+            label='Server IP Addresses',
+            hint='(comma separated)',
+            validate='ipv4addr_list'),
+        'editServer_ips': FormUtils.NodeEntry(
+            name='editNFSServer_ips',
+            widgetClass='wide3',
+            label='Server IP Addresses',
+            hint='(comma separated)',
+            validate='ipv4addr_list'),
+        'editServer_policy': FormUtils.NodeEntry(
+            name='editNFSServer_policy',
+            selectOptions=(('', 'Custom'), 'Global Read-Write', 'Read Only'),
+            label='Server Policy'),
+        'editServer_defaultVolumeEnabled': FormUtils.NodeEntry(
+            name='editNFSServer_defaultVolumeEnabled',
+            widget='checkbox',
+            label='Default Volume',
+            units='Enable'),
+        'editServer_defaultVolumePolicy': FormUtils.NodeEntry(
+            name='editNFSServer_defaultVolumePolicy',
+            selectOptions=(('', 'Custom'), 'Global Read-Write', 'Read Only'),
+            label='Default Volume Policy'),
+        'addVolume_fsid': FormUtils.NodeEntry(
+            name='addVolume_fsid',
+            label='FSID',
+            validate='uint64'),
+        'addVolume_policy': FormUtils.NodeEntry(
+            name='addVolume_policy',
+            selectOptions=(('', 'Custom'), 'Global Read-Write', 'Read Only'),
+            value='Global Read-Write',
+            label='Policy'),
+        'addVolume_rootsquash': FormUtils.NodeEntry(
+            name='addVolume_rootsquash',
+            widget='checkbox',
+            value='true',
+            label='Root Squash',
+            units='Enable'),
+        'addVolume_permissionCache': FormUtils.NodeEntry(
+            name='addVolume_permissionCache',
+            widget='checkbox',
+            label='Permission Cache',
+            units='Enable'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+policyOptions = (('', 'Custom'), 'Global Read-Write', 'Read Only')
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enable'].html(self) %>
+      <div id="enableSubsection" class="indent">
+        <table>
+          <%= nodeEntries['enablev2v4'].html(self) %>
+          <%= nodeEntries['serverPolicy'].html(self) %>
+          <%= nodeEntries['volumePolicy'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+serverVolumeTable = ajaxentrytable.AjaxEntryTable('serverVolume',
+    titleText='Available Volumes',
+    headerSpec=('Available Volume FSID', 'Path'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('fsid'),
+ AjaxEntryTable.tdAttr('path')]""",
+    emptyMessage='No volumes found.')
+
+volConfigTable = ajaxentrytable.AjaxEntryTable('volConfig',
+    titleText='Volumes',
+    headerSpec=('', 'Volume FSID', 'Policy', 'Root Squash', 'Permission Cache'),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('fsid', 'selectedVolume_'),
+ AjaxEntryTable.tdAttr('fsid'),
+ AjaxEntryTable.tdAttr('policy'),
+ AjaxEntryTable.tdAttr('root-squash-enabled'),
+ AjaxEntryTable.tdAttr('permission-cache')]""",
+    emptyMessage='No current configured volumes.',
+    addButtonText='Add a New Volume Configuration',
+    addButtonName='addVolume',
+    removeName='removeVolumes',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedVolume_')
+
+volConfigTable.addDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addVolume_fsid'].html(self),
+       dialogEntries['addVolume_policy'].html(self),
+       dialogEntries['addVolume_rootsquash'].html(self),
+       dialogEntries['addVolume_permissionCache'].html(self))
+
+
+# The main server table
+nfsServerTable = ajaxentrytable.AjaxEntryTable('nfsServer',
+    titleText='Override NFS Protocol Settings',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=nfsServers'),
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'), 'NFS Server', 'IP Address'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedNFSServer_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('ips')]""",
+    emptyMessage='No current NFS servers.',
+    addButtonText='Add a New NFS Server',
+    addButtonName='addNFSServer',
+    removeName='removeNFSServers',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedNFSServer_',
+    editDivTitle='Edit NFS Server <b><span id="editNFSServer_name"></span></b>',
+    editButtonName='editNFSServer')
+
+nfsServerTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addServer_name'].html(self),
+       dialogEntries['addServer_ips'].html(self))
+
+
+nfsServerTable.editDivContent = '''
+  <input type="hidden" name="editNFSServerName" value="" />
+  <div class="midLevel">
+    <table width="100%%">
+      %s
+      %s
+      %s
+      %s
+    </table>
+  </div>
+
+  <div style="width: 500px">
+    %s
+  </div>
+  <div style="width: 500px">
+    %s
+  </div>
+''' % (dialogEntries['editServer_ips'].html(self),
+       dialogEntries['editServer_policy'].html(self),
+       dialogEntries['editServer_defaultVolumePolicy'].html(self),
+       dialogEntries['editServer_defaultVolumeEnabled'].html(self),
+       serverVolumeTable.html(self, 'topLevel'),
+       volConfigTable.html(self, 'topLevel'))
+
+%>
+
+<form method="post" id="nfsServerTableForm"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsNFS" />
+    <%= nfsServerTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<%
+nfsAlarmTriggered = Nodes.present(mgmt, '/stats/state/alarm/nfs_v2_v4/node/\\/rbt\\/sport\\/nfs\\/state\\/v2_v4_notify/rising/error', 'false')
+if nfsAlarmTriggered == 'true': {
+%>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="nfsAlarmForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="resetNFSAlarm" />
+    <legend>Reset NFS Alarm</legend>
+    <div style="text-align: right;">
+      <input type="submit" name="resetNFSAlarm" value="Reset" />
+    </div>
+  </fieldset>
+</form>
+<%
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+nfsServerTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('editNFSServer_name', editName)
+    var form = document.getElementById('nfsServerTableForm');
+    form.editNFSServerName.value = editName;
+    form.editNFSServer_policy.value = el.getAttribute('policy')
+    form.editNFSServer_defaultVolumePolicy.value = el.getAttribute('default-volume-policy');
+    form.editNFSServer_defaultVolumeEnabled.checked = 'true' == el.getAttribute('default-volume-enabled');
+    var ips = el.getAttribute('ips');
+    form.editNFSServer_ips.value = ips;
+    var url = '<%= self.urlForCmcEdit("/mgmt/xmldata?p=nfsServerAvailableVolumes") %>';
+    serverVolumeTable.sendRequest(url + '&address=' + (ips.split(',')[0]));
+    volConfigTable.setXMLData(el.getElementsByTagName('volumes').item(0));
+    volConfigTable.update();
+}
+// -->
+</script>
+

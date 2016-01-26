@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: ntp                                                     -->
+<!--   Module Root: /ntp                                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_ntp.c                      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/ntp/config/myconfig</name>                               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="ntp">
+  <config>
+     <name>/ntp/server/address/*/key</name>
+     <description>MD5 key ID to authenticate this server with, 0 = no key set</description>
+     <value type="uint32" min="0" max="65534">0</value>
+  </config>
+
+  <config>
+     <name>/ntp/peer/address/*/key</name>
+     <description>MD5 key ID to authenticate this peer with, 0 = no key set</description>
+     <value type="uint32" min="0" max="65534">0</value>
+  </config>
+
+  <config-wildcard>
+     <name>/ntp/trustedkeys/*</name>
+     <description>List of trusted MD5 key IDs</description>
+     <value type="uint32" min="1" max="65534" />
+  </config-wildcard>
+
+  <config-wildcard>
+     <name>/ntp/keys/*</name>
+     <description>MD5 key ID</description>
+     <value type="uint32" min="1" max="65534" />
+  </config-wildcard>
+
+  <config>
+     <name>/ntp/keys/*/secret</name>
+     <description>Encrypted value of the secret for this key ID</description>
+     <value type="string">""</value>
+     <commit-descriptor>
+       <check-func>md_ntp_secret_commit_check</check-func>
+     </commit-descriptor>
+  </config>
+
+  <state-wildcard>
+     <name>/ntp/state/remote/*</name>
+     <description>List of servers and peers currently connected to</description>
+     <value type="string"/>
+     <get-func>md_ntp_remote_get</get-func>
+     <iterate-func>md_ntp_remote_iterate</iterate-func>
+  </state-wildcard>
+
+  <state>
+     <name>/ntp/state/remote/*/active_sync</name>
+     <description>Actively receiving time info from this server/peer</description>
+     <value type="bool"/>
+     <get-func>md_ntp_remote_attrib_get</get-func>
+  </state>
+
+  <state>
+     <name>/ntp/state/remote/*/refid</name>
+     <description>Server/peer's reference clock</description>
+     <value type="string"/>
+     <get-func>md_ntp_remote_attrib_get</get-func>
+  </state>
+
+  <state>
+     <name>/ntp/state/remote/*/conf</name>
+     <description>Was this server/peer configured or learned? TRUE = configured FALSE = learned</description>
+     <value type="bool"/>
+     <get-func>md_ntp_remote_attrib_get</get-func>
+  </state>
+
+  <state>
+     <name>/ntp/state/remote/*/key</name>
+     <description>Server/peer's MD5 Key ID</description>
+     <value type="uint32"/>
+     <get-func>md_ntp_remote_attrib_get</get-func>
+  </state>
+
+  <state>
+     <name>/ntp/state/remote/*/auth</name>
+     <description>Authentication status of server/peer.  If Key ID = 0, this should be ignored</description>
+     <value type="bool"/>
+     <get-func>md_ntp_remote_attrib_get</get-func>
+  </state>
+
+  <config>
+     <name>/ntp/keys/*/type</name>
+     <description>MD5 or SHA1 Key Type</description>
+     <value type="string">MD5</value>
+     <value-choices>
+       <choice>MD5</choice>
+       <choice>SHA1</choice>
+     </value-choices>
+  </config>
+
+  <action>
+     <name>/ntp/action/add_key</name>
+     <description>Action to add a new keyid, type and secret</description>
+     <action-func>md_ntp_add_key</action-func>
+     <parameter type="uint32">key</parameter>
+     <parameter type="string">type</parameter>
+     <parameter type="string">secret</parameter>
+  </action>
+
+  <action>
+     <name>/ntp/action/encrypt_secret</name>
+     <description>Encrypt a secret and return the value, no changes made to configuration.  Used by CMC</description>
+     <action-func>md_ntp_encrypt_secret</action-func>
+     <parameter type="string">secret</parameter>
+  </action>
+  
+</node-list>

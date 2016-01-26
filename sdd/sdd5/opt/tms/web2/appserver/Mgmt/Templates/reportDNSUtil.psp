@@ -1,0 +1,74 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupCachingDNS',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/dns_value']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+
+    // The chart div should take up as much height as possible.
+    Y.one('#timeSeriesChart').setStyle(
+        'height', RBT.Reports2.availableHeight() + 'px');
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Cache Entries';
+    highstockOptions.yAxis[1].labels.enabled = true;
+    highstockOptions.yAxis[1].title.text = 'Memory Use (B)';
+    highstockOptions.series = [
+        {
+            name: 'Cache Entries',
+            color: RBT.Reports2.BLUE
+        },
+        {
+            name: 'Memory Use',
+            color: RBT.Reports2.GREEN,
+            yAxis: 1
+        }
+    ];
+
+    // Make the navigator shadow the first series (Cache Entries).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+
+    // Create the chart!
+    var chart = new
+        RBT.Reports2.TimeSeriesChartWithControls({
+            parent: '#timeSeriesChart',
+            dataUrl: '<%= Reports2.constructDataUrl("reportDnsUtil") %>',
+            dataFormatterFn: dataFormatter,
+            options: highstockOptions,
+            boundariesChangedFn: setReports2ChartWindow,
+            initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+            alwaysOnSeries: ['Cache Entries', 'Memory Use']
+        });
+});
+
+function dataFormatter(value, seriesName) {
+    if (seriesName === 'Cache Entries') {
+        return RBT.Reports2.addThousandsSeparators(Math.round(value)) + ' entries';
+    } else {
+        return RBT.Reports2.scale(value, 1, 'si', 'B');
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

@@ -1,0 +1,305 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## setupHostInterfacesData.psp
+## This is the template for the host In-Path interface settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, NicFactory, RVBDUtils, ajaxentrytable, PagePresentation:Pagelet, cgi" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('reportInterfaces') %>
+
+<psp:method name="css">
+    return '''
+
+.ajaxEntryTable_editDivContent fieldset  {
+  width: 800px;
+  margin: 0;
+}
+
+#dataInterfaceTable_main {
+  width: 850px;
+}
+
+#routeTable_main {
+  width: 750px;
+}
+
+#routeIPv6Table_main {
+  width: 750px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning
+    return  [
+                '/rbt/route/config/*',
+                '/net/routes/config/ipv6/prefix/::\\/0/nh/1/gw',
+                '/net/routes/config/ipv4/prefix/0.0.0.0\\/0/nh/1/gw',
+                '/net/interface/config/eth0_0/type/ethernet/speed',
+                '/net/interface/config/eth0_0/type/ethernet/duplex',
+                '/net/interface/config/eth0_0/mtu',
+                '/net/interface/config/eth0_0/enable',
+                '/net/interface/config/eth0_0/addr/ipv4/dhcp',
+                '/net/interface/config/eth0_0/addr/ipv4/static/1/ip',
+                '/net/interface/config/eth0_0/addr/ipv6/static/*',
+                '/rbt/route/config/eth0_0/ipv4/prefix/0.0.0.0\\/0/gw',
+            ]
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'routingTable': NodeEntry(
+            path='/rbt/route/config/*')}
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'dest':FormUtils.NodeEntry(
+            name='addRoute_dest',
+            type='ipv4addr_opt',
+            label='Destination IP Address'),
+        'netmask': FormUtils.NodeEntry(
+            name='addRoute_netmask',
+            validate='subnetMask',
+            label='Subnet Mask'),
+        'gateway':FormUtils.NodeEntry(
+            name='addRoute_gateway',
+            type='ipv4addr',
+            label='Gateway IP Address'),
+        'destIPv6': NodeEntry(
+            name='destIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr',
+            label='Destination IPv6 Address'),
+        'prefixIPv6': NodeEntry(
+            name='prefixIPv6',
+            widgetClass='ipv6prefix',
+            validate='ipv6prefix',
+            label='IPv6 Prefix'),
+        'gatewayIPv6': NodeEntry(
+            name='gatewayIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr',
+            label='Gateway IPv6 Address')}
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+eth = cgi.escape(fields.get('eth', 'eth0_0'))
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+routeTable = ajaxentrytable.AjaxEntryTable('route',
+    titleText='IPv4 Routing Table',
+    headerSpec=('', 'Destination', 'Subnet Mask', 'Gateway', 'Status'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRoute_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('mask'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('status')]""",
+    emptyMessage='No Routes.',
+    addButtonText='Add a New Route',
+    addButtonName='addRoute',
+    removeName='removeRoutes',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedRoute_')
+
+routeTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['dest'].html(self),
+       dialogEntries['netmask'].html(self),
+       dialogEntries['gateway'].html(self))
+
+
+routeTableIPv6HTML = ''
+if RVBDUtils.ipv6Supported(req.fields): {
+    addRouteIPv6 = 'addRouteIPv6_'
+
+    routeTableIPv6 = ajaxentrytable.AjaxEntryTable('routeIPv6',
+        titleText='IPv6 Routing Table',
+        emptyMessage='No Routes.',
+        addButtonText='Add a New Route',
+        addButtonName='addRouteIPv6',
+        removeName='removeRoutesIPv6',
+        removeButtonText='Remove Selected',
+        removePrefix='selectedRouteIPv6_')
+
+    routeTableIPv6.headerSpec = ('', 'Destination', 'Prefix', 'Gateway', 'Status')
+    routeTableIPv6.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRouteIPv6_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('prefix'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('status')]"""
+
+    routeTableIPv6.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['destIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['prefixIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['gatewayIPv6'].html(self, namePrefix=addRouteIPv6))
+
+    routeTableIPv6HTML = routeTableIPv6.html(self, cssClass="topLevel")
+}
+
+headerSpec = ('Interface', 'Data Interface')
+rowSpec = """
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('dataInterface')]"""
+
+dataInterfaceTable = ajaxentrytable.AjaxEntryTable('dataInterface',
+    titleText='Data Interface Settings',
+    url='/mgmt/xmldata?p=dataInterfaces',
+    headerSpec=headerSpec,
+    rowSpec=rowSpec,
+    emptyMessage='No data interfaces.',
+    editButtonName='editDataInterface',
+    editDivOffset=0)
+
+params = {}
+if not Nodes.isVM(): {
+    params.update({
+        'speed': {'name': 'data_speed',
+                  'selectOptions': (),
+                  'hint': 'Negotiated: <span id="negoSpeed">&nbsp;</span>'},
+        'duplex': {'name': 'data_duplex',
+                   'selectOptions': (),
+                   'hint': 'Negotiated: <span id="negoDuplex">&nbsp;</span>'},
+    })
+}
+if RVBDUtils.ipv6Supported(fields): {
+    params.update({
+        'ipv6Enable': {'name': 'data_manIPv6Enable',
+                       'label': 'Enable IPv6'},
+        'ipv6Prefix': {'name': 'data_manIPv6Prefix'},
+        'ipv6Address': {'name': 'data_manIPv6Addr'},
+        'ipv6Gateway': {'name': 'data_manIPv6Gateway'},
+    })
+}
+dataInterfaces = NicFactory.NicFactory(mgmt, eth,
+        ipv4Address={'name': 'data_manIp'},
+        ipv4Subnet={'name': 'data_manSubnet'},
+        ipv4Gateway={'name': 'data_gateway',
+                    'label': 'Data Interface Gateway IP'},
+        mtu={'name': 'data_mtu'},
+        **params)
+
+# Note: IE and Firefox compatibility, "&nbsp;" required to ensure a space in the text.
+dataInterfaceTable.editDivContent = '''
+  <input type="hidden" name="_action_" value="setupHostDataInterfaces" />
+  <input type="hidden" name="data_name" value="" />
+  <fieldset>
+    <legend>Interface</legend>
+    %s
+    %s
+    %s
+  </fieldset>
+''' % (dataInterfaces.html(self),
+       routeTable.html(self, cssClass="topLevel"),
+       routeTableIPv6HTML)
+
+self.beginPagelet()
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="dataInterfaceTableForm">
+  <%= dataInterfaceTable.html(self, 'topLevel') %>
+</form>
+
+
+<%
+# Automatically open the data interface that the "eth" GET variable refers to.
+openEth = req.fields().get('eth')
+if openEth: {
+    self.addPageletJavascript('dataInterfaceTable.editAfterLoad = ["name", "%s"];' % FormUtils.escapeForJsString(openEth))
+}
+
+self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+dataInterfaceTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('routeTableLabel_dataName', editName);
+    setElementText('dataInterfaceLegendLabel_dataName', editName);
+
+    var form = $('dataInterfaceTableForm');
+
+    setFormValue(form, 'data_name', editName);
+    setFormValue(form, 'data_manIp', el.getAttribute('manIp'));
+    setFormValue(form, 'data_manSubnet', el.getAttribute('manSubnet'));
+    if (el.getAttribute('gateway') == '0.0.0.0') {
+        setFormValue(form, 'data_gateway', '');
+    }
+    else {
+        setFormValue(form, 'data_gateway', el.getAttribute('gateway'));
+    }
+    setFormValue(form, 'data_mtu', el.getAttribute('mtu'));
+
+    // IPv6 settings
+    setFormValue(form, 'data_manIPv6Enable', el.getAttribute('ipv6Enable'));
+    setFormValue(form, 'data_manIPv6Addr', el.getAttribute('ipv6Addr'));
+    setFormValue(form, 'data_manIPv6Prefix', el.getAttribute('ipv6Prefix'));
+    setFormValue(form, 'data_manIPv6Gateway', el.getAttribute('ipv6Gateway'));
+
+    var url = '/mgmt/xmldata?p=inpathRoutes';
+    routeTable.sendRequest(url + '&iface=' + encodeURIComponent(editName));
+
+<% if RVBDUtils.ipv6Supported(req.fields): { %>
+    routeIPv6Table.sendRequest(url + 'IPv6&iface=' + encodeURIComponent(editName));
+<% } %>
+
+    // get the data speed/duplex options from the xmldata
+    var speedOptions  = [];
+    var duplexOptions = [];
+    for (var i = 0; i < el.childNodes.length; i++) {
+        var optsGroupEl = el.childNodes[i]
+        for (var j = 0; j < optsGroupEl.childNodes.length; j++) {
+            var optValues = [optsGroupEl.childNodes[j].getAttribute('value'),
+                             optsGroupEl.childNodes[j].getAttribute('name')];
+            if (optsGroupEl.tagName == 'speedOptions') {
+                speedOptions.push(optValues);
+            } else if (optsGroupEl.tagName == 'duplexOptions') {
+                duplexOptions.push(optValues);
+            }
+        }
+    }
+
+    // populate the speed/duplex select lists; they don't
+    // exist on VSHs and populateSelect() doesn't like that
+    if (form.elements.data_speed) {
+        populateSelect(form, 'data_speed',  speedOptions);
+        populateSelect(form, 'data_duplex', duplexOptions);
+    }
+
+    setFormValue(form, 'data_speed',  el.getAttribute('speed'));
+    setFormValue(form, 'data_duplex', el.getAttribute('duplex'));
+
+    // populate hints
+    setElementText('negoSpeed',  el.getAttribute('negoSpeed'));
+    setElementText('negoDuplex', el.getAttribute('negoDuplex'));
+};
+
+// ]]>
+</script>

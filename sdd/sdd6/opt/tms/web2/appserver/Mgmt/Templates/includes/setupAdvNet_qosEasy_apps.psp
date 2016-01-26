@@ -1,0 +1,316 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+#
+# This is an included template for the QoS page.
+# @author Andrew Hao
+%>
+
+<%@page imports="RVBDUtils" %>
+
+<psp:method name="css_apps">
+    return '''
+/* Default AET width is too small for this table when HTTP pathname is long. */
+#appTable_main {
+    width: 100%
+}
+/* Displace a block over and down visually. */
+.indentedSection {
+    margin-left: 2em;
+    margin-top: 1em;
+}
+/* Headers are bold, with some padding, and are bottom-aligned. */
+.addEditHeader {
+    font-weight: bold;
+    padding-bottom: 0.5em;
+    vertical-align: bottom;
+    height: 3em;
+}
+/* Shows a small integer */
+.orderHeader,
+.orderCell {
+    width: 30px;
+    text-align: right;
+}
+/* Separate the L4 and L7 protocol params */
+.level4ParamsSeparator {
+    height: 12px;
+}
+'''
+</psp:method>
+
+<psp:method name="dialogEntries_apps">
+    return {
+        'name': FormUtils.NodeEntry(
+            name='name',
+            validate='qosName',
+            label='Name'),
+        'order': FormUtils.NodeEntry(
+            name='order',
+            label='Position',
+            widget='select'),
+        'desc': FormUtils.NodeEntry(
+            name='desc',
+            widgetClass='wide',
+            label='Description'),
+        'srcSubnet':FormUtils.NodeEntry(
+            name='srcsubnet',
+            type='ipv4prefix',
+            value='0.0.0.0/0',
+            widgetClass='ipaddrm',
+            label='Local Subnet'),
+        'srcPort':FormUtils.NodeEntry(
+            name='srcport',
+            value='all',
+            widgetClass='port',
+            label='Port',
+            validate='portPortLabel'),
+        'dstSubnet':FormUtils.NodeEntry(
+            name='dstsubnet',
+            type='ipv4prefix',
+            value='0.0.0.0/0',
+            widgetClass='ipaddrm',
+            label='Remote Subnet'),
+        'dstPort':FormUtils.NodeEntry(
+            name='dstport',
+            value='all',
+            widgetClass='port',
+            label='Port',
+            validate='portPortLabel'),
+        'trProtocol':FormUtils.NodeEntry(
+            name='protocol',
+            selectOptions=qos.PROTOCOL_OPTIONS,
+            label='Protocol'),
+        'traffic':FormUtils.NodeEntry(
+            name='traffic',
+            selectOptions=(('all', 'All'),
+                           ('optimized', 'Optimized'),
+                           ('passthrough', 'Passthrough')),
+            label='Traffic Type'),
+        'dscp':FormUtils.NodeEntry(
+            name='dscp',
+            label='DSCP',
+            widget='select',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([('-1', 'All')], False),
+            value='-1'),
+        'vlan':FormUtils.NodeEntry(
+            name='vlan',
+            label='VLAN Tag ID',
+            widgetClass='small',
+            value='all',
+            validate='vlan'),
+        'cls': FormUtils.NodeEntry(
+            name='cls',
+            label='Service Class',
+            widget='select',
+            selectOptions=qos.DEFAULT_CLASSES),
+        'out_dscp': FormUtils.NodeEntry(
+            name='out_dscp',
+            label='DSCP',
+            widget='select',
+            tooltip='Required if QoS Marking is enabled.',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([
+                                        ('254', 'Inherit from Service Class'),
+                                        ('255', 'Reflect')
+                                        ], True)),
+        'l7protocol': FormUtils.NodeEntry(
+            name='l7protocol',
+            label='Application',
+            widget='select',
+            widgetClass='l7protocol',
+            action='updateApplicationField(this);'),
+        'l7protocol_http_domain_name': FormUtils.NodeEntry(
+            name='http_domain_name',
+            label='Domain Name',
+            hint='Use * to indicate wildcards.',
+            inputOptional=True,
+            validate='validateMaxWildcard'),
+        'l7protocol_http_relative_path': FormUtils.NodeEntry(
+            name='http_relative_path',
+            label='Relative Path',
+            tooltip='The part of the URL following the domain name.',
+            hint='Use * to indicate wildcards.',
+            inputOptional=True,
+            validate='validateMaxWildcard'),
+        }
+</psp:method>
+
+<%
+addPrefix = 'addApp_'
+editPrefix = 'editApp_'
+dialogEntries_apps = self.dialogEntries_apps()
+self.retargetCmcPolicyNodes()
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+layer7ProtoNames = qos.layer7ProtocolNames(mgmt, fields, flip=True).items()
+layer7ProtoNames.sort(lambda a, b: FormUtils.alphanumericCompare(a[0], b[0]))
+dialogEntries_apps['l7protocol'].selectOptions = [('', '--')] + layer7ProtoNames
+
+# Compile the options for the Add Application's order select list.
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+allGlobalAppIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/global_app')
+allGlobalAppIndices.sort(key=int)
+
+# We add a space to the end of the "End" option, see bug 70309 for details
+dialogEntries_apps['order'].selectOptions = \
+    [('1', 'Start')] + allGlobalAppIndices + \
+    [(str(len(allGlobalAppIndices) + 1), str(len(allGlobalAppIndices) + 1))] + \
+    [(str(len(allGlobalAppIndices) + 1) + ' ', 'End')]
+dialogEntries_apps['order'].value = str(len(allGlobalAppIndices) + 1) + ' '
+
+appTable = ajaxentrytable.AjaxEntryTable('app',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=easyQoS_apps'),
+    headerSpec=('',
+                ('Order', 'orderHeader', 'sortAttrib("order")'),
+                ('Name', '', 'sortAttrib("name")'),
+                ('Service Class', '', 'sortAttrib("cls_sort")'),
+                ('DSCP', 'dscpHeader', 'sortDscpCell("out_dscp_pretty")'),
+                ('Application', '', 'sortAttrib("l7protocol_pretty")')),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('order', 'selectedApp_', 'moveToSelectedApp_'),
+ AjaxEntryTable.tdAttr('order', 'orderCell'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('cls'),
+ AjaxEntryTable.tdAttr('out_dscp_pretty', 'dscpCell'),
+ AjaxEntryTable.tdLines('l7protocol_pretty')]
+""",
+    rowDescSpec=('desc', 'AjaxEntryTable.cellFillDesc("desc")', 1),
+    emptyMessage='No applications defined.',
+    addButtonName='addApplication',
+    addButtonText='Add Application',
+    editButtonName='editApplication',
+    moveName='moveApplication',
+    moveButtonText='Move Application',
+    moveButtonCancelText='Cancel Move',
+    removeName='removeApplication',
+    removeButtonText='Remove Application',
+    postProcessing='AjaxEntryTable.postReorderCheckbox("order", "moveToSelectedApp_")')
+
+def appsGenerateAddOrEditDiv(isAdd): {
+    pfx = isAdd and addPrefix or editPrefix
+    hiddenInputs = not isAdd and '''<input type="hidden" name="editApp_order" /> <input type="hidden" name="editApp_name" />''' or ''
+    return """
+<div class="midLevel">
+  <table>
+    %(name)s
+    %(desc)s
+    %(order)s
+    <tr><td colspan="3" class="addEditHeader">For Traffic with the Following Characteristics:</td></tr>
+    %(srcSubnet)s
+    %(dstSubnet)s
+    %(trProtocol)s
+    %(vlan)s
+    %(dscp)s
+    <tr><td class="level4ParamsSeparator"></td></tr>
+    %(traffic)s
+    %(app)s
+    <tr><td colspan="3">
+      <div class="indentedSection">
+        <table>
+          %(http_domain_name)s
+          %(http_relative_path)s
+        </table>
+      </div>
+    </td></tr>
+    <tr><td colspan="3" class="addEditHeader">Apply these QoS Settings:</td></tr>
+    %(cls)s
+    %(out_dscp)s
+  </table>
+  %(hiddenInputs)s
+</div>
+""" % {'name': isAdd and dialogEntries_apps['name'].html(self, namePrefix=pfx) or '',
+       'desc': dialogEntries_apps['desc'].html(self, namePrefix=pfx),
+       'order': isAdd and dialogEntries_apps['order'].html(self, namePrefix=pfx) or '',
+       'srcSubnet': dialogEntries_apps['srcSubnet']\
+           .html(self, namePrefix=pfx, more=[dialogEntries_apps['srcPort']]),
+       'dstSubnet': dialogEntries_apps['dstSubnet']\
+           .html(self, namePrefix=pfx, more=[dialogEntries_apps['dstPort']]),
+       'trProtocol': dialogEntries_apps['trProtocol'].html(self, namePrefix=pfx),
+       'vlan': dialogEntries_apps['vlan'].html(self, namePrefix=pfx),
+       'dscp': dialogEntries_apps['dscp'].html(self, namePrefix=pfx),
+       'traffic': dialogEntries_apps['traffic'].html(self, namePrefix=pfx),
+       'app': dialogEntries_apps['l7protocol'].html(self, namePrefix=pfx),
+       'http_domain_name': dialogEntries_apps['l7protocol_http_domain_name']\
+           .html(self, namePrefix=pfx),
+       'http_relative_path': dialogEntries_apps['l7protocol_http_relative_path']\
+           .html(self, namePrefix=pfx),
+       'cls': dialogEntries_apps['cls'].html(self, namePrefix=pfx),
+       'out_dscp': dialogEntries_apps['out_dscp'].html(self, namePrefix=pfx),
+       'hiddenInputs': hiddenInputs }
+}
+
+appTable.addDivContent = appsGenerateAddOrEditDiv(True)
+appTable.editDivContent = appsGenerateAddOrEditDiv(False)
+
+%>
+
+<form id="easyQoS_appsForm" method="post" action="<%= self.thisPageletRequest() %>">
+  <div id="appsTab">
+    <%= appTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_apps" />
+  </div>
+</form>
+
+<%
+tabJs='''
+/**
+ * Using the value in the "Application" field, show the
+ * extended protocol options div for those applications that have them.
+ *
+ * In Easy QoS, only the HTTP protocol has options.
+ *
+ * @param selEl The <select> element that triggers this onchange.
+ */
+function updateApplicationField(selEl) {
+    var container = Y.one(selEl).ancestor('.ajaxEntryTable_addDiv, .ajaxEntryTable_editDiv');
+    var selEl = container.one('select.l7protocol');
+    var isHttp = selEl.get('value') == 'http';
+    enableElements(container.one('.indentedSection'), isHttp ? true : 'hide');
+}
+appTable.addEntry = function() {
+    var form = $('easyQoS_appsForm');
+    updateApplicationField(form['addApp_l7protocol']);
+}
+appTable.editEntry = function(editName) {
+    var form = $('easyQoS_appsForm');
+    var el = this.getEntryElement('name', editName);
+
+    setFormValue(form, 'editApp_name', editName);
+    keywords = ['order', 'srcsubnet', 'srcport', 'dstsubnet', 'dstport', 'desc',
+                'protocol', 'traffic', 'dscp', 'vlan', 'cls', 'l7protocol', 'out_dscp'];
+    setFormValues(form, el, keywords, 'editApp_');
+
+    var isHttp = el.getAttribute('l7protocol') == 'http';
+    if (isHttp) {
+        var nameAttr = el.getAttribute('l7protocol_http_domain_name') || '';
+        var pathAttr = el.getAttribute('l7protocol_http_relative_path') || '';
+        setFormValue(form, 'editApp_http_domain_name', nameAttr);
+        setFormValue(form, 'editApp_http_relative_path', pathAttr);
+    }
+    updateApplicationField(form['editApp_l7protocol']);
+}
+
+function validateMaxWildcard(val) {
+    if (val.split('*').length-1 > 5) {
+        throw 'No more than 5 wildcards are allowed.';
+    }
+    return;
+}
+
+// Sort order for the cell is the same as the order seen in the DSCP menu.
+function sortDscpCell(name) {
+    var cellValue = function(content) {
+        if (content == 'from Class') {
+            return -2;
+        } else if (content == 'Reflect') {
+            return -1;
+        } else {
+            return Number(content);
+        }
+    };
+    return function(a, b) {
+        return cellValue(a.getAttribute(name)) - cellValue(b.getAttribute(name));
+    }
+}
+'''
+self.addPageletJavascript(tabJs)
+%>

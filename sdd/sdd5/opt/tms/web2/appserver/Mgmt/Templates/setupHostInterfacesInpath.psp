@@ -1,0 +1,389 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupHostInterfacesInpath.psp
+## This is the template for the host In-Path interface settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, NicFactory, RVBDUtils, ajaxentrytable, PagePresentation:Pagelet, cgi" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('setupServiceGeneral', 'setupServiceInpathRules') %>
+
+<psp:method name="css">
+    return '''
+
+.ajaxEntryTable_editDivContent fieldset  {
+  width: 800px;
+  margin: 0;
+}
+
+#inpathInterfaceTable_main {
+  width: 850px;
+}
+
+#routeTable_main {
+  width: 750px;
+}
+
+#routeIPv6Table_main {
+  width: 750px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning
+    return  [
+                '/rbt/route/config/*',
+                '/rbt/sport/intercept/config/lsp_enable',
+                '/rbt/sport/intercept/config/ifaces/inpath/inpath0_0/vlan',
+                '/rbt/model_capability/inpath_mgmt',
+                '/net/routes/config/ipv6/prefix/::\\/0/nh/1/gw',
+                '/net/routes/config/ipv4/prefix/0.0.0.0\\/0/nh/1/gw',
+
+                '/net/interface/config/lan0_0/type/ethernet/speed',
+                '/net/interface/config/lan0_0/type/ethernet/duplex',
+                '/net/interface/config/wan0_0/type/ethernet/speed',
+                '/net/interface/config/wan0_0/type/ethernet/duplex',
+
+                '/net/interface/config/inpath0_0/mtu',
+                '/net/interface/config/inpath0_0/enable',
+                '/net/interface/config/inpath0_0/addr/ipv4/dhcp',
+                '/net/interface/config/inpath0_0/addr/ipv4/static/1/ip',
+                '/net/interface/config/inpath0_0/addr/ipv6/static/*',
+                '/rbt/route/config/inpath0_0/ipv4/prefix/0.0.0.0\\/0/gw',
+                '/rbt/sport/intercept/config/ifaces/inpath/inpath0_0/vlan',
+            ]
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'routingTable': NodeEntry(
+            path='/rbt/route/config/*'),
+        'lsp': NodeEntry(
+            path='/rbt/sport/intercept/config/lsp_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Link State Propagation')}
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'dest':FormUtils.NodeEntry(
+            name='addRoute_dest',
+            type='ipv4addr_opt',
+            label='Destination IP Address'),
+        'netmask': FormUtils.NodeEntry(
+            name='addRoute_netmask',
+            validate='subnetMask',
+            label='Subnet Mask'),
+        'gateway':FormUtils.NodeEntry(
+            name='addRoute_gateway',
+            type='ipv4addr',
+            label='Gateway IP Address'),
+        'destIPv6': NodeEntry(
+            name='destIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr',
+            label='Destination IPv6 Address'),
+        'prefixIPv6': NodeEntry(
+            name='prefixIPv6',
+            widgetClass='ipv6prefix',
+            validate='ipv6prefix',
+            label='IPv6 Prefix'),
+        'gatewayIPv6': NodeEntry(
+            name='gatewayIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr',
+            label='Gateway IPv6 Address')}
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+inpath = cgi.escape(fields.get('inpath', 'inpath0_0'))
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+routeTable = ajaxentrytable.AjaxEntryTable('route',
+    titleText='IPv4 Routing Table',
+    headerSpec=('', 'Destination', 'Subnet Mask', 'Gateway', 'Status'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRoute_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('mask'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('status')]""",
+    emptyMessage='No Routes.',
+    addButtonText='Add a New Route',
+    addButtonName='addRoute',
+    removeName='removeRoutes',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedRoute_')
+
+routeTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['dest'].html(self),
+       dialogEntries['netmask'].html(self),
+       dialogEntries['gateway'].html(self))
+
+
+routeTableIPv6HTML = ''
+if RVBDUtils.ipv6Supported(req.fields): {
+    addRouteIPv6 = 'addRouteIPv6_'
+
+    routeTableIPv6 = ajaxentrytable.AjaxEntryTable('routeIPv6',
+        titleText='IPv6 Routing Table',
+        emptyMessage='No Routes.',
+        addButtonText='Add a New Route',
+        addButtonName='addRouteIPv6',
+        removeName='removeRoutesIPv6',
+        removeButtonText='Remove Selected',
+        removePrefix='selectedRouteIPv6_')
+
+    routeTableIPv6.headerSpec = ('', 'Destination', 'Prefix', 'Gateway', 'Status')
+    routeTableIPv6.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRouteIPv6_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('prefix'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('status')]"""
+
+    routeTableIPv6.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['destIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['prefixIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['gatewayIPv6'].html(self, namePrefix=addRouteIPv6))
+
+    routeTableIPv6HTML = routeTableIPv6.html(self, cssClass="topLevel")
+}
+
+# In-Path Management interface.
+# Since this template is in products/rbt_sh, we can ignore CMC policy prefixing.
+# On Procurve, isSupported will be False.
+# Guard against the capability node being absent: it isn't implemented yet.
+isSupported = 'true' == Nodes.present(mgmt, '/rbt/model_capability/inpath_mgmt', 'true')
+if isSupported: {
+    interface = 'mgmt' + inpath[len('inpath'):]
+    inpathMgmt = NicFactory.NicFactory(mgmt, interface,
+        interfaceEnable={'filter': lambda x: 'true',
+                        'name': 'mgmt_enable',
+                        'label': 'Enable Appliance Management on This Interface'},
+        ipv4Address={'name': 'mgmt_manIp',
+                        'labelClass': 'mgmtLabel'},
+        ipv4Subnet={'name': 'mgmt_manSubnet',
+                        'labelClass': 'mgmtLabel'},
+        vlanTag={'name': 'mgmt_vlan',
+                        'labelClass': 'mgmtLabel'})
+    # Note: IE and Firefox compatibility, "&nbsp;" required to ensure a space in the text.
+    mgmtInterfaceSection = '''
+          <fieldset class="topLevel">
+            <legend>Mgmt Interface</legend>
+            %s
+            Management interfaces use the
+            <a href="/mgmt/gui?p=setupHostInterfaces#MainRoutingTable" title="Base Interfaces page">
+              Main Routing Table
+            </a>.
+          </fieldset>''' % inpathMgmt.html(self)
+    headerSpec = ('Interface', 'Optimization Interface', 'Management Interface')
+    rowSpec = """
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('optInterface'),
+ AjaxEntryTable.tdAttr('mgmtInterface')]"""
+}
+else: {
+    mgmtInterfaceSection = ''
+    headerSpec = ('Interface', 'Optimization Interface')
+    rowSpec = """
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('optInterface')]"""
+}
+
+inpathInterfaceTable = ajaxentrytable.AjaxEntryTable('inpathInterface',
+    titleText='In-Path Interface Settings',
+    url='/mgmt/xmldata?p=inpathInterfaces',
+    headerSpec=headerSpec,
+    rowSpec=rowSpec,
+    emptyMessage='No In-Path interfaces.',
+    editButtonName='editInpathInterface',
+    editDivOffset=0)
+
+params = {}
+if not Nodes.isVM(): {
+    params.update({
+        'lanSpeed': {'name': 'inpath_lanSpeed',
+                        'selectOptions': (),
+                        'hint': 'Negotiated: <span id="negoLanSpeed">&nbsp;</span>'},
+        'lanDuplex': {'name': 'inpath_lanDuplex',
+                        'selectOptions': (),
+                        'hint': 'Negotiated: <span id="negoLanDuplex">&nbsp;</span>'},
+        'wanSpeed': {'name': 'inpath_wanSpeed',
+                        'selectOptions': (),
+                        'hint': 'Negotiated: <span id="negoWanSpeed">&nbsp;</span>'},
+        'wanDuplex': {'name': 'inpath_wanDuplex',
+                        'selectOptions': (),
+                        'hint': 'Negotiated: <span id="negoWanDuplex">&nbsp;</span>'},
+    })
+}
+if RVBDUtils.ipv6Supported(fields): {
+    params.update({
+        'ipv6Enable': {'name': 'inpath_manIPv6Enable',
+                        'label': 'Enable IPv6'},
+        'ipv6Prefix': {'name': 'inpath_manIPv6Prefix'},
+        'ipv6Address': {'name': 'inpath_manIPv6Addr'},
+        'ipv6Gateway': {'name': 'inpath_manIPv6Gateway'},
+    })
+}
+inpathInterfaces = NicFactory.NicFactory(mgmt, inpath,
+        ipv4Address={'name': 'inpath_manIp'},
+        ipv4Subnet={'name': 'inpath_manSubnet'},
+        ipv4Gateway={'name': 'inpath_gateway',
+                    'label': 'In-Path Gateway IP'},
+        mtu={'name': 'inpath_mtu'},
+        vlanTag={'name': 'inpath_vlan'},
+        **params)
+
+# Note: IE and Firefox compatibility, "&nbsp;" required to ensure a space in the text.
+inpathInterfaceTable.editDivContent = '''
+  <input type="hidden" name="_action_" value="setupHostInpath" />
+  <input type="hidden" name="inpath_name" value="" />
+  <fieldset>
+    <legend>Interface</legend>
+    %s
+    %s
+    %s
+  </fieldset>
+%s
+''' % (inpathInterfaces.html(self),
+       routeTable.html(self, cssClass="topLevel"),
+       routeTableIPv6HTML,
+       mgmtInterfaceSection)
+
+self.beginPagelet()
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>In-Path Settings</legend>
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="setupHostInpath" />
+      <%= nodeEntries['lsp'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="inpathInterfaceTableForm">
+  <%= inpathInterfaceTable.html(self, 'topLevel') %>
+</form>
+
+
+<%
+# Automatically open the In-Path interface that the "inpath" GET variable refers to.
+openInpath = req.fields().get('inpath')
+if openInpath: {
+    self.addPageletJavascript('inpathInterfaceTable.editAfterLoad = ["name", "%s"];' % FormUtils.escapeForJsString(openInpath))
+}
+
+self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+inpathInterfaceTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('routeTableLabel_inpathName',            editName);
+    setElementText('inpathInterfaceLegendLabel_inpathName', editName);
+    setElementText('routeLegendLabel_mgmtName',             editName.substr("inpath".length)); // set the numeric 0_0 part.
+
+    var form = $('inpathInterfaceTableForm');
+
+    setFormValue(form, 'inpath_name',      editName);
+    setFormValue(form, 'inpath_manIp',     el.getAttribute('manIp'));
+    setFormValue(form, 'inpath_manSubnet', el.getAttribute('manSubnet'));
+    if (el.getAttribute('gateway') == '0.0.0.0') {
+        setFormValue(form, 'inpath_gateway', '');
+    }
+    else {
+        setFormValue(form, 'inpath_gateway', el.getAttribute('gateway'));
+    }
+    setFormValue(form, 'inpath_mtu',     el.getAttribute('mtu'));
+    setFormValue(form, 'inpath_vlan',    el.getAttribute('vlan'));
+    setFormValue(form, 'mgmt_enable',    el.getAttribute('mgmtEnable'));
+    setFormValue(form, 'mgmt_manIp',     el.getAttribute('mgmtIp'));
+    setFormValue(form, 'mgmt_manSubnet', el.getAttribute('mgmtSubnet'));
+    setFormValue(form, 'mgmt_vlan',      el.getAttribute('mgmtVlan'));
+
+    // IPv6 settings
+    setFormValue(form, 'inpath_manIPv6Enable', el.getAttribute('ipv6Enable'));
+    setFormValue(form, 'inpath_manIPv6Addr', el.getAttribute('ipv6Addr'));
+    setFormValue(form, 'inpath_manIPv6Prefix', el.getAttribute('ipv6Prefix'));
+    setFormValue(form, 'inpath_manIPv6Gateway', el.getAttribute('ipv6Gateway'));
+
+    var url = '/mgmt/xmldata?p=inpathRoutes';
+    routeTable.sendRequest(url + '&iface=' + encodeURIComponent(editName));
+    routeIPv6Table.sendRequest(url + 'IPv6&iface=' + encodeURIComponent(editName));
+
+    // get the lan/wan speed/duplex options from the xmldata
+    var lanSpeedOptions  = [];
+    var wanSpeedOptions  = [];
+    var lanDuplexOptions = [];
+    var wanDuplexOptions = [];
+    for (var i = 0; i < el.childNodes.length; i++) {
+        var optsGroupEl = el.childNodes[i]
+        for (var j = 0; j < optsGroupEl.childNodes.length; j++) {
+            var optValues = [optsGroupEl.childNodes[j].getAttribute('value'),
+                             optsGroupEl.childNodes[j].getAttribute('name')];
+            if        (optsGroupEl.tagName == 'lanSpeedOptions') {
+                lanSpeedOptions.push(optValues);
+            } else if (optsGroupEl.tagName == 'wanSpeedOptions') {
+                wanSpeedOptions.push(optValues);
+            } else if (optsGroupEl.tagName == 'lanDuplexOptions') {
+                lanDuplexOptions.push(optValues);
+            } else if (optsGroupEl.tagName == 'wanDuplexOptions') {
+                wanDuplexOptions.push(optValues);
+            }
+        }
+    }
+
+    // populate the lan/wan speed/duplex select lists; they don't
+    // exist on VSHs and populateSelect() doesn't like that
+    if (form.elements.inpath_lanSpeed) {
+        populateSelect(form, 'inpath_lanSpeed',  lanSpeedOptions);
+        populateSelect(form, 'inpath_wanSpeed',  wanSpeedOptions);
+        populateSelect(form, 'inpath_lanDuplex', lanDuplexOptions);
+        populateSelect(form, 'inpath_wanDuplex', wanDuplexOptions);
+    }
+
+    setFormValue(form, 'inpath_lanSpeed',  el.getAttribute('lanSpeed'));
+    setFormValue(form, 'inpath_wanSpeed',  el.getAttribute('wanSpeed'));
+    setFormValue(form, 'inpath_lanDuplex', el.getAttribute('lanDuplex'));
+    setFormValue(form, 'inpath_wanDuplex', el.getAttribute('wanDuplex'));
+
+    // populate lan and wan hints
+    setElementText('negoLanSpeed',  el.getAttribute('negoLanSpeed') );
+    setElementText('negoLanDuplex', el.getAttribute('negoLanDuplex'));
+    setElementText('negoWanSpeed',  el.getAttribute('negoWanSpeed') );
+    setElementText('negoWanDuplex', el.getAttribute('negoWanDuplex'));
+}
+
+// ]]>
+</script>

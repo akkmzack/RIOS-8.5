@@ -1,0 +1,123 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho, Don Tillman
+##
+## reportExports
+## Download or Email any of a selection of reports.
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+table#mainOptions label {
+  margin-right: 30px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'statsAction': NodeEntry(
+            path='/stats/actions/export'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    per, lb, ub = FormUtils.reportsTimeIntervalWidgets(self.request().session())
+    per.action = 'adjustReportsTimeIntervalWidgets()'
+
+    return {
+        'report_select': NodeEntry(
+            name='r',
+            widget='select',
+            userPath='web/reports/export/report',
+            label='Report'),
+        'per': per,
+        'lb': lb,
+        'ub': ub,
+        'report_email': NodeEntry(
+            name='viaemail',
+            widget='checkboxLeft',
+            userPath='web/reports/export/email',
+            label='Email Delivery',
+            enableDiv='divReportEmail'),
+        'report_emailAddress': NodeEntry(
+            name='email',
+            userPath='web/reports/export/email_address',
+            widgetClass='wide2',
+            label='Email Address',
+            validate='email')
+    }
+</psp:method>
+
+<%
+mgmt = req.parent().session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+# report selections
+reportPre = '/stats/state/report'
+reports = Nodes.getMgmtLocalChildrenNames(mgmt, reportPre)
+reports.sort(FormUtils.alphanumericCompare)
+dialogEntries['report_select'].selectOptions = \
+    [(r, '%s (%s)' % (r, Nodes.present(mgmt, '%s/%s/description' % (reportPre, r))))
+     for r in reports]
+
+self.beginPagelet()
+%>
+
+<form method="post"
+      action="/mgmt/reportExporter"
+      id="reportDownloadForm"
+      onsubmit="saveReportsTimeInterval()">
+  <fieldset>
+    <legend>Export Report Data</legend>
+    <div class="midLevel">
+      <table id="mainOptions">
+        <%= dialogEntries['report_select'].html(self)  %>
+        <%= dialogEntries['per'].html(self) %>
+        <%= dialogEntries['lb'].html(self) %>
+        <%= dialogEntries['ub'].html(self) %>
+      </table>
+    </div>
+
+    <div class="midLevel">
+      <%= dialogEntries['report_email'].html(self)  %>
+      <div class="indent" id="divReportEmail">
+        <table>
+          <%= dialogEntries['report_emailAddress'].html(self)  %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self, {'name': 'exportReport', 'value': 'Export'}) %>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+nonConfigForms.push('reportDownloadForm');
+
+Y.on('domready', function() {
+    adjustReportsTimeIntervalWidgets();
+});
+
+function adjustReportsTimeIntervalWidgets() {
+    if (Y.one('select[name="per"]').get('value') == 'cust') {
+        Y.one('input[name="lb"]').ancestor('tr').setStyle('display', 'table-row');
+        Y.one('input[name="ub"]').ancestor('tr').setStyle('display', 'table-row');
+    } else {
+        Y.one('input[name="lb"]').ancestor('tr').setStyle('display', 'none');
+        Y.one('input[name="ub"]').ancestor('tr').setStyle('display', 'none');
+    }
+}
+
+// -->
+</script>

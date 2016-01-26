@@ -1,0 +1,157 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## reportPFSStatistics.psp
+## This is the template for the PFS Statistics report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, time, iph:iph, FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet, GfxUtils" %>
+<%@page extends="Pagelet" %>
+
+<%
+    self.hasHelp = True
+    self.relatedPages = (
+        'setupPFS_settings',
+        'setupPFS_shares',
+        'reportPFSShares',
+    )
+%>
+
+<psp:method name="getShareOptions" params="mgmt">
+    shares = mgmt.getChildren('/rbt/rcu/pfs_share')
+    options = []
+    for share in shares:
+        name = mgmt.get('/rbt/rcu/share/%s/config/local_name' % share)
+        id = mgmt.get('/rbt/rcu/share/%s/config/id' % share)
+        options.append((id, name))
+    return options
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'PfsShares': FormUtils.NodeEntry(
+            path='/rbt/rcu/pfs_share/*',
+            type='string'),
+        'PfsStatsAction': FormUtils.NodeEntry(
+            path='/stats/actions/generate_report/pfs',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    return GfxUtils.periodEntries(self.session(), self.request().fields())
+</psp:method>
+
+<%
+
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+# Options
+shareField = fields.get('pfs_share', self.session().value('pfs_share', '0'))
+dirField = fields.get('dir', 'bi')
+refreshField = fields.get('refresh', '') or self.session().value('refresh', '0')
+self.session().setValue('refresh', refreshField)
+dialogEntries = self.dialogEntries()
+lbField = dialogEntries['lb'].value
+ubField = dialogEntries['ub'].value
+perField = dialogEntries['per'].value
+
+imgsrc = '/mgmt/gfx?p=pfsData&amp;w=640&amp;h=220&amp;ub=%s&amp;lb=%s&amp;per=%s&amp;pfs_share=%s&amp;req=pfs&amp;ct=' % (
+ubField.replace(' ', '+'), lbField.replace(' ', '+'), perField,
+shareField)
+imgsrc = FormUtils.escapeForJsString(imgsrc)
+shareOptions = [('0', 'All')] + self.getShareOptions(mgmt)
+ajaxurl = '/mgmt/xmldata?p=graphTableXML&req=pfs&ct='
+refreshoptions = (('0',  'Off'),
+                  ('10000', '10 Seconds'),
+                  ('30000', '30 Seconds'),
+                  ('60000', '60 Seconds'))
+%>
+<script type="text/javascript">
+<!--
+var updateDate = new Date();
+var ct = updateDate.getTime();
+onloadScript += "fetchReport('pfsDataGraphImg', '<%= imgsrc %>' + ct, 'pfsDataTable', '<%= ajaxurl %>' + ct); ";
+var pertoboundsJS = <%= GfxUtils.timeRanges(dialogEntries['now']) %>;
+nonConfigForms.push('pfsDataForm');
+
+<%
+if refreshField != '0': {
+%>
+function updateReport() {
+    var updateDate = new Date();
+    var ct = updateDate.getTime();
+    fetchReport('pfsDataGraphImg', '<%= imgsrc %>' + ct, 'pfsDataTable', '<%= ajaxurl %>' + ct);
+}
+window.setInterval("updateReport();", <%= int(refreshField) %>);
+<%
+}
+%>
+//-->
+</script>
+
+<% self.beginPagelet() %>
+
+<div id="pfsDataGraphDiv" class="graphDiv">
+  <img id="pfsDataGraphImg" class="graphImg"
+    alt="PFS Statistics Graph" />
+</div>
+
+<form id="pfsDataForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="report"/>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th>Share:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <td>
+            <select name="pfs_share"
+              onchange="(document.getElementById('pfsDataForm').submit());" >
+              <%= FormUtils.selectOptions(shareOptions, shareField) %>
+            </select>
+          </td>
+          <td>
+            <select name="refresh"
+              onchange="(document.getElementById('pfsDataForm').submit());" >
+              <%= FormUtils.selectOptions(refreshoptions, refreshField) %>
+            </select>
+          </td>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</form>
+<%
+pfsDataTable = ajaxentrytable.AjaxEntryTable('pfsData',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about PFS Statistics.')
+%>
+<%= pfsDataTable.html(self, cssClass="midLevel") %>
+
+<% self.endPagelet() %>
+

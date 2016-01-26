@@ -1,0 +1,554 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupPrepop.psp
+## Prepopulation page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, datetime, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsCIFS',) %>
+
+<psp:method name="pageletNodes">
+    return ['/rbt/rcu/prepop/status',
+            '/rbt/rcu/prepop_share/*',
+            '/rbt/rcu/share/*',
+            '/rbt/rcu/config/prepop/enable',
+            '/rbt/rcu/action/cancel_action',
+            '/rbt/rcu/action/share_config']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'transparentPrepop_enable': NodeEntry(
+            path='/pm/process/sink_port/auto_launch',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Transparent Prepopulation Support'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    now = datetime.datetime.now()
+    intervalUnitOptions = (('minutes', 'Minutes'),
+                           ('hours', 'Hours'),
+                           ('days', 'Days'),
+                           ('disabled', 'Disabled'))
+    return {
+        'addShare_account': NodeEntry(
+            name='addShare_account',
+            widgetClass='account',
+            label='Account',
+            validate='nonempty'),
+        'editShare_account': NodeEntry(
+            name='editShare_account',
+            widgetClass='account',
+            label='Account',
+            validate='nonempty'),
+        'addShare_password': NodeEntry(
+            name='addShare_password',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'editShare_password': NodeEntry(
+            name='editShare_password',
+            widget='password',
+            label='Password',
+            validate='password'),
+        'addShare_passwordConfirm': NodeEntry(
+            name='addShare_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+        'editShare_passwordConfirm': NodeEntry(
+            name='editShare_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate='password'),
+        'addShare_syncStartDate': NodeEntry(
+            name='addShare_syncStartDate',
+            type='date',
+            widgetClass='date',
+            label='Sync Schedule Date, Time',
+            value=now.strftime('%Y/%m/%d'),
+            hint='(YYYY/MM/DD)'),
+        'editShare_syncStartDate': NodeEntry(
+            name='editShare_syncStartDate',
+            type='date',
+            widgetClass='date',
+            label='Sync Schedule Date, Time',
+            value=now.strftime('%Y/%m/%d'),
+            hint='(YYYY/MM/DD)'),
+        'addShare_syncStartTime': NodeEntry(
+            name='addShare_syncStartTime',
+            type='time',
+            widgetClass='time',
+            value=now.strftime('%H:%M:%S'),
+            hint='(HH:MM:SS)'),
+        'editShare_syncStartTime': NodeEntry(
+            name='editShare_syncStartTime',
+            type='time',
+            widgetClass='time',
+            value=now.strftime('%H:%M:%S'),
+            hint='(HH:MM:SS)'),
+        'addShare_syncInterval': NodeEntry(
+            name='addShare_syncInterval',
+            widgetClass='small',
+            value='7',
+            label='Sync Interval',
+            validate='uint16'),
+        'editShare_syncInterval': NodeEntry(
+            name='editShare_syncInterval',
+            widgetClass='small',
+            label='Sync Interval',
+            validate='uint16',
+            inputOptional=True),
+        'addShare_syncUnits': NodeEntry(
+            name='addShare_syncUnits',
+            selectOptions=intervalUnitOptions,
+            value='days',
+            action="return disableableIntervalChange(this, 'addShare_syncInterval')"),
+        'editShare_syncUnits': NodeEntry(
+            name='editShare_syncUnits',
+            selectOptions=intervalUnitOptions,
+            action="return disableableIntervalChange(this, 'editShare_syncInterval')"),
+        'addShare_comment': NodeEntry(
+            name='addShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+        'editShare_comment': NodeEntry(
+            name='editShare_comment',
+            widgetClass='wide',
+            label='Comment'),
+        'addShare_remotePath': NodeEntry(
+            name='addShare_remotePath',
+            widgetClass='pathname',
+            label='Remote Path',
+            validate='sharePath'),
+        'addShare_sync': NodeEntry(
+            name='addShare_sync',
+            widget='checkbox',
+            label='Synchronization Enable',
+            units='Enable'),
+        'editShare_sync': NodeEntry(
+            name='editShare_sync',
+            widget='checkbox',
+            label='Synchronization Enable',
+            units='Enable'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# A shorthand way to display a bunch of label/span pairs in a common tbody.
+def reportItems(tag, *labelIdPairs): {
+    html = '<tbody %s>' % (tag and (' id="%s"' % tag) or '')
+    for label, id in labelIdPairs: {
+        html += '<tr><td class="label-fixed">%s:</td><td><span id="%s"></span></td></tr>' % (label, id)
+    }
+    html += '</tbody>\n'
+    return html
+}
+
+%>
+
+<script type="text/javascript">
+<!--
+
+// Handle the submit buttons on the prepop server control form.
+// click is one of disable, enable
+function prepopServerClick(click) {
+    var enable = 'enable' == click;
+    setElementText('prepopStatusDisplay', (enable) ? 'Enabling...' : 'Disabling...');
+    var url = '/mgmt/xmldata?p=prepopControl&enable=' + ((enable) ? 'true' : 'false');
+    var request = newAjaxRequest(url);
+    setReadyStateChangeFunc(request, function() {
+        if (request.responseText.length) {
+            var rdoc = request.responseXML.documentElement.firstChild;
+            if ('error' == rdoc.tagName) {
+                alert('Error: ' + rdoc.childNodes[0].nodeValue);
+            } else if (rdoc.firstChild) {
+                alert(rdoc.firstChild.nodeValue);
+            }
+        }
+    });
+    request.send('');
+    return false;
+}
+
+function shareAction(select) {
+    var share = select.name;
+    var action = select.value;
+    select.value = '';
+    if (('delete' == action) && !confirm('Really delete share ' + share + '?')) {
+        return false;
+    }
+    var request = newAjaxRequest('/mgmt/xmldata?p=prepopControl');
+    // alert the user if there's an error
+    setReadyStateChangeFunc(request, function() {
+        if (request.responseText.length) {
+            var closeOnDelete = true;
+            var rdoc = request.responseXML.documentElement.firstChild;
+            if ('error' == rdoc.tagName) {
+                alert('Error: ' + rdoc.childNodes[0].nodeValue);
+                closeOnDelete = false; // Do not close on delete when errors occur.
+            } else if (rdoc.firstChild) {
+                alert(rdoc.firstChild.nodeValue);
+            }
+        }
+        if (('delete' == action) && (closeOnDelete)) {
+            // Close the edit div, or else the row will not be removed. BugID: 43975
+            prepopTable.setEditMode(false);
+        }
+    });
+    request.send('share=' + escape(share) + '&share-action=' + escape(action));
+    return false;
+}
+
+// -->
+</script>
+
+<% self.beginPagelet() %>
+
+<form method="post" id="prepopForm" action="/mgmt/gui?p=setupPrepop">
+  <fieldset>
+  <legend>Prepopulation</legend>
+  <div id="prepopStartDiv" class="interactiveCommand">
+    <div class="commandButtons">
+      <input type="button" name="disable" value="Disable"
+             onclick="return prepopServerClick('disable');" />
+      <input type="button" name="enable" value="Enable"
+             onclick="return prepopServerClick('enable');" />
+    </div>
+    <div id="prepopRunningStatus" class="commandStatus">
+      Status:
+      <span id="prepopStatusDisplay">&nbsp;</span>
+    </div>
+  </div>
+  </fieldset>
+</form>
+
+
+<form method="post"
+      action="/mgmt/gui?p=setupPrepop">
+  <fieldset>
+    <legend>Transparent Prepopulation Using RCU</legend>
+    <div class="midLevel">
+      <%= nodeEntries['transparentPrepop_enable'].html(self) %>
+      <input type="hidden" name="_action_" value="setFormNodes" />
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<h3 class="topLevel">Prepopulation Shares</h3>
+
+<%
+
+prepopTable = ajaxentrytable.AjaxEntryTable('prepop',
+    url='/mgmt/xmldata?p=prepopStatus',
+    headerSpec=('', 'Remote Path', 'Syncing', 'Status', 'Actions'),
+    rowSpec="""
+[AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdEdit('remote-path', 'remote-path'),
+ AjaxEntryTable.tdChildAttr('config', 'syncing'),
+ AjaxEntryTable.tdChildAttr('status', 'status', 'col_status'),
+ AjaxEntryTable.tdActiveSelect('', '', 'remote-path', [['', '-' + '- Actions -' + '-'], ['manual_sync', 'Manual Sync'], ['cancel', 'Cancel Operation'], ['delete', 'Delete Share']], 'return shareAction(this)')]""",
+    emptyMessage='No current Prepopulation shares.',
+    addButtonText='Add a New Prepopulation Share',
+    addButtonName='addShare',
+    editDivTitle='Editing Prepopulation Share <b><span id="editShare_remotePath"></span></b>',
+    editButtonName='editShare')
+
+prepopTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      <tr><td colspan="2">&nbsp;</td></tr>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addShare_remotePath'].html(self),
+       dialogEntries['addShare_account'].html(self),
+       dialogEntries['addShare_password'].html(self),
+       dialogEntries['addShare_passwordConfirm'].html(self),
+
+       dialogEntries['addShare_syncStartDate'].html(self,
+           more=[dialogEntries['addShare_syncStartTime']]),
+       dialogEntries['addShare_syncInterval'].html(self,
+           more=[dialogEntries['addShare_syncUnits']]),
+       dialogEntries['addShare_comment'].html(self))
+
+
+prepopTable.editDivContent = '''
+    <input type="hidden" name="editShare_remotePath" />
+    <h4>Current Status</h4>
+    <div class="indent">
+      <table>
+        %s %s %s
+      </table>
+    </div>
+    <h4>Actions and Statistics</h4>
+    <div class="indent">
+      <table>
+        %s %s %s %s %s %s
+      </table>
+    </div>
+    <h4>View Logs</h4>
+    <div class="indent">
+      <a href="" id="viewLogsInitialCopy">Initial Copy</a>
+      &nbsp;&nbsp;&nbsp;&nbsp;
+      <a href="" id="viewLogsLastSync">Last Sync</a>
+    </div>
+    <hr />
+
+    <table>
+      %s
+      <tbody>
+        <tr><td colspan="2">&nbsp;</td></tr>
+        %s
+        %s
+        %s
+        <tr><td>&nbsp;</td></tr>
+        %s
+        %s
+        %s
+        %s
+      </tbody>
+    </table>
+''' % (
+       # Current Status
+       reportItems(None,
+                   ('Current Status', 'editShare_status')),
+       reportItems('editShareErrorMessage',
+                   ('Error Message', 'editShare_errorMessage')),
+       reportItems(None,
+                   ('Last Successful Sync', 'editShare_lastSyncTime'),
+                   ('Last Sync Status', 'editShare_lastSyncStatus')),
+
+       # Actions and Statistics
+       reportItems(None,
+                   ('Current Action', 'shareStats_action')),
+       reportItems('statsSection_initCopy',
+                   ('Current File', 'shareStats_initialFile'),
+                   ('Files Received', 'shareStats_initialFiles'),
+                   ('Directories Received', 'shareStats_initialDirs'),
+                   ('Bytes Received', 'shareStats_initialBytes')),
+       reportItems('statsSection_syncSend',
+                   ('Sending', 'shareStats_syncSendFile'),
+                   ('Files Sent', 'shareStats_syncSendFiles'),
+                   ('Directories Sent', 'shareStats_syncSendDirs'),
+                   ('Bytes Sent', 'shareStats_syncSendBytes')),
+       reportItems('statsSection_syncReceive',
+                   ('Receiving', 'shareStats_syncReceiveFile'),
+                   ('Files Received', 'shareStats_syncReceiveFiles'),
+                   ('Directories Received', 'shareStats_syncReceiveDirs'),
+                   ('Bytes Received', 'shareStats_syncReceiveBytes')),
+       reportItems('statsSection_verify',
+                   ('Comparing File', 'shareStats_syncVerifyFile'),
+                   ('Different Objects', 'shareStats_syncVerifyDiffs')),
+       reportItems('statsSection_totals',
+                   ('Files Processed', 'shareStats_syncTotalFiles'),
+                   ('Directories Processed', 'shareStats_syncTotalDirs'),
+                   ('Different Objects', 'shareStats_syncTotalDiffs'),
+                   ('Bytes Transferred', 'shareStats_syncTotalBytes')),
+
+       # config
+       reportItems(None,
+                   ('Remote Path', 'editShare_remotePath2')),
+       dialogEntries['editShare_account'].html(self),
+       dialogEntries['editShare_password'].html(self),
+       dialogEntries['editShare_passwordConfirm'].html(self),
+       dialogEntries['editShare_sync'].html(self),
+       dialogEntries['editShare_syncStartDate'].html(self,
+           more=[dialogEntries['editShare_syncStartTime']]),
+       dialogEntries['editShare_syncInterval'].html(self,
+           more=[dialogEntries['editShare_syncUnits']]),
+       dialogEntries['editShare_comment'].html(self))
+%>
+
+
+<form method="post"
+      action="/mgmt/gui?p=setupPrepop"
+      id="prepopTable">
+  <div id="div_prepopSharesTable" class="hidden">
+    <input type="hidden" name="_action_" value="prepopShares" />
+    <%= prepopTable.html(self) %>
+  </div>
+  <div id="div_noPrepopSharesTable" class="hidden">
+    <p>
+    Prepopulation Service is currently disabled.
+    </p>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+prepopTable.editEntry = function(editName) {
+    var share = this.getEntryElement('remote-path', editName);
+    var shareConfig = share.getElementsByTagName('config').item(0);
+
+    setElementText('editShare_remotePath', editName);
+    setElementText('editShare_remotePath2', editName);
+    fillPrepopStats(share);
+
+    form = document.getElementById('prepopTable');
+    form.editShare_remotePath.value = editName;
+    form.editShare_comment.value = share.getAttribute('comment');
+    form.editShare_account.value = shareConfig.getAttribute('account');
+    form.editShare_password.value = shareConfig.getAttribute('account_password');
+    form.editShare_passwordConfirm.value = shareConfig.getAttribute('account_password');
+    form.editShare_sync.checked = ('true' == shareConfig.getAttribute('syncing'));
+    form.editShare_syncStartDate.value = shareConfig.getAttribute('start-date');
+    form.editShare_syncStartTime.value = shareConfig.getAttribute('start-time');
+    var syncInterval = shareConfig.getAttribute('sync-interval');
+    if (syncInterval == '0') {
+        // blank widget for zero
+        syncInterval = '';
+    }
+    form.editShare_syncInterval.value =  syncInterval;
+    form.editShare_syncUnits.value = shareConfig.getAttribute('sync-units');
+
+    // view log buttons
+    var base = '/mgmt/gui?p=reportPrepopLog&amp;share=';
+    $('viewLogsInitialCopy').href = base + editName + '&amp;log=initial-copy';
+    $('viewLogsLastSync').href = base + editName + '&amp;log=last-sync';
+}
+
+prepopTable.updateHook = function() {
+    if ('edit' == this.editMode) {
+        form = document.getElementById('prepopTable');
+        disableableIntervalChange(form.editShare_syncUnits, 'editShare_syncInterval');
+    }
+}
+
+function fillPrepopStats(share) {
+    if (!share) {
+        return;
+    }
+    var shareStatus = share.getElementsByTagName('status').item(0);
+    var stats = share.getElementsByTagName('stats').item(0);
+
+    // current status
+    setElementText('editShare_status', shareStatus.getAttribute('status'));
+    setElementText('editShare_errorMessage', shareStatus.getAttribute('error-message'));
+    setElementText('editShare_lastSyncTime', shareStatus.getAttribute('last-sync-time'));
+    setElementText('editShare_lastSyncStatus', shareStatus.getAttribute('last-sync-status'));
+
+    // actions and statistics
+    var action = stats.getAttribute('action');
+    setElementText('shareStats_action', action);
+    var action_initCopy = 'GET_INITIAL_COPY' == action;
+    var action_syncSend = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                          'local' == share.getAttribute('mode');
+    var action_syncReceive = (('FULL_SYNC' == action) || ('START_SYNC' == action)) &&
+                              'local' != share.getAttribute('mode');
+    var action_verify = 'VERIFY_SHARE' == action;
+
+    var stats_filesProcessed = stats.getAttribute('files_processed');
+    var stats_directoriesProcessed = stats.getAttribute('directories_processed');
+    var stats_objectsDifferent = stats.getAttribute('objects_different');
+    var stats_bytesTransferred = stats.getAttribute('bytes_transferred');
+
+    $('statsSection_initCopy').style.display = (action_initCopy) ? '' : 'none';
+    $('statsSection_syncSend').style.display = (action_syncSend) ? '' : 'none';
+    $('statsSection_syncReceive').style.display = (action_syncReceive) ? '' : 'none';
+    $('statsSection_verify').style.display = (action_verify) ? '' : 'none';
+    $('statsSection_totals').style.display = (stats_filesProcessed || stats_directoriesProcessed || stats_objectsDifferent || stats_bytesTransferred) ? '' : 'none';
+
+    setElementText('shareStats_initialFile', stats.getAttribute('receiving') || '');
+    setElementText('shareStats_initialFiles', stats.getAttribute('files_received') || '');
+    setElementText('shareStats_initialDirs', stats.getAttribute('directories_received') || '');
+    setElementText('shareStats_initialBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('shareStats_syncSendFile', stats.getAttribute('sending') || '');
+    setElementText('shareStats_syncSendFiles', stats.getAttribute('files_sent') || '');
+    setElementText('shareStats_syncSendDirs', stats.getAttribute('directories_sent') || '');
+    setElementText('shareStats_syncSendBytes', stats.getAttribute('bytes_sent') || '');
+
+    setElementText('shareStats_syncReceiveFile', stats.getAttribute('receiving') || '');
+    setElementText('shareStats_syncReceiveFiles', stats.getAttribute('files_received') || '');
+    setElementText('shareStats_syncReceiveDirs', stats.getAttribute('directories_received') || '');
+    setElementText('shareStats_syncReceiveBytes', stats.getAttribute('bytes_received') || '');
+
+    setElementText('shareStats_syncVerifyFile', stats.getAttribute('comparing') || '');
+    setElementText('shareStats_syncVerifyDiffs', stats.getAttribute('objects_different') || '');
+
+    setElementText('shareStats_syncTotalFiles', stats_filesProcessed || '');
+    setElementText('shareStats_syncTotalDirs', stats_directoriesProcessed || '');
+    setElementText('shareStats_syncTotalDiffs', stats_objectsDifferent || '');
+    setElementText('shareStats_syncTotalBytes', stats_bytesTransferred || '');
+}
+
+
+// This is the auto updating code. The reason we do not use the AET to auto update
+// is because that will cause the AET to close any opened edit div (reopening it
+// every few seconds would annoy the user).
+var prepopUpdater = new AjaxUpdater('/mgmt/xmldata?p=prepopStatus');
+prepopUpdater.update = function(request) {
+    if (!request.responseXML) {
+        return;
+    }
+    var doc = request.responseXML.documentElement.firstChild;
+    if ('error' == doc.tagName) {
+        setElementText('prepopStatusDisplay', doc.childNodes[0].nodevalue);
+    } else {
+        var prepopStatus = doc.getAttribute('status');
+        setElementText('prepopStatusDisplay', prepopStatus);
+        var form = $('prepopForm');
+        var prepopStatusEnabled = ('Prepopulation enabled' == prepopStatus)
+        enableElements(form.disable, prepopStatusEnabled);
+        enableElements(form.enable, !prepopStatusEnabled);
+        $('div_prepopSharesTable').style.display = (prepopStatusEnabled) ? 'block' : 'none';
+        $('div_noPrepopSharesTable').style.display = (prepopStatusEnabled) ? 'none' : 'block';
+        if (prepopStatusEnabled) {
+            if ('edit' == prepopTable.editMode) {
+                // for edit mode, update the stats only
+                for (var share = doc.firstChild; share; share = share.nextSibling) {
+                    if (share.getAttribute('remote-path') == prepopTable.editName) {
+                            fillPrepopStats(share);
+                    break;
+                    }
+                }
+            } else {
+                    prepopTable.updateXMLData(doc);
+            }
+        }
+    }
+
+    // If the status no longer contains any "Registration in progress..." statuses,
+    // then remove the "Share registration in progress ..." message box (if present).
+    if (request.responseText.indexOf('status="Registration in progress..."') == -1) {
+        hideActionMessageBox('Share registration in progress');
+    }
+
+}
+
+prepopTable.updateRow = function(oldEl, newEl, row) {
+    var tds = row.getElementsByTagName('td');
+    if (oldEl.getAttribute('remote-path') != newEl.getAttribute('remote-path')) {
+        return false;
+    }
+    tds.item(2).firstChild.data = newEl.getElementsByTagName('config').item(0).getAttribute('syncing');
+    tds.item(3).firstChild.data = newEl.getElementsByTagName('status').item(0).getAttribute('status');
+    return true;
+}
+
+// -->
+</script>
+

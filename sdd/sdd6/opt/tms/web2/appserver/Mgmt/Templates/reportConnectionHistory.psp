@@ -1,0 +1,111 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportConnectionHistory.psp
+## This is the template for the Connection History report page.
+## Refactored to use common report code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:ConnectionHistoryPagelet" %>
+<%@page extends="ConnectionHistoryPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportSpecs =  {
+    'chs': {
+        'tableName': 'chsTable',
+        'gfxId': 'connectionHistorySummary',
+        'gfxDisplayId': 'chsGraphImg',
+        'order' : 1,
+    },
+    'cho': {
+        'tableName': 'choTable',
+        'gfxId': 'connectionHistoryOptimized',
+        'gfxDisplayId': 'choGraphImg',
+        'order' : 2,
+    }
+}
+reportOpts = {
+    'controlFormId': 'connectionHistoryForm',
+    'reportSpecs': reportSpecs
+}
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+## header and row specs can be overridden in ProductReportContext and put in reportOpts
+commonHeaderSpec = reportOpts.get('headerSpec',[
+        '',
+        '',
+        ('Average', 'reportValueTD'),
+        ('Peak', 'reportValueTD'),
+        ('Peak Time', 'reportValueTD'),
+    ]
+)
+commonRowSpec = reportOpts.get('rowSpec', """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('avg', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('peak', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('peak_time', 'reportValueTD')
+    ]"""
+)
+chsTable = ajaxentrytable.AjaxEntryTable(
+    'chs',
+    headerSpec = commonHeaderSpec,
+    rowSpec = commonRowSpec,
+    emptyMessage = 'No information available about Connection History Summary.',
+)
+choTable = ajaxentrytable.AjaxEntryTable(
+    'cho',
+    headerSpec = commonHeaderSpec,
+    rowSpec = commonRowSpec,
+    emptyMessage = 'No information available about Connection History Optimized Connections.',
+)
+%>
+
+<div id="chsGraphDiv" class="graphDiv">
+  <img id="chsGraphImg" class="graphImg"
+    alt="Connection History Summary Graph" />
+</div>
+
+<%= chsTable.html(self, cssClass="midLevel") %>
+
+<div id="connectionHistoryOptimizedGraphDiv" class="graphDiv">
+  <img id="choGraphImg" src="" class="graphImg"
+    alt="Connection History Optimized Connections Graph" />
+</div>
+
+<form id="connectionHistoryForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+  <%= GfxUtils.getExportOrReportAction(self) %>
+  <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+<%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= choTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>

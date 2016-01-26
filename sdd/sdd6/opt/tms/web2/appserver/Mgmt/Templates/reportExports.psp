@@ -1,0 +1,108 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho, Don Tillman
+##
+## reportExports
+## Download or Email any of a selection of reports.
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'CpuStatsAction': NodeEntry(
+            path='/stats/actions/export'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'report_select': NodeEntry(
+            name='r',
+            widget='select',
+            label='Report',
+            labelClass='label-fixed-small'),
+        'report_begin': NodeEntry(
+            name='time_lb',
+            type='datetime',
+            widgetClass='datetime',
+            label='Begin Date and Time',
+            hint='(YYYY/MM/DD HH:MM:SS)'),
+        'report_end': NodeEntry(
+            name='time_ub',
+            type='datetime',
+            widgetClass='datetime',
+            label='End Date and Time',
+            hint='(YYYY/MM/DD HH:MM:SS)'),
+        'report_email': NodeEntry(
+            name='viaemail',
+            widget='checkboxLeft',
+            label='Email Delivery',
+            enableDiv='divReportEmail'),
+        'report_emailAddress': NodeEntry(
+            name='email',
+            label='Email Address',
+            labelClass='label-fixed-small-indent',
+            validate='nonempty')
+    }
+</psp:method>
+
+<%
+mgmt = req.parent().session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+# report selections
+reportPre = '/stats/state/report'
+reports = Nodes.getMgmtLocalChildrenNames(mgmt, reportPre)
+reports.sort(FormUtils.alphanumericCompare)
+dialogEntries['report_select'].selectOptions = \
+    [(r, '%s (%s)' % (r, Nodes.present(mgmt, '%s/%s/description' % (reportPre, r))))
+     for r in reports]
+
+# nice default values
+dialogEntries['report_begin'].value = '2009/01/01 00:00:00'
+dialogEntries['report_end'].value = Nodes.present(mgmt, '/time/now/datetime')
+
+self.beginPagelet()
+%>
+
+<form method="post"
+      action="/mgmt/reportExporter"
+      id="reportDownloadForm">
+  <fieldset>
+    <legend>Export Report Data</legend>
+    <div class="midLevel">
+      <table>
+        <%= dialogEntries['report_select'].html(self)  %>
+        <%= dialogEntries['report_begin'].html(self)  %>
+        <%= dialogEntries['report_end'].html(self)  %>
+      </table>
+    </div>
+
+    <div class="midLevel">
+      <%= dialogEntries['report_email'].html(self)  %>
+      <div class="indent" id="divReportEmail">
+        <table>
+          <%= dialogEntries['report_emailAddress'].html(self)  %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self, {'name': 'exportReport', 'value': 'Export'}) %>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+nonConfigForms.push('reportDownloadForm');
+
+// -->
+</script>
+

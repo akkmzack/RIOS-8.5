@@ -1,0 +1,50 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## cfg.psp
+## This is used to show configs.
+##
+%>
+
+<psp:method name="pageIsReadable">
+return True
+</psp:method>
+
+<%@page imports="clirunner, cgi" %>
+<%@page indentType="braces" %>
+
+<style type="text/css">
+body {
+  background: #ffffff;
+  padding: 10px;
+}
+</style>
+
+<%
+mgmt = self.session().value('mgmt')
+name = self.request().fields().get('name')
+localUsername = self.session().value('localId')
+loginUsername = self.session().value('userId')
+
+if name: {
+    # The name came from the browser so we don't trust it.  Verify
+    # that it's actually the name of a configuration before running
+    # the command.  This prevents the user from doing something like
+    # this: name=\nreload .  Nothing that they don't have permission
+    # to do anyway, but still...
+    assert name in mgmt.getChildren('/mgmtd/db/info/saved').keys()
+    output = clirunner.run(
+        localUsername, loginUsername, 'enable', 'show configuration files %s' % name)
+} else: {
+    name = 'Running'
+    output = clirunner.run(
+        localUsername, loginUsername, 'enable', 'show configuration running')
+}
+%>
+<div class="config">
+<h2><%= name %> Configuration</h2>
+<pre>
+<%= cgi.escape(output) %>
+</pre>
+</div>

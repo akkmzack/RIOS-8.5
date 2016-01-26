@@ -1,0 +1,79 @@
+#! /bin/bash
+#
+# saslauthd      Start/Stop the SASL authentication daemon.
+#
+# chkconfig: - 95 05
+# description: saslauthd is a server process which handles plaintext \
+#              authentication requests on behalf of the cyrus-sasl library.
+# processname: saslauthd
+
+# Source function library.
+. /etc/init.d/functions
+
+# Source our configuration file for these variables.
+SOCKETDIR=/var/run/saslauthd
+MECH=shadow
+FLAGS=
+if [ -f /etc/sysconfig/saslauthd ] ; then
+	. /etc/sysconfig/saslauthd
+fi
+
+RETVAL=0
+
+# Set up some common variables before we launch into what might be
+# considered boilerplate by now.
+prog=saslauthd
+path=/usr/sbin/saslauthd
+
+# Ugh. Switch to a specific copy of saslauthd if there's one with $MECH
+# in its name, in case it wasn't included in the base cyrus-sasl package
+# because it would have dragged in too many undesirable dependencies.
+if test -x ${path}.${MECH} ; then
+	path=/usr/sbin/saslauthd.$MECH
+fi
+
+start() {
+	echo -n $"Starting $prog: "
+	daemon $path -m $SOCKETDIR -a $MECH $FLAGS
+	RETVAL=$?
+	echo
+	[ $RETVAL -eq 0 ] && touch /var/lock/subsys/$prog
+	return $RETVAL
+}
+
+stop() {
+	echo -n $"Stopping $prog: "
+	killproc $path
+	RETVAL=$?
+	echo
+	[ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/$prog
+	return $RETVAL
+}	
+
+restart() {
+  	stop
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart)
+  	restart
+	;;
+  status)
+	status $path
+	;;
+  condrestart)
+  	[ -f /var/lock/subsys/$prog ] && restart || :
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|reload|restart|condrestart}"
+	exit 1
+esac
+
+exit $?

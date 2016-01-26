@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_smb_signing                                         -->
+<!--   Module Root: /rbt/sport/smbsigning                                   -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_smb_signing.c    -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/smbsigning/config/myconfig</name>              -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_smb_signing">
+
+    <config>
+        <name>/rbt/sport/smbsigning/config/blacklist/timed_list_expiration</name>
+        <description>Black list timeout period in minute</description>
+        <value type="uint32" min="1">20</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smbsigning/config/native_krb</name>
+        <description>Toggle End-to-End Kerberos support for SMB Signing</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/smbsigning/config/eekrb_downgrade</name>
+        <description>Toggle End-to-End Kerberos downgrade support for SMB Signing</description>
+        <value type="bool">true</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smbsigning/event/blacklist_timeout_change</name>
+        <description>Blacklist timeout period change event</description>
+        <parameter>timeout_period</parameter>
+    </event>
+    <event>
+        <name>/rbt/sport/smbsigning/event/native_krb</name>
+        <description>SMB signing End-to-End Kerberos enable/disable event</description>
+        <parameter>sign1_eekrb_enable</parameter>
+    </event>
+   <event>
+        <name>/rbt/sport/smbsigning/event/eekrb_downgrade</name>
+        <description>SMB signing End-to-End Kerberos support downgrade enable/disable event</description>
+        <parameter>sign1_downgrade_enable</parameter>
+    </event>
+     <config>
+         <name>/rbt/sport/smbsigning/config/look_for_error_on_anon_conn</name>
+         <description>Error detection for anonymous connection</description>
+         <value type="bool">false</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smbsigning/event/look_for_error_on_anon_conn</name>
+        <description>Error detection for anonymous connection change event</description>
+        <parameter>look_for_error_on_anon_conn</parameter>
+    </event>
+    <config>
+         <name>/rbt/sport/smbsigning/config/passthru_on_error_on_anon_conn</name>
+         <description>Passthrough on error on anonymous connection</description>
+         <value type="bool">false</value>
+    </config>
+    <event>
+        <name>/rbt/sport/smbsigning/event/passthru_on_error_on_anon_conn</name>
+        <description>Passthrough on error on anonymous connection</description>
+        <parameter>passthru_on_error_on_anon_conn</parameter>
+    </event>
+</node-list>

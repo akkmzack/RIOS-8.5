@@ -1,0 +1,739 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring Inbound QoS</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#395995">Chapter 6	Configuring Network Integration Features</a> : Configuring Inbound QoS</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="395995">Configuring Inbound QoS</a></div>
+      <div class="Body"><a name="395997">RiOS v7.0.1 introduces inbound QoS. You configure inbound QoS in the Configure &gt; Networking &gt; </a>Inbound QoS page. </div>
+      <div class="Body"><a name="399490">Inbound QoS allocates bandwidth and prioritizes traffic flowing into the LAN network behind the </a>Steelhead appliance. This provides the benefits of QoS for environments that cannot meet their QoS requirements with outbound QoS.</div>
+      <div class="Body"><a name="399438">Some examples of environments that can benefit from inbound QoS are: </a></div>
+      <li class="Bullet"><a name="401734">A deployment that does not have a Steelhead appliance located at the traffic source (for example, the </a>traffic comes from the Internet, or from servers at a site without a Steelhead appliance).</li>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;7. </span><a name="401754">Guarantee Bandwidth for Incoming Traffic<img class="Default" src="images/inbound_qos_Internet_traffic.gif" width="524" height="220" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /> </a></div>
+      <li class="Bullet"><a name="401824">A deployment that has multiple Steelhead appliances located at the traffic source (for example, behind </a>an Interceptor cluster). The Steelhead appliances do not share bandwidth information with each other. As a result, they can overwhelm the branch office site at the remote location.</li>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;8. </span><a name="401829">Data Center with Multiple Steelhead Appliances in a Cluster <img class="Default" src="images/inbound_qos_cluster_config.gif" width="517" height="222" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <li class="Bullet"><a name="401902">A branch office receiving data from more than one data center (either with or without Steelhead </a>appliances). Because the two data centers do not coordinate the amount of bandwidth sent to the branch office, they can overwhelm the link at the branch office, causing degraded performance. </li>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;9. </span><a name="401908">Branch Office that Receives Data From More Than One Data Center<img class="Default" src="images/inbound_qos_two_data_centers.gif" width="535" height="258" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Body"><a name="401909">Configuring inbound QoS focusses on prioritizing types of traffic using rules and classes just like outbound </a>QoS<span style="font-size: 9.0pt">. </span>The inbound configuration is separate from the outbound configuration. You define the applications on the local network and then create their corresponding shaping policies.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;6&#8209;10. </span><a name="396005">Inbound QoS Overview <img class="Default" src="images/inbound_qos.gif" width="519" height="303" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /></a></div>
+      <div class="Body"><a name="399372">Inbound QoS applies the HFSC shaping policies to the ingress traffic. This addresses environments where </a>bandwidth constraints exist at the downstream location. When this occurs, the downstream Steelhead appliance dynamically communicates the bandwidth constraints to the upstream Steelhead appliance, allowing it to perform traffic shaping as needed to avoid network congestion.</div>
+      <div class="Body"><a name="396012">For details on the HFSC queuing technology, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'advanced-networking.08.08.html#280229', '');" title="QoS Overview">Traffic Classification</a></span> and the <span class="book_title">Riverbed Deployment Guide</span>.</div>
+      <div class="Heading2"><a name="396018">How a Steelhead Appliance Identifies and Shapes Inbound Traffic</a></div>
+      <div class="Body"><a name="396029">Inbound rules define the types of traffic flowing into the branch office. As with outbound QoS, the rule can </a>match the traffic based on VLAN, IP header values, TCP/UDP ports, and AFE information. As an example, you can ensure that the voice traffic on the WAN is reserved a fixed bandwidth and this traffic has a higher priority over the recreational Internet traffic.</div>
+      <div class="Body"><a name="401952">Inbound classes shape the inbound traffic. The class configuration resembles a flat outbound QoS class </a>configuration. An outbound QoS configuration describes remote sites and services/applications. Inbound QoS describes the local services/applications and how to shape the inbound traffic. </div>
+      <div class="Body"><a name="396031">The inbound traffic shaping configuration includes a default shaping class. The QoS scheduler applies the </a>built-in inbound default class constraints and parameters on traffic not placed in any other class by the configured QoS rules. The default shaping class has a 10% minimum bandwidth allocation and a 100% maximum bandwidth allocation. You cannot delete the default class; however, you can change its bandwidth allocations. </div>
+      <div class="Heading3"><a name="396041">Inbound QoS Limitations</a></div>
+      <div class="Body"><a name="396042">The following limitations apply to inbound QoS traffic shaping.</a></div>
+      <li class="Bullet"><a name="396043">Unlike Outbound QoS (Advanced), inbound QoS does not support hierarchical mode; it uses flat mode </a>only. A deployment using inbound QoS will typically not require a hierarchical configuration to support multiple sites across the WAN. Deployment scenarios include configuring hierarchical mode using outbound QoS in the data center and configuring inbound QoS in the branch offices.</li>
+      <li class="Bullet"><a name="396045">Inbound QoS does not classify and shape traffic received from a peer Steelhead appliance when using </a>the connection forwarding feature. In these configurations, the Steelhead appliance that first intercepts the traffic classifies and shapes it. </li>
+      <li class="Bullet"><a name="534109">Inbound QoS is not fully compatible with RSP when one or more virtual machines are connected to the </a>inpath dataflow. In such scenarios all traffic that enters any Virtual Machine connected to the inpath dataflow will fall into the default class.</li>
+      <li class="Bullet"><a name="396051">When packet-mode optimization is enabled, the QoS scheduler places all of the traffic accelerated by </a>that feature into the default class. All other traffic goes into the proper class.</li>
+      <li class="Bullet"><a name="396052">You cannot configure inbound QoS in an out-of-path deployment over a primary or auxiliary interface. </a></li>
+      <li class="Bullet"><a name="396053">Inbound QoS does not throttle certain flows such as MX-TCP and UDP bulk traffic flows; however it </a>does provide bandwidth and latency reservation for them. </li>
+      <li class="Bullet"><a name="397003">Inbound QoS is not compatible with asymmetric routing.</a></li>
+      <li class="Bullet"><a name="432443">Inbound QoS classifies and shapes optimized TCP traffic terminated on the Steelhead appliance (using </a>an inner connection). Any other traffic generated by the Steelhead appliance (such as out-of-band management traffic from the CMC) is placed into the default class.</li>
+      <div class="Heading3"><a name="401666">Inbound QoS Limits</a></div>
+      <div class="Body"><a name="401667">The following limits apply to inbound QoS traffic shaping.</a></div>
+      <li class="Bullet"><a name="399816">The maximum number of inbound QoS rules is 500. The maximum number of inbound QoS classes is </a>200.</li>
+      <li class="Bullet"><a name="400216">The inbound QoS connection classification limit depends on the Steelhead appliance model. When the </a>number of optimized connections exceed the connection classification limit for the appliance model, all new connections are passed through unoptimized. The following table lists the limits.</li>
+      <table class="RegularTable" style="text-align: left; width: 468.39528pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 138.91104pt">
+            <div class="CellHeading"><a name="537508">Steelhead Appliance Model</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 329.48424pt">
+            <div class="CellHeading"><a name="537510">Maximum Number of Optimized Connections Per Second for the Inbound </a>QoS Class</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537512">250, 550</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537514">200</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537516">1050, 2050</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537518">500</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537520">5050, 6050, 7050</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="537522">1000</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="400141">For outbound QoS limit recommendations, see the </a><span class="book_title">Riverbed Deployment Guide</span>.</div>
+      <div class="ref_BasicSteps"><a name="400143">Inbound QoS Steps</a></div>
+      <div class="Body"><a name="396096">The following table describes the steps for configuring inbound QoS, followed by detailed procedures.</a></div>
+      <table class="RegularTable" style="text-align: left; width: 467.00136pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 279.4464pt">
+            <div class="CellHeading"><a name="396058">Task</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 187.55496pt">
+            <div class="CellHeading"><a name="396060">Reference</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep1_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep1_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">1.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep1_inner"><a name="396062">Select each WAN interface and define the bandwidth link rate for </a>each interface.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396139', '');" title="Configuring Inbound QoS" name="396067">To enable inbound QoS</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">2.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="396069">Select the Enable Inbound QoS Shaping and Enforcement check </a>box. </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396139', '');" title="Configuring Inbound QoS" name="396074">To enable inbound QoS</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">3.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="396076">Define the QoS classes for each traffic flow. </a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396249', '');" title="Configuring Inbound QoS" name="396081">To add an inbound QoS class</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">4.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="396083">Define rules for each class or subclass. </a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396317', '');" title="Configuring Inbound QoS" name="396087">Adding a QoS Rule (Inbound QoS)</a></span></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="396137">If you delete or add new rules, the existing connections are not affected; the changes only affect new </a>connections. </div>
+      <div class="HeadingProcedure"><a name="396139">To enable inbound QoS</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="396140">Choose Configure &gt; Networking &gt; Inbound QoS to display the Inbound QoS page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396145">Under WAN Link, complete the configuration as described in the following table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="537056">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="537058">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537060">Enable Inbound QoS Shaping </a>and Enforcement</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537063">Enables QoS to control the prioritization of different types of inbound network </a>traffic and to ensure that the Steelhead gives certain network traffic (for example, Voice Over IP) higher priority than other network traffic. Traffic is not classified until at least one WAN interface is enabled. </div>
+            <div class="CellBody"><a name="537067">By default, inbound QoS classification is disabled.</a></div>
+            <div class="CellBody"><a name="537068">To disable inbound QoS, clear this check box and restart the optimization </a>service. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537070">Enable QoS on &lt;interface&gt; with </a>WAN bandwidth (kbps)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537072">Enables a WAN interface &lt;X-Y&gt;. Specify its bandwidth link rate in kbps. The </a>bandwidth for the default site is automatically set to this value. </div>
+            <div class="CellBody"><a name="537073">Inbound QoS supports in-path interfaces only; it does not support primary or </a>auxiliary interfaces.</div>
+            <div class="CellBody"><a name="537074">The link rate is the </a><span style="font-style: italic">bottleneck</span> WAN bandwidth, not the interface speed out of the WAN interface into the router or switch: for example, if your Steelhead appliance connects to a router with a 100-Mbps link, do not specify this value&#8212;specify the actual WAN bandwidth (for example, T1, T3).</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="537078">Different WAN interfaces can have different WAN bandwidths; you </a>must enter the bandwidth link rate correctly for QoS to function properly.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Heading2"><a name="396241">Creating Inbound QoS Classes </a></div>
+      <div class="Body"><a name="396243">Priorities and bandwidths are set by QoS class. You can create up to 200 inbound QoS classes.</a></div>
+      <div class="HeadingProcedure"><a name="396249">To add an inbound QoS class</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="396250">Choose Configure &gt; Networking &gt; Inbound QoS to display the Inbound QoS page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396255">Under Inbound QoS Classes, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="537085">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="537087">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537089">Add a Class</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537091">Displays the controls for adding a class.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537094">Class Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537096">Specify a name for the QoS class.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537098">Priority</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537101">Indicates how delay-sensitive a traffic class is to the QoS scheduler. Select the </a>latency priority for the class from the drop-down list (highest priority to lowest):</div>
+            <li class="CellBullet"><span class="Bold"><a name="537102">Real-Time</a></span> - Specifies real-time traffic class. Give this value to your highest priority traffic; for example, VoIP, video conferencing.</li>
+            <li class="CellBullet"><span class="Bold"><a name="537103">Interactive</a></span> - Specifies an interactive traffic class: for example, Citrix, RDP, telnet and ssh. </li>
+            <li class="CellBullet"><span class="Bold"><a name="537104">Business Critical</a></span> - Specifies the high priority traffic class: for example, Thick Client Applications, ERPs, and CRMs.</li>
+            <li class="CellBullet"><span class="Bold"><a name="537105">Normal Priority</a></span> - Specifies a normal priority traffic class: for example, Internet browsing, file sharing, and email.</li>
+            <li class="CellBullet"><span class="Bold"><a name="537106">Low Priority</a></span> - Specifies a low priority traffic class for all traffic that does not fall into any other service class: for example, FTP, backup, replication, other high-throughput data transfers, and recreational applications such as audio file sharing.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="537107">Best Effort</a></span> - Specifies the lowest priority.</li>
+            <div class="CellBody"><a name="537108">These are minimum priority guarantees; if better service is available, it is </a>provided: for example, if a class is specified as low priority and the higher priority classes are not active, then the low priority class receives the highest possible available priority for the current traffic conditions. This parameter controls the priority of the class relative to the other classes.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="537109">The latency priority describes only the delay sensitivity of a class, not </a>how much bandwidth it is allocated, nor how <span style="font-style: italic">important</span> the traffic is compared to other classes. Typically, you configure low latency priority for high-throughput, nonpacket delay sensitive applications like FTP, backup, and replication.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537111">Minimum Bandwidth</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537113">Specify the minimum amount of bandwidth (as a percentage) to guarantee to a </a>traffic class when there is bandwidth contention. All of the classes combined cannot exceed 100%. During contention for bandwidth, the class is guaranteed the amount of bandwidth specified. The class receives more bandwidth if there is unused bandwidth remaining. </div>
+            <div class="CellBody"><a name="537114">The minimum bandwidth must fall within the bandwidth limit for the </a>Steelhead appliance.</div>
+            <div class="CellBody"><a name="537118">A default class is automatically created with minimum bandwidth of 10%. </a>Traffic that does not match any of the rules is put into the default class. Riverbed recommends that you change the guaranteed bandwidth of the default class to the appropriate value. </div>
+            <div class="CellBody"><a name="537119">You can adjust the value as low as 0%.</a></div>
+            <div class="CellBody"><a name="537120">The system rounds decimal numbers to the nearest hundredth.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537122">Maximum Bandwidth</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537124">Specify the maximum allowed bandwidth (as a percentage) a class receives as a </a>percentage of the minimum bandwidth. The limit is applied even if there is excess bandwidth available. </div>
+            <div class="CellBody"><a name="537125">The system rounds decimal numbers to the nearest hundredth.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537129">Link Share Weight</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537131">Specify the weight for the class. The link share weight determines how the </a>excess bandwidth is allocated among sibling classes. Link share does not depend on the minimum bandwidth. By default, all the link shares are equal.</div>
+            <div class="CellBody"><a name="537132">Classes with a larger weight are allocated more of the excess bandwidth than </a>classes with a lower link share weight.</div>
+            <div class="CellBody"><a name="537133">The system rounds decimal numbers to the nearest hundredth.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537135">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537137">Adds the QoS class.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="537139">Remove Selected</a></span></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537141">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected</span>. </div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396313">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396314">Click </a><span style="font-weight: bold">Save</span><span class="Bold"> </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="396315">The inbound QoS classes appear in the inbound QoS class table. To display QoS rules associated with the class, </a>click the magnifying glass. To hide the rules associated with a QoS class, click the <span style="font-weight: bold">close</span> icon.</div>
+      <div class="Heading3"><a name="396317">Adding a QoS Rule (Inbound QoS)</a></div>
+      <div class="Body"><a name="396318">Each rule maps a type of network traffic to a QoS class. You can create more than one QoS rule for a class. </a>When more than one QoS rule is created for a class, the rules are followed in the order in which they appear in the Inbound QoS page and only the first matching rule is applied to the class. </div>
+      <div class="Body"><a name="399778">The maximum number of inbound QoS rules is 500. </a></div>
+      <div class="HeadingProcedure"><a name="396322">To add an inbound QoS rule</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="396323">Choose Configure &gt; Networking &gt; Inbound QoS to display the Inbound QoS page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396328">Under Inbound QoS Rules, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="537276">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="537278">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537280">Add a Rule</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537282">Displays the controls to add a QoS rule. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537284">Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537286">Specify a rule name.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537288">Insert Rule At</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537290">Inserts a QoS rule for a QoS class. Select Start, End, or a rule number from the </a>drop-down list. </div>
+            <div class="CellBody"><a name="537294">Steelhead appliances evaluate rules in numerical order starting with rule </a><span class="Bold" style="font-weight: normal">1</span>. If the conditions set in the rule match, then the rule is applied, and the system moves on to the next packet. If the conditions set in the rule do not match, the system consults the next rule: for example, if the conditions of rule 1 do not match, rule <span class="Bold" style="font-weight: normal">2</span> is consulted. If rule <span class="Bold" style="font-weight: normal">2</span> matches the conditions, it is applied, and no further rules are consulted. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537296">Description</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537298">Describe the rule to facilitate administration.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537300">Remote Subnet</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537302">Specify the IP address for the remote network. Use the following format:</a><span class="Bold" style="font-weight: normal"> </span><span class="Bold" style="font-weight: normal">XX.XXX.XXX.XXX/XX.</span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537304">Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537306">Specify the port or port label for the remote subnet. The default value is </a><span class="Bold" style="font-weight: normal">All</span>.</div>
+            <div class="CellTip">
+              <span class="Bold">Tip: </span><a name="537307">Rules support port labels for source and destination ports.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537309">Local Subnet</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537311">Specify the IP address for the local network. Use the following format: </a><span class="Bold" style="font-weight: normal">XXX.XXX.XXX.XXX/XX.</span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537313">Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537315">Specify the port or port label for the local subnet. The default value is </a><span class="Bold" style="font-weight: normal">All</span>.</div>
+            <div class="CellTip">
+              <span class="Bold">Tip: </span><a name="537316">Rules support port labels for source and destination ports.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537318">Protocol</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537320">Select All, TCP, GRE, UDP, ICMP, IPSecAH (Authentication Header), IPSecESP </a>(Encapsulating Security Payload), or a number from the drop-down list. All specifies all TCP and UDP-based protocols.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537322">Traffic Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537324">Select All, Optimized, or Passthrough from the drop-down list. The system </a>applies the QoS rules to optimized and pass-through (ingress only) traffic.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="537325">Session reliability (port 2598) is not supported with pass-through Citrix </a>traffic.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537327">DSCP</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537329">Optionally, specify a DSCP level. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537331">VLAN</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537333">Optionally, specify the VLAN tag for the rule.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537335">Service Class Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537337">Select a service class from the drop-down list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537339">Application Protocols</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537341">Select an application from the drop-down list of global applications. </a></div>
+            <div class="CellBody"><a name="537342">You can define and add any applications that do not appear in the list.</a></div>
+            <div class="CellBody"><a name="537343">Selecting HTTP expands the control to include the Domain Name and Relative </a>Path controls. Enter the domain name and relative path. The relative path is the part of the URL that follows the domain name.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537345">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537347">Adds a rule to the inbound QoS rule list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537349">Remove Rules</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537351">Removes the selected rules. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537353">Move</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="537355">Select the box next to the name and click </a><span class="Bold">Move QoS Rules</span>. Click the arrow next to the desired rule position. The rule moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396454">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="396455">Click </a><span style="font-weight: bold">Save</span><span class="Bold"> </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="401473">To modify an inbound QoS class or rule</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="401474">Choose Configure &gt; Networking &gt; Inbound QoS to display the Inbound QoS page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="401475">Select the class or rule name in the class or rule table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="401480">Modify the settings. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="401481">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="401482">Click </a><span style="font-weight: bold">Save</span><span class="Bold"> </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading3"><a name="399851">Verifying and Saving an Inbound QoS Configuration</a></div>
+      <div class="Body"><a name="399852">After you apply your settings, you can verify whether the traffic is categorized in the correct class by </a>choosing Reports &gt; Networking &gt; Inbound QoS (Sent) and viewing the report. For example, if you have configured VoIP traffic as real-time, check the Real-time class and verify that the other classes are not receiving VoIP traffic. </div>
+      <div class="Body"><a name="399853">You can verify whether the configuration is honoring the bandwidth allocations by reviewing the Inbound </a>QoS (Sent) and Inbound QoS (Dropped) reports. </div>
+      <div class="Body"><a name="399854">When you have verified appropriate changes, you can write the active configuration that is stored in </a>memory to the active configuration file (or you can save it as any filename you choose). For details on saving configurations, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupConfig.html#281818', '');" title="Managing Configuration Files">Managing Configuration Files</a></span>.</div>
+      <div class="HeadingProcedure"><a name="399858">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupPortLabels.html#251342', '');" title="Configuring Port Labels" name="399862">Configuring Port Labels</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupConfig.html#281818', '');" title="Managing Configuration Files" name="399866">Managing Configuration Files</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportQoSStatsDropped.html#297753', '');" title="Viewing Outbound QoS (Dropped) Reports" name="416379">Viewing Outbound QoS (Dropped) Reports</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportQoSStatsSent.html#297831', '');" title="Viewing Outbound QoS (Sent) Reports" name="416384">Viewing Outbound QoS (Sent) Reports</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

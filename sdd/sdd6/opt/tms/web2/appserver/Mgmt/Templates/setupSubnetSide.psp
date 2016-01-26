@@ -1,0 +1,135 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupSubnetSide.psp
+## This is the template for distinguishing whether traffic comes from
+## the LAN side or the WAN side based on subnet or IP address.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, ajaxentrytable, FormUtils, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="nodeEntries">
+
+        # For RBM permissioning
+        return {
+            'subnetRule': FormUtils.NodeEntry(
+                    path='/rbt/subnet/config/side/rule/*',
+                    type='uint32')
+        }
+
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addSubnet_index': FormUtils.NodeEntry(
+            name='addSubnet_index',
+            widget='select',
+            label='Insert Rule At'),
+        'addSubnet_source': FormUtils.NodeEntry(
+            name='addSubnet_source',
+            type='ipv4prefix',
+            value='0.0.0.0/0',
+            widgetClass='ipaddrm',
+            label='Subnet'),
+        'addSubnet_side': FormUtils.NodeEntry(
+            name='addSubnet_side',
+            widget='radio',
+            value='true',
+            label={'true': 'Subnet is on the <strong>LAN</strong> side of this appliance',
+                   'false': 'Subnet is on the <strong>WAN</strong> side of this appliance'}),
+    }
+</psp:method>
+
+<%
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+# Sometimes the RSP Dataflow page is a related page. Here is the explanation:
+#
+# If RSP is enabled and the SH is in inpath-out-of-path mode,
+# then the RSP Dataflow depends on the Subnet Side map for the VNIs
+# to determine which traffic comes from which side.
+#
+# We mustn't link to the RSP Dataflow page if it isn't installed,
+# and it's irrelevant if RSP is disabled or not inpath-out-of-path mode.
+bobAppliance = RVBDUtils.isBOB()
+rspEnabled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/config/enable')
+inpathOop = 'true' == Nodes.present(mgmt, '/rbt/sport/intercept/config/inpath_oop')
+if (rspEnabled or bobAppliance) and inpathOop: {
+    self.relatedPages = (
+        'setupAdvNet_netflow',
+        'setupServiceGeneral',
+        (bobAppliance and 'setupRSP3Dataflow' or 'setupRSPDataflow'),
+    )
+} else: {
+    self.relatedPages = (
+        'setupAdvNet_netflow',
+    )
+}
+
+dialogEntries = self.dialogEntries()
+dialogEntries['addSubnet_index'].selectOptions = \
+    FormUtils.selectPositionOptions(mgmt,
+        pathPrefix + '/rbt/subnet/config/side/rule')
+
+## Subnet Side Table
+subnetSideTable = ajaxentrytable.AjaxEntryTable('subnetSide',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=subnetSide'),
+    headerSpec=('', 'Rule', 'Source', 'Side'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('index', 'selectedSubnetMap_',
+                                  'moveToSubnetMap_', ['default']),
+ AjaxEntryTable.tdAttr('index'),
+ AjaxEntryTable.tdAttr('srcsubnet'),
+ AjaxEntryTable.tdActiveSelect('src_side', 'SubnetSide_', 'index', [['true', 'LAN'], ['false', 'WAN']], 'sendSideSelection(this)', null, ['default'])]""",
+    emptyMessage='No Subnet Side Rules.',
+    removeName='removeSubnet',
+    removeButtonText='Remove Subnet Rules',
+    moveName='moveSubnet',
+    moveButtonText='Move Subnet Rules...',
+    moveButtonCancelText='Cancel Move',
+    addButtonName='addSubnet',
+    addButtonText='Add a Subnet Side Rule')
+
+subnetSideTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+''' + dialogEntries['addSubnet_index'].html(self) + '''
+''' + dialogEntries['addSubnet_source'].html(self) + '''
+  </table>
+</div>
+<div class="midLevel">
+''' + dialogEntries['addSubnet_side'].html(self, format='block', value='true') + '''
+''' + dialogEntries['addSubnet_side'].html(self, value='false') + '''
+</div>
+'''
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupSubnetSide" />
+    <%= subnetSideTable.html(self) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+
+<script type="text/javascript">
+<!--
+
+function sendSideSelection(opt) {
+    opt.name = 'change' + opt.name;
+    opt.form.submit();
+}
+
+// -->
+</script>

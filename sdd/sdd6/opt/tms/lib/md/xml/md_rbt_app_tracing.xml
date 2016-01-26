@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_app_tracing                                         -->
+<!--   Module Root: /rbt/sport/app_tracing                                  -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_app_tracing.c    -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/app_tracing/config/myconfig</name>             -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_app_tracing">
+	<config>
+        	<name>/rbt/sport/app_tracing/config/enable</name>
+        	<description>Status of app level tracing</description>
+                <value type="bool">false</value>
+	</config>
+	<passthrough>
+        	<name>/rbt/sport/app_tracing/action/*</name>
+        	<description>Action to passthrough to sport</description>
+        	<value type="string"/>
+        	<passthrough-provider>sport</passthrough-provider>
+    	</passthrough>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/enabled</name>
+        	<description>App tracing state</description>
+        	<value type="bool"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/started</name>
+        	<description>App tracing activity</description>
+        	<value type="bool"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+	<external-state-wildcard>
+		<name>/rbt/sport/app_tracing/state/connection/*</name>
+		<description>Show app tracing connections</description>
+		<value type="string"/>
+		<state-provider>sport</state-provider>
+	</external-state-wildcard>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/connection/*/src_ip</name>
+        	<description>Source address</description>
+        	<value type="string"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/connection/*/dst_ip</name>
+        	<description>Destination address</description>
+        	<value type="string"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/connection/*/src_port</name>
+        	<description>Source port</description>
+        	<value type="string"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+	<external-state>
+        	<name>/rbt/sport/app_tracing/state/connection/*/dst_port</name>
+        	<description>Destination port</description>
+        	<value type="string"/>
+		<state-provider>sport</state-provider>
+	</external-state>
+</node-list>

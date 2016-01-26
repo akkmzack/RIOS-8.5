@@ -1,0 +1,228 @@
+<%
+## Copyright 2006 - 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportTrafficSummary.psp
+## This is the template for the Traffic Summary report page.
+## Refactored to use common reports code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, UserConfig, time, ProductReportContext:TrafficSummaryPagelet" %>
+<%@page extends="TrafficSummaryPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+    self.relatedPages = [
+        'setupAdministrationPorts',
+    ]
+%>
+
+<psp:method name="prepare" params="reportOpts">
+    super(TrafficSummaryPagelet, self).prepare(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    typeField = fields.get('type', session.value('type', 'optimized'))
+    self.updateGfxParams(reportOpts, {'type': typeField})
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(TrafficSummaryPagelet, self).dialogEntries(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    dirField = fields.get('dir', session.value('dir', 'bi'))
+    typeField = fields.get('type', session.value('type', 'optimized'))
+    dialogEntries['refresh'].action = None
+    dirEntry = dialogEntries['dir']
+    dirEntry.value = dirField
+    dirEntry.action = None
+    typeOptions = (('optimized',   'Optimized'),
+                   ('passthrough', 'Pass Through'),
+                   ('both', 'Both'))
+    dialogEntries['type'] = FormUtils.NodeEntry(
+        name='type',
+        widget='select',
+        action='setTrafficFieldProperties()',
+        selectOptions=typeOptions,
+        value=typeField
+    )
+
+    per, lb, ub = FormUtils.reportsTimeIntervalWidgets(session)
+    per.action = 'setCustomFieldsVisibility()'
+    per.label = None
+    lb.label = None
+    ub.label = None
+
+    dialogEntries['per'] = per
+    dialogEntries['lb'] = lb
+    dialogEntries['ub'] = ub
+
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'tsForm',
+    'reportSpecs': {
+        'ts': {
+            'tableName': 'trafficSummaryTable',
+            'gfxId': 'trafficSummary',
+            'gfxDisplayId': 'tsGraphImg',
+         }
+    }
+}
+trafficSummaryTable = ajaxentrytable.AjaxEntryTable('trafficSummary',
+    headerSpec=(
+        '',
+        ('Port', 'reportLabelTD'),
+        ('Reduction', 'reportLabelTD'),
+        ('LAN Data', 'reportValueTD'),
+        ('WAN Data', 'reportValueTD'),
+        ('Traffic %', 'reportValueTD')),
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.td([
+            AjaxEntryTable.tdIcon('reduction_icon', 'alt_text'),
+            AjaxEntryTable.tdBlank(),
+            AjaxEntryTable.tdAttr('reduction')
+        ], 'reportValueTD'),
+        AjaxEntryTable.tdAttr('lan_value', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('wan_value', 'reportValueTD'),
+        AjaxEntryTable.tdAttr('traffic_pct', 'reportValueTD')
+]""",
+    emptyMessage='No data available.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div class="graphPieDiv">
+  <img src="" id="tsGraphImg" class="graphPieImg" alt="Traffic Summary Chart" />
+</div>
+
+<form id="tsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>"
+  onsubmit="saveReportsTimeInterval()">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <%= reportOpts.get('groupHdr', '') %>
+          <th>Type:</th>
+          <th>Traffic:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= dialogEntries['per'].html(self, format='inline') %>
+            <div id="startend" style="display: none">
+              <p class="reportFormLabel">Start Time:</p>
+              <%= dialogEntries['lb'].html(self, format='inline') %>
+              <p class="reportFormLabel">End Time:</p>
+              <%= dialogEntries['ub'].html(self, format='inline') %>
+            </div>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['type'].html(self, format='horiz') %>
+          <%= dialogEntries['dir'].html(self, format='horiz') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= trafficSummaryTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+onloadScript += 'setCustomFieldsVisibility();';
+onloadScript += 'setTrafficFieldProperties();';
+onloadScript += 'callFetchReport();';
+
+function setCustomFieldsVisibility() {
+    if (Y.one('select[name="per"]').get('value') == 'cust') {
+        Y.one('div#startend').setStyle('display', 'block');
+    } else {
+        Y.one('div#startend').setStyle('display', 'none');
+    }
+}
+
+function setTrafficFieldProperties() {
+    if (Y.one('select[name="type"]').get('value') == 'optimized') {
+        Y.one('select[name="dir"]').removeAttribute('disabled');
+    } else {
+        Y.one('select[name="dir"]').set('disabled', 'disabled');
+        Y.one('select[name="dir"]').set('value', 'bi');
+    }
+}
+
+// Manually call fetchReport() with a URL that is assembled from the current
+// values of the controls on the page and some hardcoded values that were
+// basically reverse engineered from the old reports framework.
+function callFetchReport() {
+    var gfxUrlParams = Y.QueryString.stringify({
+        lb: Y.one('input[name="lb"]').get('value'),
+        source: 'host',
+        h: 220,
+        req: 'ts',
+        per: Y.one('select[name="per"]').get('value'),
+        p: 'trafficSummary',
+        w: 640,
+        type: Y.one('select[name="type"]').get('value'),
+        port: 0,
+        dir: Y.one('select[name="dir"]').get('value'),
+        ub: Y.one('input[name="ub"]').get('value')
+    });
+
+    fetchReport('tsGraphImg', '/mgmt/gfx?' + gfxUrlParams,
+                'trafficSummaryTable', '/mgmt/xmldata?p=graphTableXML&req=ts');
+}
+
+<%
+# This is a dummy function that *appears* to do nothing, but actually prevents
+# the old reports framework from interfering with the custom JavaScript above.
+%>
+function dummy() {}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+<%
+# This atrocity is necessary because we want to suppress the call to
+# fetchReport() that is written out by the Python code in the old reports
+# framework.  We can't stop the framework from writing out the JavaScript, so
+# the next best thing is to alter it so that it never sees the light of day.
+%>
+onloadScript = onloadScript.replace('fetchReport', 'dummy');
+
+<%
+# This code is slightly less atrocious, but still not pretty.  When the Refresh
+# option is set to anything other than Off, the Python code in the old reports
+# framework will write out a JavaScript function named 'updateReport' that gets
+# invoked periodically (via setInterval).  We define a function with the same
+# name here, which overrides the other function and allows us to take back
+# control of the report.
+%>
+function updateReport() {
+    callFetchReport();
+}
+
+// ]]>
+</script>

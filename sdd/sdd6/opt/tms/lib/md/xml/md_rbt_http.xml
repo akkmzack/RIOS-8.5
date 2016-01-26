@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_http                                                -->
+<!--   Module Root: /rbt/sport/blade/http                                   -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_http.cc      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/blade/http/config/myconfig</name>              -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_http">
+    <config>
+        <name>/rbt/sport/blade/http/config/low_mem_bypass/enable</name>
+        <description>Enable low memory bypass in HTTP blade</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/insert_x_debug_hdr</name>
+        <description>Insert x_RBT_debug header for debugging HTTP optimization</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/bypass_precook_excessive_line</name>
+        <description>Bypass connections of large headers when the peer runs pre-6.1.0</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/prefetch_on_set_cookie</name>
+        <description>Prefetch on seeing set cookie</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/cache_vary_hdr</name>
+        <description>caching responses with a vary header</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/cache/cache_objects/mode</name>
+        <description>Cache mode for objects</description>
+        <value type="string">all</value>
+        <value-choices>
+            <choice>all</choice>
+            <choice>use-list</choice>
+            <choice>none</choice>
+        </value-choices>
+    </config>
+
+    <event>
+        <name>/rbt/sport/blade/http/event/cache/mode_change</name>
+        <description>Event that cache mode has changed</description>
+        <parameter>cache_all_ext</parameter>
+        <parameter>cache_none</parameter>
+    </event>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/native_krb/enable</name>
+        <description>Native Kerberos Mode</description>
+        <value type="bool">false</value>
+    </config>
+
+    <event>
+        <name>/rbt/sport/blade/http/event/native_krb</name>
+        <description>Event that native kerberos mode has changed</description>
+        <parameter>enable</parameter>
+    </event>
+
+    <!-- Auto config nodes -->
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/enable</name>
+        <description>Enable auto configuration of HTTP optimization options for hostnames</description>
+        <value type="bool">true</value>
+    </config>
+
+    <event>
+        <name>/rbt/sport/blade/http/event/auto_config/enable_change</name>
+        <description>Event the default auto config mode has changed</description>
+        <parameter>enable</parameter>
+    </event>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/size</name>
+        <description>Number of hostnames stored for auto configuration</description>
+        <value type="uint32" min="1" max="10000">1000</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/transaction_threshold</name>
+        <description>Number of transactions before making an auto configuration static</description>
+        <value type="uint32" min="1" max="5000">1000</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/rtt_ratio_threshold</name>
+        <description>RTT ratio threshold for auto configuration</description>
+        <value type="uint32" min="1" max="100">3</value>
+    </config>
+
+    <external-state-wildcard>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*</name>
+        <description>Hostname from the blade's auto configuration table</description>
+        <value type="hostname"/>
+	<state-provider>sport</state-provider>
+    </external-state-wildcard>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/cache</name>
+        <description>Object prefetch table selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/parse_and_prefetch</name>
+        <description>Parse and prefetch selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/url_learning</name>
+        <description>Learn URL selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/ntlm_auth_srv</name>
+        <description>Reuse NTLM selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/force_negotiate_ntlm</name>
+        <description>Force NTLM selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/strip_auth_header</name>
+        <description>Strip auth header selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/auth_cache</name>
+        <description>Gratuitous 401 selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/strip_compress</name>
+        <description>Strip compression selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/insert_cookie</name>
+        <description>Insert cookie selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/insert_keep_alive</name>
+        <description>Insert keep alive selected in auto config?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/eval/in_eval_period</name>
+        <description>Currently in evaluation period?</description>
+        <value type="bool"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/auto_config/hostname/*/eval/transaction_count</name>
+        <description>Number of transactions hostname; used mainly for evaluation period</description>
+        <value type="uint32"/>
+	<state-provider>sport</state-provider>
+    </external-state>
+
+    <!-- Nodes to indicate if being used for auto config selection -->
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/cache</name>
+        <description>Consider cache option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/parse_and_prefetch</name>
+        <description>Consider parse_and_prefetch option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/url_learning</name>
+        <description>Consider url_learning option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/ntlm_auth_srv</name>
+        <description>Consider ntlm_auth_srv option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/force_negotiate_ntlm</name>
+        <description>Consider force_negotiate_ntlm option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/strip_auth_header</name>
+        <description>Consider strip_auth_header option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/auth_cache</name>
+        <description>Consider auth_cache option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/strip_compress</name>
+        <description>Consider strip_compress option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/insert_cookie</name>
+        <description>Consider insert_cookie option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/auto_config/selection/insert_keep_alive</name>
+        <description>Consider insert_keep_alive option in auto configuration?</description>
+        <value type="bool">true</value>
+    </config>
+
+    <!-- HTTP Prepop nodes -->
+
+    <config-wildcard>
+        <name>/rbt/sport/blade/http/config/prepop/list/*</name>
+        <description>The name of a list (of URLs to prepop)</description>
+        <value type="string"/>
+        <char-count max="15" min="1"/>
+    </config-wildcard>
+
+    <config-wildcard>
+        <name>/rbt/sport/blade/http/config/prepop/list/*/url/*</name>
+        <description>The (regular) URLs to prepop</description>
+        <value type="string"/>
+    </config-wildcard>
+
+    <config-wildcard>
+        <name>/rbt/sport/blade/http/config/prepop/list/*/silverlight_url/*</name>
+        <description>The (silverlight manifest) URLs to prepop</description>
+        <value type="string"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/prepop/verify_server</name>
+        <description>Enforce server certificate verification when prepop'ing by https</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/prepop/vmem_cap_in_mb</name>
+        <description>Virtual Memory Cap for wget in MB</description>
+        <value type="uint32">40</value>
+    </config>
+
+    <state-wildcard>
+        <name>/rbt/sport/blade/http/state/prepop/operation/*</name>
+        <description>Ongoing prepop operations are found here.</description>
+        <value type="string"/>
+        <iterate-func>mrh_iterate_http_prepop_operations</iterate-func>
+        <get-func>mrh_get_http_prepop_operation</get-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/sport/blade/http/state/prepop/inuse</name>
+        <description>State node to determine if prepop is in use</description>
+        <value type="bool"/>
+        <get-func>mrh_get_http_prepop_in_use</get-func>
+    </state>
+
+    <!-- Silverlight stream-splitting nodes -->
+
+    <config>
+        <name>/rbt/sport/blade/http/config/stream_splitting/video_type/silverlight_on_demand/enable</name>
+        <description>Enable silverlight 'on-demand' video stream splitting</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/stream_splitting/video_type/other_unsupported/enable</name>
+        <description>Enable video stream splitting for other video types</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/stream_splitting/inflight_cache_delay_msecs</name>
+        <description>How long do we hold on to a vid fragment after the last waiter has been served</description>
+        <value type="uint32">10000</value>
+    </config>
+
+    <!-- Nodes for prefetch heuristic based on request counts -->
+
+    <config>
+        <name>/rbt/sport/blade/http/config/prefetch/request_count/enable</name>
+        <description>Enable request count based prefetch heuristic</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/blade/http/config/prefetch/request_count/threshold</name>
+        <description>Request count threshold for inclusion in prefetch tree</description>
+        <value type="float64" min="0.0" max="1.0">0.5</value>
+    </config>
+
+    <!-- State nodes, mostly for stats -->
+
+   	<external-state>
+        <name>/rbt/sport/blade/http/state/stream_splitting/stats/video_fragments_fetched_remotely</name>
+        <description>Number of video fragments that were fetched over the WAN</description>
+        <value type="uint32"/>
+	    <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/stream_splitting/stats/video_fragments_served_locally</name>
+        <description>Number of video fragments that were served from cache</description>
+        <value type="uint32"/>
+	    <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+        <name>/rbt/sport/blade/http/state/stream_splitting/stats/cache_bytes_utilized</name>
+        <description>Number of bytes utilized (in the cache)</description>
+        <value type="uint32"/>
+	    <state-provider>sport</state-provider>
+    </external-state>
+
+</node-list>

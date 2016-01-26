@@ -1,0 +1,87 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## Connection History Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/pass_conn_history_max',
+            '/stats/actions/generate_report/opt_conn_history_max']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    highstockOptions.yAxis[0].title.text = 'Connections';
+    highstockOptions.yAxis[2].title.text = '% of Optimized';
+
+    // When grouping data points, pick the max value since we're showing the
+    // max stats.
+    highstockOptions.plotOptions.series.dataGrouping.approximation = 'high';
+
+    // Clamp the Half-Open / Half-Closed percentage graph.
+    highstockOptions.yAxis[2].max = 102;
+    highstockOptions.yAxis[2].tickInterval = 100;
+    highstockOptions.yAxis[2].endOnTick = false;
+
+    highstockOptions.series = [{name: 'Optimized',
+                                color: RBT.Reports2.ORANGE},
+                               {name: 'Optimized (Active)',
+                                color: RBT.Reports2.GREEN},
+                               {name: 'Passthrough',
+                                color: RBT.Reports2.BLUE},
+                               {name: 'Forwarded',
+                                color: RBT.Reports2.RED},
+                               {name: 'Optimized (Half Open)',
+                                color: RBT.Reports2.AQUA,
+                                yAxis: 2},
+                               {name: 'Optimized (Half Closed)',
+                                color: RBT.Reports2.PINK,
+                                yAxis: 2}];
+
+    // Make the navigator shadow the first series (Optimized).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportConnectionHistory") %>',
+        options: highstockOptions,
+        topPaneHeightPercent: 85,
+        dataFormatterFn: dataFormatter,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    if (seriesName == 'Optimized (Half Open)' || seriesName == 'Optimized (Half Closed)') {
+        return RBT.Reports2.roundWithPadding(value, 1) + '%';
+    } else {
+        return RBT.Reports2.addThousandsSeparators(Math.round(value)) + " connections";
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

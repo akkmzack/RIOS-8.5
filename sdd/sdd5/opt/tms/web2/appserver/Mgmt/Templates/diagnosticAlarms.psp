@@ -1,0 +1,100 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## diagnosticAlarms.psp
+## Alarm Report page for all products.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+th.alarmStatusColumn {
+  width: 80px;
+}
+'''
+</psp:method>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupAdminAlarms', 'setupAdminSNMP_basic',)
+mgmt = self.session().value('mgmt')
+
+alarmTable = ajaxentrytable.AjaxEntryTable('alarm',
+    url='/mgmt/xmldata?p=alarmdAlarms',
+    headerSpec=('Alarm', ('Status', 'alarmStatusColumn')),
+    rowSpec="""[
+  AjaxEntryTable.tdTree([alarmNamePlusMessage]),
+  tdAlarmStatus]""",
+   emptyMessage='No alarms.')
+
+self.beginPagelet()
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// The name, and optionally, a message in a div
+function alarmNamePlusMessage(entryTable, parent, element) {
+    var name = element.getAttribute('prettyName');
+    var tooltip = element.getAttribute('description');
+
+    // The trigger message, if present, is the html in the immedate
+    // child named 'triggerMessage'.
+    for (var child = element.firstChild; child; child = child.nextSibling) {
+        if ('triggerMessage' == child.tagName) {
+            // If not a leaf alarm, there's a triangle glyph to the left of the alarm name,
+            // so we need to indent differently in that case, thus, an extra class for CSS.
+            var indentClass = child.getAttribute('hasChildAlarms') == 'true' ? ' triggerIndent' : '';
+            var triggerMsg = getTextNodeText(child);
+            var span = document.createElement('span');
+            parent.appendChild(span)
+            Y.one(parent).append('<div class="triggerMessage' + indentClass + '">' + triggerMsg + '</div>');
+            span.appendChild(document.createTextNode(name));
+            if (tooltip) {
+                RBT.Tooltip.createPlaceholder({
+                    triggerNode: span,
+                    content: tooltip});
+            }
+            return;
+        }
+    }
+
+    var span = document.createElement('span');
+    parent.appendChild(span);
+    span.appendChild(document.createTextNode(name))
+    // otherwise just use the name
+    if (tooltip) {
+        RBT.Tooltip.createPlaceholder({
+            triggerNode: span,
+            content: tooltip});
+    }
+}
+
+// Styled status, collapsing row if OK
+function tdAlarmStatus(entryTable, tr, element) {
+    var td = document.createElement('td');
+    td.className = element.getAttribute('statusStyle');
+    td.appendChild(document.createTextNode(element.getAttribute('status')));
+    tr.appendChild(td);
+    if ('true' == element.getAttribute('collapse')) {
+        tr.isCollapsed = true;
+    }
+}
+
+// ]]>
+</script>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="alarmStatusForm">
+  <div>
+    <input type="hidden" name="_action_" value="diagnosticAlarms" />
+  </div>
+  <%= alarmTable.html(self) %>
+</form>
+
+<% self.endPagelet() %>

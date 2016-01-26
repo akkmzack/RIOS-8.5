@@ -1,0 +1,92 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## Data Store Disk Load Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/disk_load']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Load (%)';
+    highstockOptions.yAxis[0].endOnTick = false;
+    highstockOptions.yAxis[0].max = 101;
+
+    highstockOptions.series = [{name: 'Disk Load',
+                                type: 'area',
+                                color: RBT.Reports2.BLUE}];
+
+    // Make the navigator shadow the only series (Disk Load).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.colors[0];
+    highstockOptions.navigator.series.type = 'area';
+    highstockOptions.navigator.yAxis.max = 100;
+
+    // Add a red overlay on the y-axis for the danger zone, 90% - 100%.
+    highstockOptions.yAxis[0].plotBands = [{
+        from: 90,
+        to: 101,
+        zIndex: 1,
+        color: RBT.Reports2.RED_TRANSPARENT
+    }];
+
+    // Add a red dashed line and text label at the 90% mark.
+    highstockOptions.yAxis[0].plotLines = [{
+        value: 90,
+        width: 1,
+        dashStyle: 'Dash',
+        zIndex: 2,
+        color: RBT.Reports2.RED,
+        label: {
+            text: 'Heavy disk load',
+            align: 'left',
+            textAlign: 'left',
+            verticalAlign: 'middle',
+            style: {
+                color: RBT.Reports2.getTextColor(RBT.Reports2.RED)
+            },
+            x: 2
+        }
+    }];
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportDataStoreLoad") %>',
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['Disk Load']
+    });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    return Math.round(value) + '%';
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

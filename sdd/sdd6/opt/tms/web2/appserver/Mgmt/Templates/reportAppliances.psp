@@ -1,0 +1,102 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler
+##
+## reportAppliances.psp
+## This is the template for the Connected Appliances report page.
+##
+## STATUS: under construction
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, iph:iph, FormUtils, Nodes, ajaxentrytable:AjaxEntryTable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'Peers': FormUtils.NodeEntry(
+            path='/rbt/sport/peer',
+            type='string',
+            label='Peers For RBA')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'filter': FormUtils.NodeEntry(
+            name='filter',
+            widget='checkboxLeft',
+            label='Show Only Online Peers',
+            action='filter(this.checked)')
+    }
+</psp:method>
+
+<%
+dialogEntries = self.dialogEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<%
+applianceTable = AjaxEntryTable('appliance', '/mgmt/xmldata?p=connectedAppliances')
+applianceTable.headerSpec = ('', 'IP Address', 'Name', 'Model', 'Version', 'Licenses')
+applianceTable.rowSpec = """[
+    AjaxEntryTable.tdIcon('icon', 'valid', ""),
+    AjaxEntryTable.tdLink('ipLink', 'ipAddr', 'Click to open console in a new window.', true),
+    AjaxEntryTable.tdLink('hostLink', 'hostname', 'Click to open console in a new window.', true),
+    AjaxEntryTable.tdAttr('model'),
+    AjaxEntryTable.td([AjaxEntryTable.attrText('version')], 'compatible'),
+    AjaxEntryTable.tdAttr('licenses')
+]"""
+applianceTable.emptyMessage = 'No connected appliances.'
+%>
+
+<%= dialogEntries['filter'].html(self) %>
+
+<p><strong>Total Displayed:</strong> <span id='totalDisplayed'>&nbsp;</span></p>
+
+<%= applianceTable.html(self, cssClass="topLevel") %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+applianceTable.postPopulateTableHook = function() {
+    updateTotalDisplayed();
+}
+
+function filter(hideUnknownPeers) {
+    for (var i = 0; i < applianceTable.rowList.length; ++i) {
+        var trEl = applianceTable.rowList[i][0];
+        var xmlData = applianceTable.rowList[i][1];
+
+        if (hideUnknownPeers && (xmlData.getAttribute('valid') != 'valid')) {
+            Y.one(trEl).addClass('hidden');
+        }
+        else {
+            Y.one(trEl).removeClass('hidden');
+        }
+    }
+    applianceTable.colorRows();
+
+    updateTotalDisplayed();
+}
+
+function updateTotalDisplayed() {
+    var totalDisplayed = 0;
+    for (var i = 0; i < applianceTable.rowList.length; ++i) {
+        var trEl = applianceTable.rowList[i][0];
+        if (!Y.one(trEl).hasClass('hidden')) {
+            totalDisplayed++;
+        }
+    }
+    setElementText('totalDisplayed', totalDisplayed);
+}
+
+// ]]>
+</script>

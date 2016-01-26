@@ -1,0 +1,112 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+## Author: cwang
+##
+## setupServiceAddressMap.psp
+##
+##  Public IP Address to Private IP Address Mapping
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'addrmap_enable': NodeEntry(
+            path='/rbt/sport/addrmap/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Address Mapping Support')
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addrmap_private_addr': NodeEntry(
+            name='addrmap_private_addr',
+            label='Private IP',
+            validate='ipv4addr'),
+        'addrmap_public_addr': NodeEntry(
+            name='addrmap_public_addr',
+            label='Public IP',
+            validate='ipv4addr')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+# public/private ip address mapping table
+addrMappingTable = ajaxentrytable.AjaxEntryTable('addrMapping',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=cloudAddressMaps'),
+    headerSpec=('', 'Public IP Address', 'Private IP Address'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('publicAddr', 'selectedPublicAddr_'),
+ AjaxEntryTable.tdEdit('publicAddr', 'publicAddr'),
+ AjaxEntryTable.tdAttr('privateAddr')]""",
+    emptyMessage='No IP Address Mappings.',
+    removeName='removeMapping',
+    removeButtonText='Remove Selected',
+    addButtonText='Add a New Map',
+    addButtonName='addMapping',
+    editDivTitle='Edit Mapping for <span id="editPublicAddr"></span>',
+    editButtonName='editMapping')
+
+addrMappingTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addrmap_public_addr'].html(self, namePrefix='add_'),
+       dialogEntries['addrmap_private_addr'].html(self, namePrefix='add_'))
+
+addrMappingTable.editDivContent = '''
+  <div class="midLevel">
+    <input type="hidden" name="edit_addrmap_public_addr" />
+    <table>
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addrmap_private_addr'].html(self, namePrefix='edit_'))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Public/Private IP Address Mapping Settings</legend>
+    <input type="hidden" name="_action_" value="setupCloudAddrMapping" />
+    <%= nodeEntries['addrmap_enable'].html(self) %>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form method="post"
+  action="<%= self.thisPageletRequest() %>"
+  id="addrMapForm">
+  <div class="midLevel">
+    <input type="hidden" name="_action_" value="setupCloudAddrMapping" />
+    <%= addrMappingTable.html(self, cssClass='topLevel') %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+addrMappingTable.editEntry = function(editName) {
+    var el = this.getEntryElement('publicAddr', editName);
+    var form = $('addrMapForm');
+    setFormValue(form, 'edit_addrmap_public_addr', editName);
+    setElementText('editPublicAddr', editName);
+    setFormValue(form, 'edit_addrmap_private_addr', el.getAttribute('privateAddr'));
+};
+// ]]>
+</script>

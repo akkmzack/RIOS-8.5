@@ -1,0 +1,91 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<%
+    self.hasHelp = True
+    self.relatedPages = (
+        'setupPFS_settings',
+        'setupPFS_shares',
+        'reportPFSShares',
+    )
+%>
+
+<psp:method name="pageletNodes">
+    return [
+        '/stats/actions/generate_report/pfs',
+    ]
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+
+    // The chart div should take up as much height as possible.
+    Y.one('#timeSeriesChart').setStyle(
+        'height', RBT.Reports2.availableHeight() + 'px');
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Throughput (B/s)';
+    highstockOptions.series = [
+        {
+            name: 'Received',
+            color: RBT.Reports2.BLUE,
+            type: 'area'
+        },
+        {
+            name: 'Sent',
+            color: RBT.Reports2.GREEN,
+            type: 'area'
+        }
+    ];
+
+    // Make the navigator shadow the first series (Data Received).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    // Create the chart!
+    var chart = new
+        RBT.Reports2.TimeSeriesChartWithControls({
+            parent: '#timeSeriesChart',
+            dataUrl: '<%= Reports2.constructDataUrl("reportPfsData") %>',
+            dataFormatterFn: dataFormatter,
+            options: highstockOptions,
+            statsFn: pfsStats,
+            boundariesChangedFn: setReports2ChartWindow,
+            initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+        });
+});
+
+function dataFormatter(value, seriesName) {
+    return RBT.Reports2.scale(value, 1, 'si', 'B/s');
+}
+
+function pfsStats(allSeriesData) {
+    var allStats = [];
+
+    for (var i = 0; i < allSeriesData.length; i++) {
+        var total = RBT.Reports2.integrate(allSeriesData[i]);
+        var totalText = 'Total: ' + RBT.Reports2.scale(total, 1, 'si', 'B');
+        allStats.push([totalText]);
+    }
+
+    return allStats;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

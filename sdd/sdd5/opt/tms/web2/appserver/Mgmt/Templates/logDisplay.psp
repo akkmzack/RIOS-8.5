@@ -1,0 +1,425 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## Use logPrefix= in the query string in the gui.py nav menu
+## to distinguish between system and user logs.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="gzip, time, os, os.path, subprocess, re, Nodes, FormUtils, logXHTML, PagePresentation:Pagelet, LogPageNavigator:LogPageNavigator, LogPageNavigator:monthAbbreviations, PageNavigator:PageIndex, OSUtils, RVBDUtils:isGW" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+.logPage {
+  border: solid 1px #ccc;
+  margin: 0px;
+}
+.logTableEven {
+  font-family: Lucida Console, monospace;
+  background-color: #f4f4f4;
+  color: #000000;
+  padding: 3px 12px;
+}
+.logTableOdd {
+  font-family: Lucida Console, monospace;
+  background-color: #ffffff;
+  color: #000000;
+  padding: 3px 12px;
+}
+.logViewJump {
+  width: 50%;
+}
+.logViewSubmit {
+  text-align: right;
+}
+.logNormal {
+  color: #000000;
+  font-weight: normal;
+  font-style: normal;
+}
+.logWarning {
+  color: #bb7700;
+  font-weight: bold;
+  font-style: normal;
+}
+.logNotice {
+  font-weight: bold;
+}
+.logError {
+  color: #DD0000;
+  font-weight: bold;
+  font-style: normal;
+}
+.logPlaceholder {
+  display: block;
+  font-weight: bold;
+  font-style: italic;
+  font-size: 100%;
+  color: #000000;
+  border-top: 1px solid #bbb;
+  border-bottom: 1px solid #bbb;
+}
+.paging {
+}
+.backwards {
+  float: left;
+  overflow: hidden;
+  text-align: left;
+  white-space: nowrap;
+  width: 150px;
+}
+.forwards {
+  float: right;
+  overflow: hidden;
+  text-align: right;
+  white-space: nowrap;
+  width: 150px;
+}
+.random {
+  text-align: center;
+}
+.paging a {
+  text-decoration: none;
+  font-weight: bold;
+}
+.paging a:link, .paging a:visited  {
+  color: black;
+}
+.paging a:hover {
+  color: #ea681d;
+}
+.paging a.notcurrent:active,
+.paging a.notcurrent:link,
+.paging a.notcurrent:visited  {
+  color: #444488;
+}
+.paging a.notcurrent:hover {
+  color: #ea681d;
+}
+.paging .random a.notcurrent {
+  text-decoration: underline;
+}
+.paging .hellip {
+  padding-left: .5em;
+  padding-right: .5em;
+}
+#continuousLog {
+  float: right;
+  margin-right: 10px;
+}
+p#noMessages {
+  font-size: 12px;
+  margin-left: 10px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    fields = self.request().fields()
+    messageFile = fields.get('logPrefix', '') + 'messages'
+    entries = {
+        'LoggingAction': FormUtils.NodeEntry(
+            path='/logging/syslog/action/file/\/var\/log\/%s' % messageFile,
+            type='action'),
+        'LinesPerPage': FormUtils.NodeEntry(
+            path='/rbt/prefs/web/log/lines_per_page',
+            type='uint16')
+    }
+
+    return entries
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<psp:method name="setupValues">
+    # Returns a dict with all possible request fields,
+    # but somewhat processed, plus additional keys, notably rowList,
+    # which is a file object for the log, whether plain or gzipped,
+    # complete or filtered.
+    dialogValues = {}.fromkeys(['jumpToTime',
+                                'jumpToPage',
+                                'logPrefix',
+                                'filterText'],
+                                '')
+    fields = self.request().fields()
+    dialogValues.update(fields)
+    dialogValues.setdefault('jumpType', 'page')
+    dialogValues.setdefault('filterSelect', 'regex')
+
+    mgmt = self.session().value('mgmt')
+    if isGW():
+        lpp_node = '/rbt/gw/web/prefs/config/log/lines_per_page'
+    else:
+        lpp_node = '/rbt/prefs/web/log/lines_per_page'
+
+    dialogValues.setdefault('lpp', Nodes.present(mgmt, lpp_node))
+    dialogValues['messageFile'] = dialogValues['logPrefix'] + 'messages'
+    dialogValues.setdefault('logChoice', dialogValues['messageFile'])
+
+    if not dialogValues['filterSelect'] \
+    or 'regex' == dialogValues['filterSelect']:
+        if dialogValues['filterText']:
+            filterArgs = ['-i', dialogValues['filterText']]
+        else:
+            filterArgs = None
+    else: # severity level
+        # Severity level filter REs
+        levelPatterns = {
+        'error':
+         '(\.EMERG]|\.EMERGENCY]|\.ERR]|\.ERROR]|\.CRIT]|\.CRITICAL]|\.ALERT])',
+        'warning':
+         '(\.EMERG]|\.EMERGENCY]|\.ERR]|\.ERROR]|\.CRIT]|\.CRITICAL]|\.ALERT]'
+        + '|\.WARNING]|\.WARN])',
+        'notice':
+         '(\.EMERG]|\.EMERGENCY]|\.ERR]|\.ERROR]|\.CRIT]|\.CRITICAL]|\.ALERT]'
+        + '|\.WARNING]|\.WARN]|\.NOTICE])',
+        'info':
+         '(\.EMERG]|\.EMERGENCY]|\.ERR]|\.ERROR]|\.CRIT]|\.CRITICAL]|\.ALERT]'
+        + '|\.WARNING]|\.WARN]|\.NOTICE]|\.INFO])'
+        }
+        filterArgs = ['-E', levelPatterns[dialogValues['filterSelect']]]
+
+    # The log choice comes from the user so we can't trust it.  Strip
+    # out the basename in case they entered a relative path to an
+    # existing file, such as ../../etc/passwd .  (Wouldn't want to
+    # filter and display that!)  We check below that such a file
+    # actually exists in /var/log/ .
+    fileBaseName = os.path.basename(dialogValues['logChoice'])
+
+    # Construct log file name from base and number.
+    # It looks like messages, user_messages, messages.1, user_messages.1, etc.
+    fileName = '/var/log/%s' % fileBaseName
+    try:
+        os.stat(fileName)
+    except OSError, info:
+        self.getPagePresentationServlet().setFormError(str(info) + '. Switching to the Current Log.')
+        dialogValues['logChoice'] = dialogValues['messageFile']
+        fileName = '/var/log/%s' % dialogValues['logChoice']
+        try:
+            os.stat(fileName)
+        except OSError, secondProblem:
+            raise OSError, str(info) + '. ' + str(secondProblem)
+
+    gzipped = fileName.endswith('.gz')
+
+    # If no filter pattern, examine the file directly (plain or gzipped),
+    # otherwise pipe it through grep or its gzip equivalent, zgrep.
+    if not filterArgs:
+        logFile = gzipped and gzip.open(fileName, 'rb') \
+                           or file(fileName, 'r')
+    else:
+        grepPath = gzipped and '/usr/bin/zgrep' or '/bin/grep'
+        cmd = [grepPath] + filterArgs + [fileName]
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE, close_fds=True)
+        logFile = p.stdout
+    dialogValues['rowList'] = logFile
+    return dialogValues
+
+</psp:method>
+
+
+<psp:method name="dialogEntries" params="formValues, pager">
+    # Set up options for the Show <log file> pull-down.
+    alphanumericRE = re.compile('\d+|\D+')
+    msgFiles = [alphanumericRE.findall(f)
+                for f in os.listdir('/var/log')
+                if f.startswith(formValues['messageFile'] + '.')]
+    msgFiles = [f for f in msgFiles if 1 < len(f)]
+    msgFiles = [[not x.isdigit() and x or int(x) for x in f]
+                for f in msgFiles if f[1].isdigit()]
+    msgFiles.sort()
+    logChoices = [(formValues['messageFile'], 'Current Log')] + \
+                 [(''.join([str(x) for x in f]), 'Archived Log # %d' % f[1])
+                  for f in msgFiles]
+    targetPage = (pager.pages and 0 <= pager.bestFitIndex) and \
+                 pager.pages[pager.bestFitIndex] or PageIndex(0, '')
+
+    return {
+        'logChoice': FormUtils.NodeEntry(
+            name='logChoice',
+            labelClass='labelPaddedLeft labelPaddedRight',
+            selectOptions=logChoices,
+            value=formValues['logChoice'] or formValues['messageFile'],
+            label='Show'),
+        'jumpType': FormUtils.NodeEntry(
+            name='jumpType',
+            label='Jump to',
+            labelClass='labelPaddedLeft labelPaddedRight',
+            selectOptions=[('page', 'Page'), ('time', 'Time')],
+            value=formValues['jumpType'],
+            displayDiv={'page': 'jumpToPageSpan',
+                        'time': 'jumpToTimeSpan'}),
+        'jumpToPage': FormUtils.NodeEntry(
+            name='jumpToPage',
+            type='text',
+            widgetClass='medium',
+            inputOptional=True,
+            validate=('intInRange', '[1, %d]' %
+                     (pager.pages and pager.pages[-1].number or 1)),
+            hint='blank for the last page',
+            value=((0 <= pager.bestFitIndex < (len(pager.pages) - 1))
+                   and str(targetPage.number) or '')),
+        'jumpToTime': FormUtils.NodeEntry(
+            name='jumpToTime',
+            type='text',
+            widgetClass='datetime',
+            label='&nbsp;closest to',
+            inputOptional=True,
+            validate='logTimestampValidator',
+            hint='Mon dd HH:MM',
+            value=(formValues['jumpToTime'] or targetPage.toolTip)),
+        'linesPerPage': FormUtils.NodeEntry(
+            name='lpp',
+            type='uint16',
+            validate=('intInRange', '[10, 1024]'),
+            labelClass='labelPaddedLeft labelPaddedRight',
+            widgetClass='small',
+            label='Lines per page',
+            value=formValues['lpp']),
+        'filterSelect': FormUtils.NodeEntry(
+            name='filterSelect',
+            labelClass='labelPaddedLeft labelPaddedRight',
+            selectOptions=(('regex', 'Regular Expression'),
+                           ('error', 'Error or higher'),
+                           ('warning', 'Warning or higher'),
+                           ('notice', 'Notice or higher'),
+                           ('info', 'Info or higher')),
+            label='Filter',
+            value=formValues['filterSelect'],
+            enableDiv={'regex': 'filterTextSpan',
+                       'error': 'filterPatternSpan',
+                       'warning': 'filterPatternSpan',
+                       'notice': 'filterPatternSpan',
+                       'info': 'filterPatternSpan'},
+            displayDiv={'regex': 'filterTextSpan',
+                        'error': 'filterPatternSpan',
+                        'warning': 'filterPatternSpan',
+                        'notice': 'filterPatternSpan',
+                        'info': 'filterPatternSpan'}),
+        'filterText': FormUtils.NodeEntry(
+            name='filterText',
+            inputOptional=True,
+            widgetClass='wide enterKeySubmits',
+            value=formValues['filterText'],
+            validate='regex')
+    }
+</psp:method>
+
+<%
+# Basics.
+valueMap = self.setupValues()
+pager = LogPageNavigator(valueMap['lpp'],
+                         valueMap['jumpType'],
+                         valueMap['jumpToPage'],
+                         valueMap['rowList'],
+                         valueMap['jumpToTime'],
+                         valueMap['logPrefix'],
+                         valueMap['logChoice'])
+dialogEntries = self.dialogEntries(valueMap, pager)
+
+self.relatedPages = ('setupAdministrationLogs',)
+self.hasHelp = True
+self.beginPagelet()
+
+# Not sure why we have to check the logChoice parameter for a dot and disable
+# continuous logging in that case, but that's how the code was originally
+# written, so let's keep that behavior so nothing breaks unexpectedly.
+if '.' not in pager.logChoice: {
+    continuousLogLink = \
+        '<a href="" onclick="return popupContinuousLog(\'%s\')">Launch Continuous Log</a>' % pager.logType
+} else: {
+    continuousLogLink = ''
+}
+%>
+
+<%= pager.html(self) %>
+
+<br />
+<%
+# method="get" so that thisPageletRequest() will make a query string
+# reflecting the filter fields for use in the pager.
+%>
+<div id="logPage" class="logPage">
+  <form method="get"
+        id="logViewForm"
+        action="/mgmt/gui">
+    <div class="midLevel">
+      <input type="hidden" name="p" value="<%= valueMap['p'] %>" />
+      <input type="hidden" name="logPrefix" value="<%= valueMap.get('logPrefix', '') %>" />
+      <div class="nodeEntry">
+        <%= dialogEntries['logChoice'].html(self, format='inline') %>
+        <%= dialogEntries['linesPerPage'].html(self, format='inline') %>
+        <%= dialogEntries['jumpType'].html(self, format='inline') %>
+        <span id="jumpToPageSpan">
+          <%= dialogEntries['jumpToPage'].html(self, format='inline') %>
+        </span>
+        <span id="jumpToTimeSpan">
+          <%= dialogEntries['jumpToTime'].html(self, format='inline') %>
+        </span>
+        <span id="continuousLog">
+          <%= continuousLogLink %>
+        </span>
+      </div>
+      <div class="nodeEntry">
+        <%= dialogEntries['filterSelect'].html(self, format='inline') %>
+        <span id="filterTextSpan">
+          <%= dialogEntries['filterText'].html(self, format='inline') %>
+        </span>
+        <span class="wide" id="filterPatternSpan"></span>
+        <span>
+          <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %>
+        </span>
+      </div>
+    </div>
+  </form>
+  <%= logXHTML.getLogHTML(pager.bestFitRows, True) %>
+</div>
+
+<br />
+
+<%= pager.html(self, ) %>
+
+<script type='text/javascript'><!--
+    nonConfigForms.push('logViewForm');
+
+    // Maybe we can allow :MM or HH:MM to be omitted.
+    function logTimestampValidator(val) {
+        var reMatch = val.match(
+            /^\s*([A-Z][a-z][a-z])\s+(\d{1,2})\s+(\d\d:\d\d)\s*$/);
+        if (reMatch && 4 == reMatch.length) {
+            if (reMatch[1].match(<%=
+                    '/(%s)/' % '|'.join(monthAbbreviations)
+            %>)) {
+                var intDay = parseInt(reMatch[2], 10);
+                if (1 <= intDay && intDay <= 31) {
+                    var hhmm = reMatch[3].split(':');
+                    hhmm[0] = parseInt(hhmm[0], 10);
+                    hhmm[1] = parseInt(hhmm[1], 10);
+                    if (0 <= hhmm[0] && hhmm[0] < 24
+                    &&  0 <= hhmm[1] && hhmm[1] < 60) {
+                        return;
+                    }
+                    throw 'Time must be of the form HH:MM';
+                }
+                throw 'Day of the month must be between 1 and 31.'
+            }
+            throw 'Valid month abbreviations are: ' +
+                   '<%= ', '.join(monthAbbreviations) %>';
+        }
+        throw 'Time format is ' +
+               '3-letter-month day-of-the-month HH:MM';
+    }
+//--></script>
+
+<% self.endPagelet() %>

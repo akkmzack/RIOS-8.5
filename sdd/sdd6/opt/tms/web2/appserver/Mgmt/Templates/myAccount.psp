@@ -1,0 +1,129 @@
+<%
+
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupSecurityMyProfile.psp
+## View my permissions.
+##
+## STATUS: needs more testing, but basically complete.
+
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, FormUtils, PagePresentation:Pagelet, OSUtils, RVBDUtils:isIB" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageIsReadable">
+    return True
+</psp:method>
+
+<psp:method name="handlePermissionError" params="fields">
+    errorText = ""
+    if 'perm' in fields:
+        errorText = 'You do not have read permission for the %s page.' % \
+            fields['perm']
+    self.getPagePresentationServlet().setFormError(errorText)
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'changePassword': FormUtils.NodeEntry(
+            name='changePassword',
+            widget='checkboxLeft',
+            label='Change Password',
+            enableDiv='passwordContainer'),
+        'password': FormUtils.NodeEntry(
+            name='password',
+            widget='password',
+            label='New Password',
+            validate='password',
+            inputOptional=True),
+        'passwordConfirm': FormUtils.NodeEntry(
+            name='passwordConfirm',
+            widget='password',
+            label='Confirm New Password',
+            validate='password',
+            inputOptional=True),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+localId = self.session().value('localId')
+userId = self.session().value('userId')
+
+self.handlePermissionError(self.request().fields())
+
+localUserTable = ajaxentrytable.AjaxEntryTable('localUser',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=localUser'),
+    titleText='Permissions',
+    headerSpec=['Role', 'Permission'],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('value')]""",
+    emptyMessage='No roles are assigned to user %s'
+                % self.session().value('localId'))
+
+#self.addOnload('Validator.addFormButtonAdjustor("localPasswordForm", passwordButtonAdjustor)')
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# only allow password change if you logged in as a local user
+# not via tacacs or radius
+if localId == userId: {
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="localPasswordForm">
+  <fieldset>
+    <legend>Password</legend>
+    <div class="midLevel">
+      <%= dialogEntries['changePassword'].html(self) %>
+      <div id="passwordContainer" class="indent">
+        <table>
+          <%= dialogEntries['password'].html(self) %>
+          <%= dialogEntries['passwordConfirm'].html(self) %>
+        </table>
+      </div>
+      <input type="hidden" name="account" value="<%=localId %>" />
+      <input type="hidden" name="_action_" value="changeAccountPassword" />
+    </div>
+    <%= FormUtils.formSubmitButtons(self) %>
+  </fieldset>
+</form>
+
+<%
+}
+
+if not isIB(): {
+%>
+
+<%= localUserTable.html(self, cssClass="topLevel") %>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+
+// We want to disable the Apply button if Change Password isn't
+// checked because otherwise it's a no-op.
+function passwordButtonAdjustor(isValid) {
+    var form = document.forms['localPasswordForm'];
+    var checkbox = form.elements['changePassword'];
+    var button = form.elements['apply'];
+    button.disabled = !isValid || !checkbox.checked;
+}
+
+</script>

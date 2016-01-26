@@ -1,0 +1,250 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceGeneral.psp
+## The General Optimization Service settings.
+##
+##  In-Path Settings
+##
+##  Out-of-Path Settings
+##
+##  Connection Settings
+##
+##  Failover Settings
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, OSUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = [
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupAdvNet_ports',
+        'setupAdvNet_wccp',
+        'setupAdvNet_forwarding',
+        'setupSubnetSide',
+        'setupAdvNet_simplified',
+        'setupHostInterfacesInpath',
+    ]
+%>
+
+<psp:method name="interfaces">
+    # Return a list of interface names, node entries:
+    #   [('inpath0_0', nodeentry0_0), ('inpath0_1', nodeentry0_1), ...]
+
+    fields = self.request().fields()
+    pname, pprefix, ptype = Nodes.cmcDecodeNodeMode(fields)
+
+    # first a list of ifaces, CMC dependent
+    if ptype:
+        # CMC case
+        ifaces = ['inpath%s' % i  for i in Nodes.allInterfaceIndices]
+    else:
+        # SH case
+        mgmt = self.session().value('mgmt')
+        ifaces = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/sport/intercept/state/ifaces/inpath')
+        ifaces.sort(FormUtils.alphanumericCompare)
+
+    # then a list of entries
+    result = []
+    for iface in ifaces:
+        entry = FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/ifaces/inpath/%s/enable' % iface,
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Optimizations on Interface <b>%s</b>' % iface)
+        result.append((iface, entry))
+    return result
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'ipLimit': FormUtils.NodeEntry(
+            path='/rbt/sport/kernel/per_ip_conn_limit',
+            type='uint16',
+            widgetClass='small',
+            label='Half-Open Connection Limit per Source IP'),
+        'maxPooling': FormUtils.NodeEntry(
+            path='/rbt/sport/connection_pool/config/max_pool_size',
+            type='uint32',
+            widgetClass='small',
+            label='Maximum Connection Pool Size'),
+        'inpathEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable In-Path Support',
+            enableDiv='inpathSubsection'),
+        'inpathKickoff': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/kickoff',
+            type='bool',
+            widget='checkboxLeft',
+            label='Reset Existing Client Connections on Start Up',
+            hint='(not recommended for production networks)'),
+        'inpathOop': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/inpath_oop',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable L4/PBR/WCCP/Interceptor Support'),
+        'oop': FormUtils.NodeEntry(
+            path='/rbt/sport/proxy/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Out-of-Path Support',
+            hint='(server-side appliances only)'),
+        'failoverEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/failover/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Failover Support',
+            enableDiv='failoverSubsection'),
+        'failoverApp': FormUtils.NodeEntry(
+            path='/rbt/sport/failover/config/master',
+            type='bool',
+            selectOptions=(('true', 'Master'), ('false', 'Backup')),
+            label='Current Appliance is'),
+        'failoverBuddy': FormUtils.NodeEntry(
+            path='/rbt/sport/failover/config/buddy/addr',
+            type='ipv4addr',
+            widgetClass='ipv4',
+            label="IP Address (peer In-Path interface)"),
+        'agentIntercept_enable': FormUtils.NodeEntry(
+            path='/rbt/sport/addrmap/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            enableDiv='agentInterceptSubsection',
+            label='Enable Agent-Intercept'),
+        'serverNatMode': FormUtils.NodeEntry(
+            path='/rbt/sport/addrmap/config/server_nat_mode',
+            type='uint8',
+            widget='select',
+            label='Server NAT Mode',
+            selectOptions=(('0', 'Restricted-Transparent'),
+                           ('1', 'Safe-Transparent'),
+                           ('2', 'Non-Transparent'))),
+        'ipblade': FormUtils.NodeEntry(
+            path='/rbt/sport/ip_blade/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Perform data reduction on channeled TCP/IPv6 and UDP/IPv4 traffic. \
+                    This requires the configuration of additional In-Path Rules.',
+            label='Enable Packet Mode Optimization'),
+    }
+    for iface, entry in self.interfaces():
+        entries['iface_' + iface] = entry
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+name, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="serviceGeneralForm">
+
+  <fieldset>
+    <legend>In-Path Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['inpathEnable'].html(self) %>
+      <div id="inpathSubsection" class="indent">
+        <%= nodeEntries['inpathKickoff'].html(self) %>
+<%
+if 'true' == Nodes.present(mgmt, '/rbt/model_capability/inpath_oop', 'true'): {
+    self.writeln(nodeEntries['inpathOop'].html(self))
+}
+%>
+<%
+if policyType: {
+    # CMC:
+    inpathInterfaceWidgets = []
+    base = pathPrefix + '/rbt/sport/intercept/config/ifaces/inpath'
+    presentIfaces = Nodes.getMgmtLocalChildrenNames(mgmt, base)
+    for iface, entry in self.interfaces(): {
+        divId = 'cmcIface_%s_en' % iface
+        checkbox = FormUtils.NodeEntry(name='cmcIface_%s' % iface,
+                                       widget='checkboxLeft',
+                                       label='Interface %s Present' % iface,
+                                       value=(iface in presentIfaces) and 'true' or 'false',
+                                       enableDiv=divId)
+        self.writeln(checkbox.html(self))
+        self.writeln('<div class="indent" id="%s">%s</div>' % (divId, entry.html(self)))
+    }
+} else: {
+    # SH:
+    for iface, entry in self.interfaces(): {
+        self.writeln(entry.html(self))
+    }
+}
+%>
+
+<% if Nodes.present(mgmt, '/rbt/cloud/is_cloud_steelhead') == 'true': { %>
+        <%= nodeEntries['agentIntercept_enable'].html(self) %>
+        <div id="agentInterceptSubsection" class="indent">
+          <table>
+            <%= nodeEntries['serverNatMode'].html(self) %>
+          </table>
+        </div>
+<% } %>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Out-of-Path Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['oop'].html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupServiceGeneral" />
+    <legend>Connection Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['ipLimit'].html(self) %>
+        <%= nodeEntries['maxPooling'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+
+<%
+  if Nodes.present(mgmt, '/rbt/model_capability/mfg_type') != 'rvbd_cloud_amazon': {
+%>
+
+  <fieldset>
+    <legend>Failover Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['failoverEnable'].html(self) %>
+      <div class="indent" id="failoverSubsection">
+        <table>
+          <%= nodeEntries['failoverApp'].html(self) %>
+          <%= nodeEntries['failoverBuddy'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+<%
+}
+%>
+
+  <fieldset>
+    <legend>Packet Mode Optimization Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['ipblade'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

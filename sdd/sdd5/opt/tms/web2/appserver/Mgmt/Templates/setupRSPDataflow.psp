@@ -1,0 +1,996 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+
+## Configure RSP dataflows.
+## Author: Don Tillman
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="re, cgi, OSUtils, FormUtils, FormUtils:NodeEntry, Nodes, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isSH, RVBDUtils:isCMC, rsp" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+
+td.rspIcon {
+  background-image: url(/images/dataflow_connector.gif);
+  background-position: 10px 0px;
+  background-repeat: repeat-y;
+}
+td.not-effective {
+  color: red;
+  font-style: italic;
+}
+
+div#rspLegend img {
+  padding-left: 16px;
+  padding-right: 4px;
+}
+
+#dataflowTable_main {
+  width: 835px;
+}
+
+#lan_to_wanTable_main,
+#wan_to_lanTable_main,
+#dnatTable_main {
+  width: 745px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    # For RBM permissioning that works on SH and CMC
+    return {
+        'permNode': FormUtils.NodeEntry(
+        path='/rbt/rsp2/config/dataflow/inpath0_0')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    vniPolicyOptions = [('pass', 'Pass Traffic Around Slot'),
+                        ('redirect', 'Redirect Traffic To Slot'),
+                        ('copy', 'Copy Traffic to Slot'),
+                        ('l2-switch', 'Use L2 Switching')]
+
+    # for adds and edits for three types of rules
+    rule_index = {'type':'uint16', 'widgetClass':'small',
+                  'label':'Rule Number', 'inputOptional':True}
+    rule_srcNet = {'type':'ipv4prefix', 'widgetClass':'ipaddrm',
+                   'label':'Source Network', 'inputOptional':True}
+    rule_srcPort = {'widgetClass':'port', 'label':'Port', 'value':'all',
+                    'hint':'port is only used if protocol is TCP or UDP',
+                    'validate':'portRangeOrAll', 'inputOptional':True}
+    rule_dstNet = {'type':'ipv4prefix', 'widgetClass':'ipaddrm',
+                   'label':'Destination Network', 'inputOptional':True}
+    rule_dstPort = {'widgetClass':'port', 'label':'Port', 'value':'all',
+                    'hint':'port is only used if protocol is TCP or UDP',
+                    'validate':'portRangeOrAll', 'inputOptional':True}
+    rule_targetIp = {'type':'ipv4addr', 'widgetClass':'ipaddrm',
+                     'label':'Target Destination Address'}
+    rule_targetPort = {'widgetClass':'port', 'label':'Port',
+                       'hint':'Blank for no translation.',
+                       'validate':'portRangeOrAll', 'inputOptional':True}
+    rule_protocol = {'validate':'validateProtocol',
+                     'value':'all',
+                     'hint':'&ldquo;all&rdquo;, ' +
+                            '&ldquo;TCP&rdquo;, ' +
+                            '&ldquo;UDP&rdquo; or 1-255',
+                     'label':'Protocol', 'widgetClass':'protocol small'}
+    rule_vlan = {'validate':'validateVlan',
+                 'value':'all',
+                 'hint':'&ldquo;all&rdquo; or 0-4094',
+                 'label':'Vlan', 'type':'uint16', 'widgetClass':'small'}
+    rule_action = {'selectOptions': [('pass', 'Pass Traffic Around Slot'),
+                                     ('redirect', 'Redirect Traffic To Slot'),
+                                     ('copy', 'Copy Traffic to Slot')],
+                    'value': 'pass', 'label': 'Rule Action'}
+
+    return {
+        # Interface select dropdown at the top of the page.
+        # Entries are all valid inpaths on the device.
+        # Gets its value from 'inpath' param in query string.
+        'interfaceSelect': NodeEntry(
+            name='interfaceSelect',
+            widget='select',
+            action='refreshWithInterface(this)',
+            value=self.request().fields().get('inpath')),
+        # dataflow table add's
+        'addInpathVni_name': NodeEntry(
+            name='addInpathVni_name',
+            widget='select',
+            label='Interface'),
+        'addInpathVni_position': NodeEntry(
+            name='addInpathVni_position',
+            type='uint16',
+            widget='select',
+            label='Data Flow Position'),
+
+        # dataflow table edit's
+        'editVNI_defaultIp': NodeEntry(
+            name='editVNI_defaultIp',
+            selectOptions=vniPolicyOptions,
+            label='Default IP Policy') ,
+        'editVNI_defaultNonIp': NodeEntry(
+            name='editVNI_defaultNonIp',
+            selectOptions=vniPolicyOptions,
+            label='Default Non-IP Policy'),
+
+        'editVNI_dnatEnable': NodeEntry(
+            name='editVNI_dnatEnable',
+            widget='checkboxLeft',
+            label='Enable Destination Network Address Translation'),
+        'editVNI_dnatIp': NodeEntry(
+            name='editVNI_dnatIp',
+            type='ipv4addr',
+            inputOptional=True,
+            hint='Required if Destination NAT is enabled',
+            label='Default Destination NAT Target IP'),
+
+        # WAN to LAN Adds
+        'addW2L_index': NodeEntry(name='addW2L_index', **rule_index),
+        'addW2L_srcNet': NodeEntry(name='addW2L_srcNet', **rule_srcNet),
+        'addW2L_srcPort': NodeEntry(name='addW2L_srcPort', **rule_srcPort),
+        'addW2L_dstNet': NodeEntry(name='addW2L_dstNet', **rule_dstNet),
+        'addW2L_dstPort': NodeEntry(name='addW2L_dstPort', **rule_dstPort),
+        'addW2L_protocol': NodeEntry(name='addW2L_protocol', **rule_protocol),
+        'addW2L_vlan': NodeEntry(name='addW2L_vlan', **rule_vlan),
+        'addW2L_action': NodeEntry(name='addW2L_action', **rule_action),
+
+        # WAN to LAN Edits
+        'editW2L_srcNet': NodeEntry(name='editW2L_srcNet', **rule_srcNet),
+        'editW2L_srcPort': NodeEntry(name='editW2L_srcPort', **rule_srcPort),
+        'editW2L_dstNet': NodeEntry(name='editW2L_dstNet', **rule_dstNet),
+        'editW2L_dstPort': NodeEntry(name='editW2L_dstPort', **rule_dstPort),
+        'editW2L_protocol': NodeEntry(name='editW2L_protocol', **rule_protocol),
+        'editW2L_vlan': NodeEntry(name='editW2L_vlan', **rule_vlan),
+        'editW2L_action': NodeEntry(name='editW2L_action', **rule_action),
+
+        # LAN to WAN Adds:
+        'addL2W_index': NodeEntry(name='addL2W_index', **rule_index),
+        'addL2W_srcNet': NodeEntry(name='addL2W_srcNet', **rule_srcNet),
+        'addL2W_srcPort': NodeEntry(name='addL2W_srcPort', **rule_srcPort),
+        'addL2W_dstNet': NodeEntry(name='addL2W_dstNet', **rule_dstNet),
+        'addL2W_dstPort': NodeEntry(name='addL2W_dstPort', **rule_dstPort),
+        'addL2W_protocol': NodeEntry(name='addL2W_protocol', **rule_protocol),
+        'addL2W_vlan': NodeEntry(name='addL2W_vlan', **rule_vlan),
+        'addL2W_action': NodeEntry(name='addL2W_action', **rule_action),
+
+        # LAN to WAN Edits:
+        'editL2W_srcNet': NodeEntry(name='editL2W_srcNet', **rule_srcNet),
+        'editL2W_srcPort': NodeEntry(name='editL2W_srcPort', **rule_srcPort),
+        'editL2W_dstNet': NodeEntry(name='editL2W_dstNet', **rule_dstNet),
+        'editL2W_dstPort': NodeEntry(name='editL2W_dstPort', **rule_dstPort),
+        'editL2W_protocol': NodeEntry(name='editL2W_protocol', **rule_protocol),
+        'editL2W_vlan': NodeEntry(name='editL2W_vlan', **rule_vlan),
+        'editL2W_action': NodeEntry(name='editL2W_action', **rule_action),
+
+        # DNAT Adds
+        'addDnat_index': NodeEntry(name='addDnat_index', **rule_index),
+        'addDnat_srcNet': NodeEntry(name='addDnat_srcNet', **rule_srcNet),
+        'addDnat_srcPort': NodeEntry(name='addDnat_srcPort', **rule_srcPort),
+        'addDnat_dstNet': NodeEntry(name='addDnat_dstNet', **rule_dstNet),
+        'addDnat_dstPort': NodeEntry(name='addDnat_dstPort', **rule_dstPort),
+        'addDnat_targetIp': NodeEntry(name='addDnat_targetIp', **rule_targetIp),
+        'addDnat_targetPort': NodeEntry(name='addDnat_targetPort',**rule_targetPort),
+        'addDnat_protocol': NodeEntry(name='addDnat_protocol', **rule_protocol),
+
+        # DNAT Edits
+        'editDnat_srcNet': NodeEntry(name='editDnat_srcNet', **rule_srcNet),
+        'editDnat_srcPort': NodeEntry(name='editDnat_srcPort', **rule_srcPort),
+        'editDnat_dstNet': NodeEntry(name='editDnat_dstNet', **rule_dstNet),
+        'editDnat_dstPort': NodeEntry(name='editDnat_dstPort', **rule_dstPort),
+        'editDnat_targetIp': NodeEntry(name='editDnat_targetIp', **rule_targetIp),
+        'editDnat_targetPort': NodeEntry(name='editDnat_targetPort',**rule_targetPort),
+        'editDnat_protocol': NodeEntry(name='editDnat_protocol', **rule_protocol),
+    }
+</psp:method>
+
+<%
+self.hasHelp = True
+
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+installed = 'true' == Nodes.present(mgmt, '/rbt/rsp2/image/state/installed')
+rspEnabled = installed and \
+    ('true' == Nodes.present(mgmt, '/rbt/rsp2/config/enable'))
+rspPublicName = rsp.publicName()
+
+# True if the SH is virtually inpath, a.k.a. VRSP mode.
+inpathOop = 'true' == Nodes.present(mgmt,
+            '/rbt/sport/intercept/config/inpath_oop')
+inpath = self.request().fields().get('inpath', '0_0')
+
+# Check if RSP is supported in the current disk layout.
+rspDiskLayout = Nodes.present(mgmt, '/rbt/rsp2/state/disk_layout/supported', 'true') == 'true'
+if isSH() and not rspDiskLayout: {
+    self.beginPagelet()
+    self.writeln('<p>VSP is not supported in the current ' \
+                 '<a href="/mgmt/gui?p=setupDiskManagement">disk layout</a>.</p>')
+    self.endPagelet()
+    return
+}
+# The only valid characters for an inpath are numbers and an underscore.
+# Because this can be passed in the URL, there's an XSS vulnerability, so we
+# assert that the inpath is valid before we do anything else.
+assert re.match(r'[0-9_]*$', inpath), 'Invalid inpath: %s' % inpath
+
+# JS onclick attribute for all add/edit rule buttons.
+# This currently inserts a custom rule validation function before it submits the
+# form. The form will not submit unless validateRuleOnSubmit returns true.
+validateRuleJs = 'return validateRuleOnSubmit(this) &amp;&amp; submitPrep(this);'
+
+# Change the inpath path depending on the product.
+#
+# On the SH, inpaths do appear on the ../config/dataflow subtree if they do
+# not have any VNIs added for that inpath. The ../state/dataflow subtree is
+# guaranteed to contain all physical inpathX_Y nodes.
+#
+# On the CMC, all the inpaths are pre-generated in ../config/dataflow.
+# They are guaranteed to have all the inpaths from 0_0 to 4_2.
+# See setupPolicies in support_appliances.py in products/rbt_cmc.
+dataflowParent = isCMC() and 'config' or 'state'
+ifaceNodePath = '/rbt/rsp2/%s/dataflow' % dataflowParent
+
+# We need all interface names for the "interfaceSelect" select list, which
+# lets the user pick which interface's data flow to view.
+rspInpaths = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + ifaceNodePath)
+rspInpaths = [(x[len('inpath'):], x) for x in rspInpaths]
+rspInpaths.sort(lambda a, b: FormUtils.alphanumericCompare(a[1], b[1]))
+
+if rspEnabled and inpathOop: {
+    self.relatedPages = (
+        'setupSubnetSide',
+    )
+}
+
+self.beginPagelet()
+
+if (isSH()) and (not installed): {
+    self.writeln('''
+        <p>
+          <a href="/mgmt/gui?p=setupRSPService">%s must be installed</a> before configuring the Data Flow.
+        </p>''' % rspPublicName)
+} elif not inpath: {
+    self.writeln('No inpath specified')
+} else: {
+
+## VNI Options
+optVnis = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/rsp2/state/vni/opt')
+# Remove opt vnis that are already in dataflows.
+dataflows = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/rsp2/config/dataflow')
+inUse = []
+for flow in dataflows: {
+    flowVnis = Nodes.getMgmtSetEntries(mgmt, pathPrefix + '/rbt/rsp2/config/dataflow/%s/vni' % flow).values()
+    vniNames = [vni['name'] for vni in flowVnis]
+    inUse += vniNames
+}
+optVnis = [vni for vni in optVnis
+           if vni not in inUse and not vni.startswith('RiOS')]
+optVnis.sort(FormUtils.alphanumericCompare)
+
+vniOptions = optVnis
+
+## Check on whether the dataflow is configured yet.
+dataflow = Nodes.present(mgmt, pathPrefix + '/rbt/rsp2/config/dataflow/inpath%s' % inpath)
+
+dialogEntries = self.dialogEntries()
+
+# Fix up some dialog entries as follows:
+#
+#   Adding or editing the VLAN field in a lan to wan rule or wan to lan rule
+#   does not apply in VRSP mode.
+#
+#   When adding an optimization VNI, only allow VNIs that are not already
+#   in a dataflow in the options.
+#
+#   Select from a list of existing positions in the dataflow
+#   for the position of a new VNI.
+if rspEnabled and inpathOop: {
+    hint = 'Does not apply in %s mode' % rsp.publicVirtualInpathName()
+    dialogEntries['addL2W_vlan'].hint = hint
+    dialogEntries['editL2W_vlan'].hint = hint
+    dialogEntries['addW2L_vlan'].hint = hint
+    dialogEntries['editW2L_vlan'].hint = hint
+}
+dialogEntries['addInpathVni_name'].selectOptions = vniOptions
+dialogEntries['addInpathVni_position'].selectOptions = dataflow and \
+    FormUtils.selectPositionOptions(mgmt,
+        pathPrefix + '/rbt/rsp2/config/dataflow/inpath%s/vni' % inpath) or \
+    [('1', 'Start'), ('2', 'End')]
+
+## lan to wan rule table
+lan_to_wanTable = ajaxentrytable.AjaxEntryTable('lan_to_wan',
+    titleText='LAN To WAN Rules',
+    headerSpec=('', 'Rule #', 'Source<br />Subnet', 'Source<br />Port',
+                'Destination<br />Subnet', 'Destination<br />Port',
+                'Protocol', 'VLAN', 'Action'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('rule_num', 'fromL2W_', 'toL2W_',
+                                  ['Default', 'IP', 'Non-IP'], ['Non-IP']),
+ AjaxEntryTable.td([AjaxEntryTable.edit('rule_num', 'rule_num', ['Default', 'IP', 'Non-IP'])]),
+ AjaxEntryTable.tdAttr('srcNetworkPretty'),
+ AjaxEntryTable.tdAttr('srcPort'),
+ AjaxEntryTable.tdAttr('dstNetworkPretty'),
+ AjaxEntryTable.tdAttr('dstPort'),
+ AjaxEntryTable.tdAttr('protocolPretty'),
+ AjaxEntryTable.tdAttr('vlanPretty'),
+ AjaxEntryTable.tdAttr('action')]""",
+    emptyMessage='No lan_to_wan rules governing this VNI.',
+    removeButtonText='Remove Selected Rules',
+    removeName='removeL2WRules',
+    removePrefix='fromL2W_',
+    moveButtonText='Move Selected Rules',
+    moveButtonCancelText='Cancel Move',
+    moveName='moveL2WRules',
+    addButtonText='Add a Rule',
+    addButtonName='addL2WRule',
+    addButtonOnclick=validateRuleJs,
+    editButtonName='editL2WRule',
+    editButtonOnclick=validateRuleJs,
+    editDivTitle='Editing Rule <span id="editL2W_ruleNumSpan"></span>')
+
+lan_to_wanTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    <tbody>
+      %s
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="addL2W_actionSection">
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['addL2W_index'].html(self),
+       dialogEntries['addL2W_srcNet'].html(self,
+           more=[dialogEntries['addL2W_srcPort']]),
+       dialogEntries['addL2W_dstNet'].html(self,
+           more=[dialogEntries['addL2W_dstPort']]),
+       dialogEntries['addL2W_protocol'].html(self),
+       dialogEntries['addL2W_vlan'].html(self),
+       dialogEntries['addL2W_action'].html(self))
+
+lan_to_wanTable.editDivContent = '''
+<div class="midLevel">
+  <input type="hidden" name="editL2W_index" />
+  <table>
+    <tbody>
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="editL2W_actionSection">
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['editL2W_srcNet'].html(self,
+           more=[dialogEntries['editL2W_srcPort']]),
+       dialogEntries['editL2W_dstNet'].html(self,
+           more=[dialogEntries['editL2W_dstPort']]),
+       dialogEntries['editL2W_protocol'].html(self),
+       dialogEntries['editL2W_vlan'].html(self),
+       dialogEntries['editL2W_action'].html(self))
+
+## lan to wan rule table
+wan_to_lanTable = ajaxentrytable.AjaxEntryTable('wan_to_lan',
+    titleText='WAN To LAN Rules',
+    headerSpec=('', 'Rule #', 'Source<br />Subnet', 'Source<br />Port',
+                'Destination<br />Subnet', 'Destination<br />Port',
+                'Protocol', 'VLAN', 'Action'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('rule_num', 'fromW2L_', 'toW2L_',
+                                  ['Default', 'IP', 'Non-IP'], ['Non-IP']),
+ AjaxEntryTable.td([AjaxEntryTable.edit('rule_num', 'rule_num', ['Default', 'IP', 'Non-IP'])]),
+ AjaxEntryTable.tdAttr('srcNetworkPretty'),
+ AjaxEntryTable.tdAttr('srcPort'),
+ AjaxEntryTable.tdAttr('dstNetworkPretty'),
+ AjaxEntryTable.tdAttr('dstPort'),
+ AjaxEntryTable.tdAttr('protocolPretty'),
+ AjaxEntryTable.tdAttr('vlanPretty'),
+ AjaxEntryTable.tdAttr('action')]""",
+    emptyMessage='No wan_to_lan rules governing this VNI.',
+    removeButtonText='Remove Selected Rules',
+    removeName='removeW2LRules',
+    removePrefix='fromW2L_',
+    moveButtonText='Move Selected Rules',
+    moveButtonCancelText='Cancel Move',
+    moveName='moveW2LRules',
+    addButtonText='Add a Rule',
+    addButtonName='addW2LRule',
+    addButtonOnclick=validateRuleJs,
+    editButtonName='editW2LRule',
+    editButtonOnclick=validateRuleJs,
+    editDivTitle='Editing Rule <span id="editW2L_ruleNumSpan"></span>')
+
+wan_to_lanTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    <tbody>
+      %s
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="addW2L_actionSection">
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['addW2L_index'].html(self),
+       dialogEntries['addW2L_srcNet'].html(self,
+           more=[dialogEntries['addW2L_srcPort']]),
+       dialogEntries['addW2L_dstNet'].html(self,
+           more=[dialogEntries['addW2L_dstPort']]),
+       dialogEntries['addW2L_protocol'].html(self),
+       dialogEntries['addW2L_vlan'].html(self),
+       dialogEntries['addW2L_action'].html(self))
+
+wan_to_lanTable.editDivContent = '''
+<div class="midLevel">
+  <input type="hidden" name="editW2L_index" />
+  <table>
+    <tbody>
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="editW2L_actionSection">
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['editW2L_srcNet'].html(self,
+           more=[dialogEntries['editW2L_srcPort']]),
+       dialogEntries['editW2L_dstNet'].html(self,
+           more=[dialogEntries['editW2L_dstPort']]),
+       dialogEntries['editW2L_protocol'].html(self),
+       dialogEntries['editW2L_vlan'].html(self),
+       dialogEntries['editW2L_action'].html(self))
+
+
+## DNAT Table
+dnatTable = ajaxentrytable.AjaxEntryTable('dnat',
+    titleText='Destination NAT Rules',
+    headerSpec=('', 'Rule #', 'Source<br />Subnet', 'Source<br />Port',
+                'Destination<br />Subnet', 'Destination<br />Port',
+                'Protocol', 'Target IP', 'Target Port'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('rule_num', 'fromDnat_', 'toDnat_', ['Default']),
+ AjaxEntryTable.td([AjaxEntryTable.edit('rule_num', 'rule_num', ['Default', 'IP', 'Non-IP'])]),
+ AjaxEntryTable.tdAttr('srcNetworkPretty'),
+ AjaxEntryTable.tdAttr('srcPort'),
+ AjaxEntryTable.tdAttr('dstNetworkPretty'),
+ AjaxEntryTable.tdAttr('dstPort'),
+ AjaxEntryTable.tdAttr('protocolPretty'),
+ AjaxEntryTable.tdAttr('targetIpPretty'),
+ AjaxEntryTable.tdAttr('targetPortPretty')
+ ]""" ,
+    emptyMessage='No Destination NAT rules for this VNI.',
+    removeButtonText='Remove Selected Rules',
+    removeName='removeDnatRules',
+    removePrefix='fromDnat_',
+    moveButtonText='Move Selected Rules',
+    moveButtonCancelText='Cancel Move',
+    moveName='moveDnatRules',
+    addButtonText='Add a Rule',
+    addButtonName='addDnatRule',
+    addButtonOnclick=validateRuleJs,
+    editButtonName='editDnatRule',
+    editButtonOnclick=validateRuleJs,
+    editDivTitle='Editing Rule <span id="editDnat_ruleNumSpan"></span>')
+
+    # When the B/E implements default DNAT,
+    # use add_DnatRuleType to switch between the following dialog
+    # for regular rules, and a simplified dialog for a default rule.
+    # Adding a default rule when one exists replaces the existing one.
+    # Maybe adding a default rule should be disabled when one exists?
+    dnatTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['addDnat_index'].html(self),
+      dialogEntries['addDnat_srcNet'].html(self,
+          more=[dialogEntries['addDnat_srcPort']]),
+      dialogEntries['addDnat_dstNet'].html(self,
+          more=[dialogEntries['addDnat_dstPort']]),
+      dialogEntries['addDnat_targetIp'].html(self,
+          more=[dialogEntries['addDnat_targetPort']]),
+      dialogEntries['addDnat_protocol'].html(self))
+
+    dnatTable.editDivContent = '''
+<div class="midLevel">
+  <input type="hidden" name="editDnat_index" />
+  <table>
+    %s
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['editDnat_srcNet'].html(self,
+           more=[dialogEntries['editDnat_srcPort']]),
+       dialogEntries['editDnat_dstNet'].html(self,
+           more=[dialogEntries['editDnat_dstPort']]),
+       dialogEntries['editDnat_targetIp'].html(self,
+           more=[dialogEntries['editDnat_targetPort']]),
+       dialogEntries['editDnat_protocol'].html(self))
+
+## main dataflow table
+dataflowTable = ajaxentrytable.AjaxEntryTable('dataflow',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=rspDataflow&inpath=%s' % inpath),
+    emptyMessage='Error building %s Dataflow table' % rspPublicName,
+    editButtonName='editVNI',
+    titleText = 'Data Flow for inpath%s' % inpath)
+
+# Enumerate columns so we can autogenerate row and header specs.
+col_cb = ('', "AjaxEntryTable.tdReorderCheckbox('checkbox', 'fromVNI_', 'toVNI_', ['end'])")
+col_position = ('Position', "AjaxEntryTable.tdAttr('position')")
+col_vniIcon = ('Type', "AjaxEntryTable.tdIcon('vni_icon', 'vni_type', null, 'rspIcon')")
+col_vniName = ('VNI Name', "AjaxEntryTable.td([AjaxEntryTable.edit('vni_long_name', 'vni_name', ['LAN-NIC', 'WAN-NIC'])], '')")
+col_slot = ('Slot', "AjaxEntryTable.tdAttr('slot')")
+col_package = ('Package', "AjaxEntryTable.tdAttr('package')")
+col_state = ('State', "AjaxEntryTable.td([AjaxEntryTable.attrText('state')], 'state')")
+col_numRules = ('# Rules', "AjaxEntryTable.tdAttr('numRules')")
+
+# Automatically generate row and header specs based on the following reqs:
+#
+# A configured dataflow has at least one slot VNI added to the dataflow. The
+# UI should display the checkboxes and [re]move action buttons.
+dataflowConfigured = Nodes.present(mgmt, pathPrefix + '/rbt/rsp2/config/dataflow/inpath%s' % inpath)
+dataflowTableSpec = [col_cb,
+                     col_position,
+                     col_vniIcon,
+                     col_vniName,
+                     col_slot,
+                     col_package,
+                     col_state,
+                     col_numRules]
+# A default dataflow only contains the RiOS VNI; the checkbox column
+# need not appear.
+if not dataflowConfigured: {
+    dataflowTableSpec.remove(col_cb)
+}
+# CMCs should not show the 'state' column.
+if isCMC(): {
+    dataflowTableSpec.remove(col_state)
+}
+
+dataflowTable.headerSpec=[spec[0] for spec in dataflowTableSpec]
+dataflowTable.rowSpec='[%s]' % ','.join([spec[1] for spec in dataflowTableSpec])
+
+if dataflowConfigured: {
+    dataflowTable.removeButtonText = 'Remove Selected VNIs'
+    dataflowTable.removeName = 'removeVNIs'
+    dataflowTable.removePrefix = 'from_'
+    dataflowTable.moveButtonText = 'Move Selected VNIs'
+    dataflowTable.moveButtonCancelText = 'Cancel Move'
+    dataflowTable.moveName = 'moveVNIs'
+}
+
+# Set up an addDiv.
+dataflowTable.addButtonText = 'Add a VNI'
+if vniOptions: {
+    dataflowTable.addButtonName = 'addVNI'
+    dataflowTable.addDivContent = '''
+    <div class="midLevel">
+      <table>
+        %s
+        %s
+      </table>
+    </div>
+    ''' % (dialogEntries['addInpathVni_name'].html(self),
+           dialogEntries['addInpathVni_position'].html(self))
+} else: {
+    dataflowTable.addDivContent = '''
+    <div class="midLevel">
+      <p>All available VNIs have been added to the data flow.</p>
+    </div>
+    '''
+}
+
+dataflowTable.editDivContent = '''
+<input type="hidden" name="vni" value="" />
+<div id="vniEdit_lanToWan" class="midLevel">
+  %s
+</div>
+<div id="vniEdit_wanToLan" class="midLevel">
+  %s
+</div>
+<div id="vniEdit_dnat" class="midLevel">
+  %s
+</div>
+<div id="vniEdit_ipPolicy">
+  <table>
+    %s
+    %s
+  </table>
+</div>
+<div id="vniEdit_dnatPolicy">
+  <h3>Destination NAT Policy:</h3>
+  %s
+  <div class="indent">
+    <table>
+      %s
+    </table>
+  </div>
+</div>
+''' % (lan_to_wanTable.html(self),
+       wan_to_lanTable.html(self),
+       dnatTable.html(self),
+
+       dialogEntries['editVNI_defaultIp'].html(self),
+       dialogEntries['editVNI_defaultNonIp'].html(self),
+
+       dialogEntries['editVNI_dnatEnable'].html(self),
+       dialogEntries['editVNI_dnatIp'].html(self))
+# Include a ' to balance quotes for vim syntax highlighting.
+
+ifaceSelect = dialogEntries['interfaceSelect']
+ifaceSelect.selectOptions = rspInpaths
+
+if len(ifaceSelect.selectOptions) > 1: {
+    # Use a select list if there is more than one interface to choose from.
+    interfaceSelectMessage = '<p>Select interface to configure: %s</p>' % (dialogEntries['interfaceSelect'].html(self, format='inline'))
+} else: {
+    interfaceSelectMessage = ''
+}
+%>
+
+<script type="text/javascript">
+<!--
+
+/**
+ * Redirects the browser to this page but for a different inpath interface.
+ *
+ * @param el
+ *   The element whose value contains the inpath interface name (e.g. "0_0" or "0_1")
+ * @return
+ *   null
+ */
+function refreshWithInterface(el) {
+    var editPolicyValue = Y.QueryString.parse((window.location.search).substring(1))['editPolicy'];
+    var appConfigValue = Y.QueryString.parse((window.location.search).substring(1))['appConfig'];
+    var ifaceUrl = '/mgmt/gui?p=setupRSPDataflow' + '&inpath=' + el.value;
+
+    if (editPolicyValue) {
+        // Handle refreshWithInterface URL in editPolicy CMC mode.
+        window.location = ifaceUrl + '&editPolicy=' + editPolicyValue;
+    } else if (appConfigValue) {
+        // Handle refreshWithInterface URL in appConfig CMC mode.
+        window.location = ifaceUrl + '&appConfig=' + appConfigValue;
+    } else {
+        // Handle refreshWithInterface URL on the SH appliance.
+        window.location = ifaceUrl;
+    }
+}
+
+/**
+ * LAN-to-WAN rules, WAN-to-LAN rules, and DNAT rules may match traffic
+ * based on protocol, which is an integer from 1 to 255.
+ * 'TCP' and 'UDP' are shortcuts for protocols 6 and 17, respectively.
+ * 'All' is a shortcut for 0, which means all protocols match.
+ *
+ * See the Node Structure section of the GuamRSPDesignDoc TWiki page.
+ *
+ * @param val
+ *   The value of the protocol field.
+ * @param el
+ *   Element that contains the protocol to validate.
+ */
+function validateProtocol(val, el) {
+
+    var val  = val.trim().toLowerCase();
+    var validProtocolNumber = true;
+
+    try {
+        RBT.Validator.Syntax.intInRange(val, el, 1, 255);
+    }
+    catch (e) {
+        validProtocolNumber = false;
+    }
+
+    if (('tcp' != val) && ('udp' != val) && ('all' != val) &&
+            !validProtocolNumber) {
+        throw 'Please enter \u201CTCP\u201D, ' +
+               '\u201CUDP\u201D, \u201Call\u201D, ' +
+               'or a number between 1 and 255.';
+    }
+}
+
+/**
+ * LAN-to-WAN rules and WAN-to-LAN rules may match traffic
+ * based on Vlan, which is an integer from 0 to 4094.
+ * 'all' is a shortcut for -1, which means all protocols match.
+ *
+ * See the Node Structure section of the GuamRSPDesignDoc TWiki page.
+ *
+ * @param val
+ *   The value of the VLAN field.
+ * @param el
+ *   Element that contains the protocol to validate.
+ */
+function validateVlan(val, el) {
+
+    var val  = val.trim().toLowerCase();
+    var validVlanNumber = true;
+
+    try {
+        RBT.Validator.Syntax.intInRange(val, el, 0, 4094);
+    }
+    catch (e) {
+        validVlanNumber = false;
+    }
+
+    if (('all' != val) && !validVlanNumber) {
+        throw 'Please enter \u201Call\u201D, ' +
+               'or a number between 0 and 4094.';
+    }
+}
+
+// -->
+</script>
+
+<%= interfaceSelectMessage %>
+
+<%
+# Show this warning on CMC if we're editing a policy.  Note that we
+# won't have an 'editPolicy' key when we're viewing the inherited
+# policies from the Manage Appliances page.
+policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(self.request().fields())
+if policyType == 'editPolicy': {
+%>
+<p>
+  Note:  The <a href="/mgmt/gui?p=setupRSPSlots&editPolicy=<%= cgi.escape(self.request().fields()['editPolicy'], True) %>">slot policy page</a>
+  should be configured prior to setting up the dataflow.
+</p>
+<% } %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="dataflowForm"
+      onsubmit="return dataflowSubmit(this);">
+  <div>
+    <input type="hidden" name="_action_" value="setupRspDataflow" />
+    <%= dataflowTable.html(self, cssClass="topLevel") %>
+  </div>
+  <div id="rspLegend" class="midLevel">
+    <strong>Legend:</strong>
+    <img alt="" src="/images/dataflow_nic_lan.gif" />LAN NIC
+    <img alt="" src="/images/dataflow_nic_wan.gif" />WAN NIC
+    <img alt="" src="/images/dataflow_vni_rios.gif" />RiOS
+    <img alt="" src="/images/dataflow_vni_lan.gif" />LAN VNI
+    <img alt="" src="/images/dataflow_vni_wan.gif" />WAN VNI
+    <img alt="" src="/images/dataflow_vni_vip.gif" />Virtual In-Path VNI
+    <img alt="" src="/images/dataflow_vni_unknown.gif" />Unknown VNI
+  </div>
+  <div>
+    <input type="submit" name="removeConfig" value="Remove"
+           onclick="return confirm('Remove Configuration for inpath<%= inpath %>?')" />
+    Remove configuration for inpath<%= inpath %>.
+  </div>
+</form>
+
+<%
+
+    # feature: editVni arg opens up the table editing that vni
+    editVni = req.fields().get('editVni')
+    if editVni: {
+        self.addPageletJavascript("dataflowTable.editAfterLoad = ['vni_long_name', '%s'];" % FormUtils.escapeForJsString(editVni))
+    }
+}  # end check for RSP installation
+
+self.endPagelet()
+
+# Add a ' to fix up vim javascript syntax highlighting
+
+if installed or isCMC(): {
+%>
+<script type="text/javascript">
+<!--
+
+dataflowTable.editEntry = function(name) {
+    var form = $('dataflowForm');
+    var vni = this.getEntryElement('vni_long_name', name);
+    var vniType = vni.getAttribute('vni_type');
+    setFormValue(form, 'vni', name);
+
+    setFormValue(form, 'editVNI_defaultIp', vni.getAttribute('default_ip_policy'));
+    setFormValue(form, 'editVNI_defaultNonIp', vni.getAttribute('default_non_ip_policy'));
+    setFormValue(form, 'editVNI_dnatEnable', vni.getAttribute('dnat_enable'));
+    setFormValue(form, 'editVNI_dnatIp', vni.getAttribute('dnat_ip'));
+    if ('Lan' != vniType) {
+        // load up w2l table
+        wan_to_lanTable.setData(vni.getElementsByTagName('wan_to_lan_sequence').item(0));
+        wan_to_lanTable.update();
+    }
+    if ('Wan' != vniType) {
+        // load up l2w table
+        lan_to_wanTable.setData(vni.getElementsByTagName('lan_to_wan_sequence').item(0));
+        lan_to_wanTable.update();
+    }
+    if ('V-Inpath' == vniType) {
+        // load up dnat table
+        dnatTable.setData(vni.getElementsByTagName('dnat_sequence').item(0));
+        dnatTable.update();
+    }
+    // It would be very nice here if we could use the rule number for the last
+    // rule in each rule table to generate a hint and validator for the
+    // Rule Number field in the corresponding add div.
+}
+
+// return the type of vni being edited
+dataflowTable.vniType = function() {
+    if ('edit' == this.editMode) {
+        var vni = this.getEntryElement('vni_long_name', this.editName);
+        return vni.getAttribute('vni_type');
+    }
+    return null;
+}
+
+// tweak the update to handle displaying the various sections
+dataflowTable.updateHook = function() {
+    if ('edit' == this.editMode) {
+        var vniType = this.vniType();
+        // LAN to WAN
+        var showL2W = ('Wan' != vniType);
+        enableElements('vniEdit_lanToWan',  showL2W || 'hide');
+        if (showL2W) {
+            lan_to_wanTable.update();
+        }
+        // WAN to LAN
+        var showW2L = ('Lan' != vniType);
+        enableElements('vniEdit_wanToLan', showW2L || 'hide');
+        if (showW2L) {
+            wan_to_lanTable.update();
+        }
+        // DNAT
+        var showDNAT = ('V-Inpath' == vniType);
+        enableElements('vniEdit_dnat', showDNAT || 'hide');
+        if (showDNAT) {
+            dnatTable.update();
+        }
+        // bottom items
+        enableElements('vniEdit_ipPolicy', ('RiOS' != vniType) || 'hide');
+        enableElements('vniEdit_dnatPolicy', ('V-Inpath' == vniType) || 'hide');
+    }
+}
+
+lan_to_wanTable.updateHook = function() {
+    var vniType = dataflowTable.vniType();
+    if ('add' == this.editMode) {
+        enableElements('addL2W_actionSection', ('RiOS' != vniType) || 'hide');
+    } else if ('edit' == this.editMode) {
+        enableElements('editL2W_actionSection', ('RiOS' != vniType) || 'hide');
+    }
+}
+
+wan_to_lanTable.updateHook = function() {
+    var vniType = dataflowTable.vniType();
+    if ('add' == this.editMode) {
+        enableElements('addW2L_actionSection', ('RiOS' != vniType) || 'hide');
+    } else if ('edit' == this.editMode) {
+        enableElements('editW2L_actionSection', ('RiOS' != vniType) || 'hide');
+    }
+}
+
+lan_to_wanTable.editEntry = function(name) {
+    editRuleEntry(this, 'editL2W_', name);
+}
+
+wan_to_lanTable.editEntry = function(name) {
+    editRuleEntry(this, 'editW2L_', name);
+}
+
+dnatTable.editEntry = function(name) {
+    editRuleEntry(this, 'editDnat_', name);
+}
+
+function editRuleEntry(aet, prefix, name) {
+    var el = aet.getEntryElement('rule_num', name);
+    var form = $('dataflowForm');
+    setElementText(prefix + 'ruleNumSpan', name);
+    setFormValue(form, prefix + 'index', name);
+    setFormValue(form, prefix + 'protocol', el.getAttribute('protocol'));
+    setFormValue(form, prefix + 'srcNet', el.getAttribute('srcNetwork'));
+    setFormValue(form, prefix + 'srcPort', el.getAttribute('srcPort'));
+    setFormValue(form, prefix + 'dstNet', el.getAttribute('dstNetwork'));
+    setFormValue(form, prefix + 'dstPort', el.getAttribute('dstPort'));
+    setFormValue(form, prefix + 'vlan', el.getAttribute('vlan'));
+    if ('editDnat_' == prefix) {
+        setFormValue(form, prefix + 'targetIp', el.getAttribute('targetIp'));
+        setFormValue(form, prefix + 'targetPort', el.getAttribute('targetPort'));
+    } else {
+        setFormValue(form, prefix + 'action', el.getAttribute('action'));
+    }
+}
+
+/**
+ * Perform semantic validation in form fields, triggering an alert dialog if any
+ * dependencies are unmet.
+ *
+ * Currently checks the following constraints:
+ *   - src/dst/target port field may be specified iff protocol field
+ *     is "TCP" or "UDP"
+ *
+ * @param {HTMLInputElement} buttonEl Submit button that submits the form.
+ * @return {Boolean} true if validates, false plus alert dialog if not.
+ */
+function validateRuleOnSubmit(buttonEl) {
+    // Using the submit button as an anchor, grab the containing edit/add div.
+    var containerSelector = '.ajaxEntryTable_editDiv, .ajaxEntryTable_addDiv';
+    var container = Y.one(buttonEl).ancestor(containerSelector);
+
+    // Search for the port/protocol fields in the container.
+    var portEls = container.all('input.port');
+    var protocolEl = container.one('input.protocol');
+    var isProtocolTCPUDP = protocolEl.get('value').trim().match(/^tcp|udp$/i);
+
+    // Validity check: If the protocol is unspecified, yet either port field is,
+    // show an alert dialog and prevent the form from submitting.
+    for (var i = 0; i < portEls.size(); i++) {
+        var portEl = $(portEls.item(i));
+        var portElVal = portEl.value.trim().toLowerCase();
+        var isPortSpecified = portElVal != 'all';
+        if (!isProtocolTCPUDP && isPortSpecified) {
+            alert('Source, destination and/or target ports may only be ' +
+                  'specified when protocol is "TCP" or "UDP".');
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Side effects of a dataflow submit.
+ * Currently, the side effects only pertain to editing VNI rules:
+ *
+ * Modifies the form action URL by modifying or appending the 'editVni' GET
+ * parameter so the correct VNI panel can be opened on next page load.
+ *
+ * @param form
+ */
+function dataflowSubmit(form) {
+    if (lan_to_wanTable.editMode || wan_to_lanTable.editMode || dnatTable.editMode) {
+
+        // break the URL into parts
+        var urlParts = form.action.split('?', 2);
+        var queryParts = urlParts[1].split('&');
+
+        // if we already have an editVni parameter, modify it
+        for (var i = 0; i < queryParts.length; ++i) {
+            if (/^editVni=/.test(queryParts[i])) {
+                queryParts[i] = 'editVni=' + form.vni.value;
+                break;
+            }
+        }
+
+        // if there was no editVni, add one
+        if (i == queryParts.length) {
+            queryParts.push('editVni=' + form.vni.value);
+        }
+
+        // set the form action
+        form.action = urlParts[0] + '?' + queryParts.join('&');
+    }
+}
+
+// -->
+</script>
+<%
+} # end if installed
+%>

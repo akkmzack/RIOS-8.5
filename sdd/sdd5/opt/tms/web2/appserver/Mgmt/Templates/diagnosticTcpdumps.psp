@@ -1,0 +1,812 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticTcpdumps
+## Display a table of tcpdumps.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="datetime, Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils, re" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.label-interface { padding: 0 20px 0 5px; }
+.standalone_check {
+    margin: 8px 0;
+}
+table#interfaces {
+    margin: 0px 0px 8px 0px;
+}
+table#interfaces thead tr th {
+    font-weight: bold;
+    padding-right: 20px;
+}
+td.interface-td {
+    vertical-align: top;
+}
+li.interface-list {
+    list-style-type: none;
+    margin: 2px 0;
+}
+#endpoint_set p {
+    font-style: italic;
+}
+#addDump_captureTable {
+    margin: 10px 0 5px 0;
+}
+#addDump_scheduleDiv {
+    margin: 6px 24px;
+}
+#tcpDumpsTable_main {
+    width: 835px;
+}
+label.stateRunning {
+    color: #3A3;
+    font-weight: bold;
+}
+#tcpDumpsRunningTable_main {
+    width: 835px;
+}
+.ajaxEntryTable_addDivContent fieldset {
+    width: 660px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'enableCascadeShark': FormUtils.NodeEntry(
+            path='/rbt/shark/config/enabled',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Permit remote capture analysis using Cascade Pilot.',
+            label='Enable Cascade Shark'),
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/rbm_fake/debug/generate/tcpdump',
+            type='action'),
+        'stopTrig_regex': FormUtils.NodeEntry(
+            path='/tcpdump_stop_trigger/config/regex',
+            type='string',
+            widgetClass='wide',
+            hint='(Perl regex)',
+            label='Pattern',
+            validate='nonempty'),
+        'stopTrig_delay': FormUtils.NodeEntry(
+            path='/tcpdump_stop_trigger/config/delay',
+            type='duration_sec',
+            widgetClass='small',
+            label='Delay',
+            validate='uint32',
+            units='seconds',
+            tooltip='Amount of time to wait before stopping the TCP Dumps after the pattern is matched.',
+            inputOptional=False),
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    now = datetime.datetime.now()
+    return {
+        'upload_case': FormUtils.NodeEntry(
+            name='upload_case',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='medium',
+            label='Case Number'),
+
+        'addDump_captureName': FormUtils.NodeEntry(
+            name='addDump_captureName',
+            label='Capture Name',
+            validate='name',
+            inputOptional=True),
+        'addDump_captureDuration': FormUtils.NodeEntry(
+            name='addDump_captureDuration',
+            widgetClass='medium',
+            value='30',
+            label='Capture Duration',
+            hint='(Enter "0" or "continuous" for no time limit)',
+            filter=lambda x: x == '0' and 'continuous' or x,
+            units='seconds',
+            validate='validateCaptureDuration'),
+        'addDump_captureMax': FormUtils.NodeEntry(
+            name='addDump_captureMax',
+            widgetClass='medium',
+            type='uint32',
+            value='100',
+            label='Maximum Capture Size',
+            units='MB'),
+        'addDump_bufferSize': FormUtils.NodeEntry(
+            name='addDump_bufferSize',
+            widgetClass='medium',
+            type='uint32',
+            label='Buffer Size',
+            units='kB',
+            value='154'),
+        'addDump_snapLength': FormUtils.NodeEntry(
+            name='addDump_snapLength',
+            widgetClass='medium',
+            type='uint32',
+            label='Snap Length',
+            units='bytes',
+            tooltip='0 is recommended for CIFS, MAPI, and SSL traces.',
+            value='1518'),
+        'addDump_rotation': FormUtils.NodeEntry(
+            name='addDump_rotation',
+            widgetClass='medium',
+            type='uint32',
+            value='5',
+            label='Number of Files to Rotate'),
+        'addDump_trafficType': FormUtils.NodeEntry(
+            name='addDump_trafficType',
+            widget='radio',
+            label={'untagged': 'Capture Untagged Traffic Only',
+                   'tagged': 'Capture VLAN-Tagged Traffic Only',
+                   'both': 'Capture both VLAN and Untagged Traffic'},
+            value='both'),
+        'addDump_srcIps': FormUtils.NodeEntry(
+            name='addDump_srcIps',
+            widgetClass='wide2',
+            value='All',
+            label='IPs',
+            validate='validateMixedIpList'),
+        'addDump_srcPorts': FormUtils.NodeEntry(
+            name='addDump_srcPorts',
+            widgetClass='wide2',
+            value='All',
+            label='Ports',
+            validate='portListAll'),
+        'addDump_dstIps': FormUtils.NodeEntry(
+            name='addDump_dstIps',
+            widgetClass='wide2',
+            value='All',
+            label='IPs',
+            validate='validateMixedIpList'),
+        'addDump_dstPorts': FormUtils.NodeEntry(
+            name='addDump_dstPorts',
+            widgetClass='wide2',
+            value='All',
+            label='Ports',
+            validate='portListAll'),
+        'addDump_flags': FormUtils.NodeEntry(
+            name='addDump_flags',
+            widgetClass='wide2',
+            label='Custom Flags'),
+        'addDump_schedule': FormUtils.NodeEntry(
+            name='addDump_schedule',
+            widgetClass='standalone_check',
+            widget='checkboxLeft',
+            label='Schedule Dump',
+            enableDiv='addDump_scheduleDiv'),
+        'addDump_scheduleDate': FormUtils.NodeEntry(
+            name='addDump_scheduleDate',
+            widgetClass='date',
+            validate='date',
+            value=now.strftime('%Y/%m/%d'),
+            label='Start Date'),
+        'addDump_scheduleTime': FormUtils.NodeEntry(
+            name='addDump_scheduleTime',
+            widgetClass='time',
+            label='Start Time',
+            labelClass='labelPaddedLeft labelPaddedRight',
+            value=now.strftime('%H:%M:%S'),
+            validate='time')
+    }
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+self.relatedPages = ('setupAdministrationJobs', 'setupAdministrationSMTP')
+
+# Each of these is a list of (interface, label) tuples.
+baseInterfaces = []
+inpathInterfaces = []
+vspInterfaces = []
+dataInterfaces = []
+scaInterfaces = []
+mgmtInterfaces = []
+rspInterfaces = []
+miscInterfaces = []
+
+allRiosInterfaces = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/tcpdump/state/interface')
+allRiosInterfaces = FormUtils.sortInterfacesByName(allRiosInterfaces)
+
+# Classify each RiOS interface into the appropriate bucket.
+for interface in allRiosInterfaces: {
+    if interface in ('aux', 'primary'): {
+        baseInterfaces.append((interface, interface))
+    } elif interface.startswith('lan') or interface.startswith('wan'): {
+        inpathInterfaces.append((interface, interface))
+    } elif interface.startswith('vm'): {
+        vspInterfaces.append((interface, interface))
+    } elif interface.startswith('eth'): {
+        dataInterfaces.append((interface, interface))
+    } elif interface.startswith('rbtpipe'): {
+        scaInterfaces.append((interface, interface))
+    } elif interface.startswith('mgmt'): {
+       mgmtInterfaces.append((interface, interface))
+    } elif interface.startswith('rios'): {
+       rspInterfaces.append((interface, interface))
+    } else: {
+        miscInterfaces.append((interface, interface))
+    }
+}
+
+ifaceHtml = FormUtils.NodeEntry(name='iface_All',
+                                widget='checkboxLeft',
+                                widgetClass='standalone_check',
+                                action='selectAllInterfaces()',
+                                label='All Interfaces',
+                                labelClass='label-interface').html(self, format='block')
+
+# Write out the header for the interfaces table.
+ifaceHtml += '<table id="interfaces"><thead><tr>'
+if baseInterfaces: {
+    ifaceHtml += '<th>Base Interfaces:</th>'
+}
+if inpathInterfaces: {
+    ifaceHtml += '<th>In-Path Interfaces:</th>'
+}
+if vspInterfaces: {
+    ifaceHtml += '<th>VSP Interfaces:</th>'
+}
+if dataInterfaces: {
+    ifaceHtml += '<th>Data Interfaces:</th>'
+}
+if scaInterfaces: {
+    ifaceHtml += '<th>SCA Interfaces:</th>'
+}
+if mgmtInterfaces: {
+    ifaceHtml += '<th>In-Path Management Interfaces:</th>'
+}
+if rspInterfaces: {
+    if RVBDUtils.isRspSupported(): {
+        import rsp
+        ifaceHtml += '<th>%s Interfaces:</th>' % rsp.publicName()
+    } else: {
+        rspInterfaces = []
+    }
+}
+if miscInterfaces: {
+    ifaceHtml += '<th>Miscellaneous Interfaces:</th>'
+}
+ifaceHtml += '</tr></thead>'
+
+# Write out the body for the interfaces table.
+ifaceHtml += '<tbody><tr>'
+for interfaceList in (baseInterfaces, inpathInterfaces, vspInterfaces, dataInterfaces, scaInterfaces, mgmtInterfaces, rspInterfaces, miscInterfaces): {
+    if interfaceList: {
+        ifaceHtml += '<td class="interface-td"><ul>'
+        for interface, label in interfaceList: {
+            html = FormUtils.NodeEntry(name='iface_%s' % interface,
+                                       widget='checkboxLeft',
+                                       label=label,
+                                       action='updateAllInterfaces(this)',
+                                       labelClass='label-interface').html(self, format='inline')
+            ifaceHtml += '<li class="interface-list">%s</li>' % html
+        }
+        ifaceHtml += '</ul></td>'
+    }
+}
+ifaceHtml += '</tr></tbody></table>'
+
+tcpDumpsTable = ajaxentrytable.AjaxEntryTable('tcpDumps',
+    url='/mgmt/xmldata?p=tcpdumpFiles&errorRedirect=%s' %
+        HTTPUtils._makeQuerystringDestParameter(self.request()),
+    titleText='Stored TCP Dumps',
+    headerSpec=('',
+                'TCP Dump',
+               ('Time Stamp', 'table_diagnosticfile_time'),
+               ('Size', 'table_diagnosticfile_size'),
+               'Upload Status'),
+    rowSpec='''
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('timestring')], 'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.tdDumpUploadStatus]''',
+    emptyMessage='No stored TCP dumps.',
+    removeName='removeFiles',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_')
+
+
+tcpDumpsTable.editDivContent = '''
+  <div class="topLevel">
+    <table>
+      <tr><td class="labelPaddedRight">MD5 Checksum:</td><td id="editDump_md5sum">&nbsp;</td></tr>
+    </table>
+  </div>
+  <fieldset>
+    <legend>Download</legend>
+    <div class="midLevel">
+      <p>
+        Receive a copy of the TCP dump file:
+        <b><a title="Click to download the file." id="editDump_download">Download</a></b>
+      </p>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Upload to Riverbed Support</legend>
+    <div class="midLevel" id="editDump_uploadDiv">
+      Previous Upload:
+      <div class="indent">
+        <table>
+          <tbody>
+            <tr><td class="labelPaddedRight">Status:</td><td id="editDump_uploadStatus">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Case Number:</td><td id="editDump_uploadCase">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_startTimeDiv">
+            <tr><td class="labelPaddedRight">Start Time:</td><td id="editDump_uploadStart">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_percentDiv">
+            <tr><td class="labelPaddedRight">Percent:</td><td id="editDump_uploadPercent">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_finishTimeDiv">
+            <tr><td class="labelPaddedRight">Finish Time:</td><td id="editDump_uploadFinish">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_detailsDiv">
+            <tr><td class="labelPaddedRight">Details:</td><td id="editDump_uploadDetails">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Error Message:</td><td id="editDump_uploadError">&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="midLevel">
+      Upload:
+      <div id="uploadSysdumpLiveStatusAttachPoint" class="indent liveStatusAttachPoint">
+        %s
+        %s
+      </div>
+    </div>
+  </fieldset>
+''' % (dialogEntries['upload_case'].html(self, format='inline'),
+       FormUtils.renderButton(self, {'name': 'uploadFile', 'value': 'Upload'}))
+
+tcpDumpsRunningTable = ajaxentrytable.AjaxEntryTable('tcpDumpsRunning',
+    url='/mgmt/xmldata?p=tcpDumpsRunning',
+    titleText='TCP Dumps Currently Running',
+    headerSpec=('', 'Running Capture Name', 'Start Time'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'select_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('start')]""",
+    emptyMessage='No TCP dumps currently running.',
+    addButtonText='Add a New TCP Dump',
+    addButtonName='addTcpDump',
+    removeName='removeTcpCaptures',
+    removeButtonText='Stop Selected Captures')
+
+tcpDumpsRunningTable.addDivContent = '''
+<div class="midLevel">
+  <fieldset>
+    <legend>Name</legend>
+    %s
+  </fieldset>
+  <fieldset id="endpoint_set">
+    <legend>Endpoints</legend>
+    <p>Capture traffic between:</p>
+    <table class="indent">
+      %s
+      %s
+    </table>
+    <p>and:</p>
+    <table class="indent">
+      %s
+      %s
+    </table>
+  </fieldset>
+  <fieldset id="interface_set">
+    <legend>Capture Interfaces</legend>
+    %s
+  </fieldset>
+  <fieldset>
+    <legend>Capture Parameters</legend>
+    %s
+    %s
+    %s
+    <table id="addDump_captureTable">
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>Schedule</legend>
+    %s
+    <div id="addDump_scheduleDiv">
+    %s
+    %s
+    </div>
+  </fieldset>
+</div>
+''' % (dialogEntries['addDump_captureName'].html(self, format='block'),
+       dialogEntries['addDump_srcIps'].html(self),
+       dialogEntries['addDump_srcPorts'].html(self),
+       dialogEntries['addDump_dstIps'].html(self),
+       dialogEntries['addDump_dstPorts'].html(self),
+       ifaceHtml,
+
+       dialogEntries['addDump_trafficType'].html(self, value='untagged'),
+       dialogEntries['addDump_trafficType'].html(self, value='tagged'),
+       dialogEntries['addDump_trafficType'].html(self, value='both'),
+
+       dialogEntries['addDump_captureDuration'].html(self),
+       dialogEntries['addDump_captureMax'].html(self),
+       dialogEntries['addDump_bufferSize'].html(self),
+       dialogEntries['addDump_snapLength'].html(self),
+       dialogEntries['addDump_rotation'].html(self),
+       dialogEntries['addDump_flags'].html(self),
+
+       dialogEntries['addDump_schedule'].html(self, format='block'),
+       dialogEntries['addDump_scheduleDate'].html(self, format='inline'),
+       dialogEntries['addDump_scheduleTime'].html(self, format='inline')
+      )
+%>
+
+<% self.beginPagelet() %>
+
+<%
+    # Enable Shark Options when the feature is available by
+    # determining the existence of the shark status node.
+    isSharkAvailable = Nodes.present(mgmt, '/rbt/shark/state/status', None) != None
+    if isSharkAvailable: {
+%>
+<form id="sharkProbeForm" method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableCascadeShark'].html(self) %>
+      <input type="hidden" name="_action_" value="setFormNodes" />
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<% } %>
+
+<form id="tcpDumpForm" method="post"
+      action="<%= self.thisPageletRequest() %>">
+
+  <div class="topLevel">
+    <input type="hidden" name="_action_" value="tcpDumps" />
+    <input type="hidden" name="dir" value="tcpdumps" />
+    <input type="hidden" name="upload_dir" value="tcpdumps" />
+    <input type="hidden" name="upload_name"  />
+    <%= tcpDumpsTable.html(self, 'topLevel') %>
+  </div>
+
+  <div/>   <!-- Empty div fixes rendering issue in IE7 (see bug 128205) -->
+
+  <div>
+    <%= tcpDumpsRunningTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<form id="stopTriggerForm" method="post" class="topLevel" action="<%= self.thisPageletRequest() %>" >
+  <div>
+    <input type="hidden" name="_action_" value="stopTriggerAction" />
+    <input type="hidden" name="button"/>
+  </div>
+  <fieldset>
+    <legend>TCP Dump Stop Trigger</legend>
+    <p>
+        Continuously scan System Logs for a pattern and stop all running TCP Dumps when there's a match.
+    </p>
+    <table>
+      <tr>
+        <td class="nodeEntry">
+          <label class="labelPaddedRight">Status:</label>
+        </td>
+        <td>
+          <label id="stopTriggerStatus"></label>
+        </td>
+      </tr>
+      <tr>
+        <td class="nodeEntry">
+          <label class="labelPaddedRight">
+            <span class="popupTitle" title="Pattern that triggered the last Stop Trigger.">Last Pattern</span>:
+          </label>
+        </td>
+        <td>
+          <span id="lastTriggerRegex">&nbsp;</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="nodeEntry">
+          <label class="labelPaddedRight">Last Triggered:</label>
+        </td>
+        <td>
+          <span id="stopTriggerCountUp"></span>
+        </td>
+      </tr>
+      <tr>
+        <td class="nodeEntry">
+          &nbsp;
+        </td>
+        <td class="nodeEntry">
+          <span class="lastRunTime" id="stopTriggerDatetime"></span>
+        </td>
+      </tr>
+      <%= nodeEntries['stopTrig_regex'].html(self, widgetId='stopTrig_regex') %>
+      <%= nodeEntries['stopTrig_delay'].html(self, widgetId='stopTrig_delay') %>
+      <tr>
+        <td class="nodeEntry" colspan="2">
+          <p>
+            When triggered, a notification is sent to the event notification email address specified on the
+            <a href="/mgmt/gui?p=setupAdministrationSMTP">Email Page</a>.
+          </p>
+          <p>
+            This is typically used with TCP Dumps with "Capture Duration" set to "continuous" seconds
+            to keep the traces from stopping on their own before there's a match.
+          </p>
+        </td>
+      </tr>
+    </table>
+      <%= FormUtils.formSubmitButtons(self, {'id': 'startScanAction', 'name': 'startScanButton', 'value': 'Start Scan', 'class': 'buttonOperation'}, {'id': 'stopScanAction', 'name': 'stopScanButton', 'value': 'Stop Scan', 'class': 'buttonOperation'}) %>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+tcpDumpsTable.editEntry = function(editName) {
+    var form = $('tcpDumpForm');
+    form.elements['upload_name'].value = editName;
+
+    var req = newAjaxRequest('/mgmt/xmldata?p=dumpDetails&fileType=tcpdump&dir=tcpdumps', 'block');
+    req.send('name=' + editName);
+
+    var dump = req.responseXML.documentElement.firstChild;
+
+    setElementText('editDump_md5sum', dump.getAttribute('md5sum'));
+    setElementText('editDump_uploadStatus', dump.getAttribute('status-pretty'));
+    setElementText('editDump_uploadCase', dump.getAttribute('case'));
+    setElementText('editDump_uploadStart', dump.getAttribute('start-time'));
+    setElementText('editDump_uploadFinish', dump.getAttribute('finish-time'));
+    setElementText('editDump_uploadPercent', dump.getAttribute('percent') + '%');
+    setElementText('editDump_uploadDetails', dump.getAttribute('details'));
+    setElementText('editDump_uploadError', dump.getAttribute('error_message'));
+
+    $('editDump_download').href = dump.getAttribute('downloadHref')
+
+    // update the editing iv
+    this.editXMLElement = dump;
+};
+
+tcpDumpsTable.updateHook = function() {
+    if (('edit' == this.editMode) && this.editXMLElement) {
+        status = this.editXMLElement.getAttribute('status');
+        if ('in progress' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', true);
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('finished' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', 'hide');
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', true);
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('failed' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', true);
+            enableElements('editDump_uploadError', true);
+        } else {
+            enableElements('editDump_uploadDiv', 'hide');
+        }
+    }
+}
+
+function ipv4or6addr_list(val) {
+    var vals = val.split(',');
+    var i, j;
+    var addrs = [];
+
+    for (i = 0; i < vals.length; i++) {
+        vals[i] = Y.Lang.trim(vals[i]);
+
+        var address;
+        try {
+            address = RBT.Validator.Syntax._parseIpv4Addr(vals[i]);
+            address = address.join('.');
+        }
+        catch (e) {
+            address = RBT._TcpIpUtils.parseIPv6ToHexRawAddr(vals[i]);
+            if (address === null) {
+                throw 'A comma-delimited list of IPv4 and IPv6 addresses, or "All", is required.'
+            }
+        }
+
+        // Save the successfully parsed value so we can check for
+        // duplicates later.
+        addrs.push(address);
+    }
+
+    // no dupes, please
+    for (i = 0; i < addrs.length; i++) {
+        for (j = 0; j < i; j++) {
+            if (vals[i] == vals[j]) {
+                throw 'Duplicate IP addresses are not allowed.';
+            }
+        }
+    }
+
+};
+
+// A list of ipv4 or ipv6 addresses or "all".
+function validateMixedIpList(val) {
+    if ('all' == val.trim().toLowerCase()) {
+        return;
+    }
+
+    ipv4or6addr_list(val);
+};
+
+// A list of ports, including 0, or "all".
+function portListAll(val) {
+    if ('all' == val.trim().toLowerCase()) {
+        return;
+    }
+    try {
+        RBT.Validator.Syntax.portList(val);
+    } catch (e) {
+        throw 'A comma-delimited list of legal port numbers, or "all", is required.';
+    }
+}
+// Called when the iface_All checkbox is checked, so it checks all the other interfaces boxes
+function selectAllInterfaces() {
+    var ifaceChecks = Y.all('#interface_set input');
+    var selectAllCheck = ifaceChecks.filter('*[name=iface_All]').item(0);
+    ifaceChecks.each(function(node, index, list) {
+        if (node === selectAllCheck) {
+            return;
+        }
+        node.set('checked', selectAllCheck.get('checked'))
+    });
+}
+// Called when any of the checkboxes other than iface_All is checked
+// If all of these checkboxes are checked, then we check iface_All
+function updateAllInterfaces(el) {
+    var isChecked = el.checked;
+    var ifaceChecks = Y.all('#interface_set input');
+    var selectAllCheck = ifaceChecks.filter('*[name=iface_All]').item(0);
+    if (isChecked) {
+        var someUnChecked = false;
+        ifaceChecks.some(function(node, index, list) {
+            if (node === selectAllCheck) {
+                return;
+            }
+            someUnChecked = ! node.get('checked');
+            return someUnChecked;
+        });
+        if (!someUnChecked) {
+            selectAllCheck.set('checked', true);
+        }
+    }
+    else {
+        selectAllCheck.set('checked', false);
+    }
+}
+
+var stopTriggerAgoBasetime = 0;
+var stopTriggerAgoDatetime = "";
+
+// Updates the "X minutes ago" string in the Stop Trigger's status page
+
+function updateStopTriggerAgo() {
+    var timestampStr = "";
+    var countUpStr = "Never";
+
+    if (stopTriggerAgoBasetime != 0) {
+        timestampStr = stopTriggerAgoDatetime;
+        var now = new Date();
+        var intervalSeconds = now.getTime() / 1000 - stopTriggerAgoBasetime;
+        countUpStr = englishTimeInterval(intervalSeconds, "", "ago");
+    }
+    setElementText("stopTriggerCountUp", countUpStr);
+    setElementText("stopTriggerDatetime", timestampStr);
+
+    if (stopTriggerAgoBasetime != 0) {
+        Y.later(5000, null, updateStopTriggerAgo);
+    }
+}
+
+// Updates the status information for the TCP Dump Stop Trigger
+
+function updateStopTriggerStatus() {
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=stopTriggerStatus',
+        successFn: function(response) {
+
+            if (response["status"] == 'running' || response["status"] == 'stopping') {
+                if (response["status"] == 'running') {
+                    setElementText("stopTriggerStatus", "Running");
+                    adjustElementClass("stopTriggerStatus", "stateRunning", null);
+                    var refreshSeconds = 3;
+                } else {
+                    var runningTcpDumps = parseInt(response["runningTcpDumps"]);
+                    var tcpMessage = runningTcpDumps ? "TCP dumps will be stopped after " :
+                                    "no TCP dumps are running, ";
+                    setElementText("stopTriggerStatus", "Pattern found--" + tcpMessage +
+                                    "delay expires in " + response["countdown"] + " seconds");
+                    adjustElementClass("stopTriggerStatus", null, "stateRunning");
+                    var refreshSeconds = parseInt(response["countdown"]) < 10 ? 1 : 3;
+                }
+                setElementText("lastTriggerRegex", "");
+                enableElements("startScanAction", false);
+                enableElements("stopScanAction", true);
+                enableElements("stopTrig_regex", false);
+                enableElements("stopTrig_delay", false);
+
+                // If we're running then we keep polling the
+                // status until we stop running
+
+                Y.later(refreshSeconds * 1000, null, updateStopTriggerStatus);
+            }
+            else if (response["status"] == 'stopped') {
+                setElementText("stopTriggerStatus", "Not Running");
+                setElementText("lastTriggerRegex", response["lastTriggerRegex"]);
+                adjustElementClass("stopTriggerStatus", null, "stateRunning");
+                enableElements("startScanAction", true);
+                enableElements("stopScanAction", false);
+                enableElements("stopTrig_regex", true);
+                enableElements("stopTrig_delay", true);
+
+                stopTriggerAgoDatetime = response["triggered_datetime"];
+                stopTriggerAgoBasetime = parseInt(response["triggered_seconds"]);
+                updateStopTriggerAgo();
+            }
+            RBT.Validator.validatePage();
+        },
+        errorFn: function(errorMsg) {
+            // Do nothing
+        }
+    });
+    return false;
+}
+
+function validateCaptureDuration(val) {
+    if (val != 'continuous') {
+        try {
+            RBT.Validator.Syntax.uint32(val);
+        } catch (e) {
+            throw 'Must be "continuous" or a positive integer.';
+        }
+    }
+}
+
+Y.on('domready', function() {
+    updateStopTriggerStatus();
+})
+
+// ]]>
+</script>

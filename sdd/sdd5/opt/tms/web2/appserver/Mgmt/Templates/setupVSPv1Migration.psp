@@ -1,0 +1,707 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## Legacy VSP Migration (slots, packages, and backups)
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="PagePresentation:Pagelet, FormUtils, ajaxentrytable, Nodes, GraphUtils" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+span#diskSpaceInfo {
+  background-color: #EEEEEE;
+  border: 1px solid #CCCCCC;
+  display: inline-block;
+  padding: 10px;
+}
+
+div.ajaxEntryTable {
+  width: 900px;
+}
+
+th.ajaxEntryTable_th {
+  white-space: nowrap;
+}
+
+td.warning {
+  background-color: #FCE7E7 !important;
+  color: #DD0000;
+  font-weight: bold;
+}
+
+th.dataFlow,
+td.dataFlow {
+  text-align: center;
+}
+
+th.migrate,
+td.migrate {
+  text-align: center;
+}
+
+th.size,
+td.size {
+  text-align: right;
+  white-space: nowrap;
+}
+
+th.download,
+td.download {
+  text-align: center;
+}
+
+td.notApplicable {
+  color: #999999;
+}
+
+fieldset#compressSlot div {
+  margin-bottom: 7px;
+  margin-top: 7px;
+}
+
+fieldset.upload div {
+  margin-bottom: 8px;
+  margin-top: 8px;
+}
+
+div#compressSlotConfirm {
+  width: 30em;
+}
+
+input[name="compressSlotSubmit"] {
+  margin-right: 4px;
+}
+
+table.wizardTable {
+  width: 400px;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    return [
+        '/rbt/vsp/migrate/action/slot/archive/create',
+        '/rbt/vsp/migrate/action/slot/delete',
+        '/rbt/vsp/migrate/action/slot/archive/upload',
+        '/rbt/vsp/migrate/action/slot/archive/delete',
+        '/rbt/vsp/migrate/action/slot/archive/mark_uploaded',
+        '/rbt/vsp/migrate/action/package/upload',
+        '/rbt/vsp/migrate/action/package/delete',
+        '/rbt/vsp/migrate/action/package/mark_uploaded',
+        '/rbt/vsp/migrate/action/backup/upload',
+        '/rbt/vsp/migrate/action/backup/delete',
+        '/rbt/vsp/migrate/action/backup/mark_uploaded',
+        '/rbt/vsp/migrate/state/slot',
+        '/rbt/vsp/migrate/state/package',
+        '/rbt/vsp/migrate/state/backup',
+        '/rbt/vsp/migrate/state/disk/total_space',
+        '/rbt/vsp/migrate/state/disk/free_space'
+    ]
+</psp:method>
+
+<psp:method name="dialogEntries">
+    uploadTooltip = '''
+        <p>One of the following:</p>
+        <p>
+          <ul>
+            <li>ftp://user:password@host/path/to/file</li>
+            <li>scp://user:password@host/path/to/file</li>
+          </ul>
+        </p>
+    '''
+
+    nodes = {
+        'uploadSlotUrl': FormUtils.NodeEntry(
+            name='uploadSlotUrl',
+            widgetClass='wide3',
+            label='URL',
+            validate='destinationUrl',
+            tooltip=uploadTooltip
+        ),
+        'uploadPackageUrl': FormUtils.NodeEntry(
+            name='uploadPackageUrl',
+            widgetClass='wide3',
+            label='URL',
+            validate='destinationUrl',
+            tooltip=uploadTooltip
+        ),
+        'uploadBackupUrl': FormUtils.NodeEntry(
+            name='uploadBackupUrl',
+            widgetClass='wide3',
+            label='URL',
+            validate='destinationUrl',
+            tooltip=uploadTooltip
+        )
+    }
+    nodes.update(self.dialogEntries_wizard())
+    return nodes
+</psp:method>
+
+<% self.hasHelp = True %>
+
+<% self.beginPagelet() %>
+
+<%@include file="includes/setupWizardVSPv1Migration.psp" %>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+totalDiskSpace = int(Nodes.present(mgmt, '/rbt/vsp/migrate/state/disk/total_space'))
+freeDiskSpace = int(Nodes.present(mgmt, '/rbt/vsp/migrate/state/disk/free_space'))
+usedDiskSpace = totalDiskSpace - freeDiskSpace
+
+totalDiskSpacePretty = GraphUtils.scale(totalDiskSpace, GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+usedDiskSpacePretty = GraphUtils.scale(usedDiskSpace, GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+freeDiskSpacePretty = GraphUtils.scale(freeDiskSpace, GraphUtils.SCALER_HUNDREDS_OF_BYTES_BASE_10, 1)
+
+esxiInstalled = Nodes.present(mgmt, '/rbt/vsp/config/esxi_wizard_completed') == 'true'
+
+esxiAvailable = Nodes.present(mgmt, '/rbt/vsp/state/esxi/status') == 'available'
+
+slots = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/vsp/migrate/state/slot')
+enableWizard = False
+for slotName in slots: {
+    if Nodes.present(mgmt, '/rbt/vsp/migrate/state/slot/%s/installed' % slotName) == 'true': {
+        enableWizard = True
+        break
+    }
+}
+
+migrationRunning = False
+for slotName in slots: {
+    if Nodes.present(mgmt, '/rbt/vsp/migrate/state/slot/%s/migrate_deploy/running' % slotName) == 'true': {
+        migrationRunning = True
+        break
+    }
+}
+
+migrateErrorDetails = {}
+
+for slotName in slots: {
+    migrateErr = Nodes.present(mgmt, '/rbt/vsp/migrate/state/slot/%s/migrate_deploy/last_err_msg' % slotName)
+    if migrateErr != '': {
+        migrateErrorDetails[slotName] = migrateErr
+    }
+}
+
+compressSlotMeter = FormUtils.Meter(
+    self,
+    'compressSlot',
+    formId='slotsForm',
+    buttonText='Compress Slot',
+    onClick='compressSlotConfirmDialog.hide(); return compressSlotMeter.onClick(this)',
+    unloadWarningMsg='Slot compression is in progress.'
+)
+
+uploadSlotMeter = FormUtils.Meter(
+    self,
+    'uploadSlot',
+    formId='slotsForm',
+    buttonText='Upload Compressed Slot',
+    unloadWarningMsg='Compressed slot upload is in progress.'
+)
+
+uploadPackageMeter = FormUtils.Meter(
+    self,
+    'uploadPackage',
+    formId='packagesForm',
+    buttonText='Upload Package',
+    unloadWarningMsg='Package upload is in progress.'
+)
+
+uploadBackupMeter = FormUtils.Meter(
+    self,
+    'uploadBackup',
+    formId='backupsForm',
+    buttonText='Upload Backup',
+    unloadWarningMsg='Backup upload is in progress.'
+)
+
+slotsTable = ajaxentrytable.AjaxEntryTable('slots',
+    titleText='Slots',
+    disabled=migrationRunning,
+    url='/mgmt/xmldata?p=vspv1Slots',
+    headerSpec=(
+        ('', '', ''),
+        ('Slot Name', '', 'sortAttrib("name")'),
+        ('Package', '', 'sortAttrib("package")'),
+        ('Status', '', 'sortAttrib("status")'),
+        ('Data Flow', 'dataFlow', 'sortAttrib("dataFlow")'),
+        ('Migrated', 'migrated', 'sortAttrib("migrated")'),
+        ('Download Link', 'download', ''),
+        ('Size', 'size', 'sortAttrib("size")')
+    ),
+    rowSpec="""
+        [AjaxEntryTable.tdSelectCheckbox('name', 'slot_'),
+         AjaxEntryTable.tdEdit('name', 'name'),
+         AjaxEntryTable.tdAttr('package'),
+         AjaxEntryTable.tdAttr('statusPretty'),
+         AjaxEntryTable.tdAttrStyle('dataFlow', 'dataFlowClass'),
+         AjaxEntryTable.tdAttrStyle('migrated', 'migrateClass'),
+         AjaxEntryTable.tdLink('url', 'linkText'),
+         AjaxEntryTable.tdAttr('sizePretty', 'size')]
+""",
+    emptyMessage='No slots.',
+    removeName='deleteSlot',
+    removeButtonText='Delete Selected Slots',
+    removeButtonAction='showDeleteSlotConfirmation'
+)
+
+slotsTable.editDivContent = '''
+    <fieldset id="compressSlot">
+      <legend>Compress</legend>
+      <div>
+        <p>
+          This will compress the entire slot into a single file that can be
+          transferred off the appliance.
+        </p>
+        <input type="button"
+               id="compressSlotButton"
+               name="compressSlot"
+               value="Compress Slot"
+               onclick="showCompressSlotConfirmation()" />
+      </div>
+    </fieldset>
+    <fieldset id="uploadSlot" class="upload">
+      <legend>Upload</legend>
+      <div>
+        %(uploadSlotUrl)s
+        %(uploadSlotSubmit)s
+      </div>
+    </fieldset>
+    <p id="slotMigratingMessage">
+      No slot actions are available while VM migration is in progress.
+    </p>
+    <p id="permissionsMessage">
+      No slot actions are available without VSP write privileges.
+    </p>
+    <input type="hidden" name="editSlotName" />
+''' % {'uploadSlotUrl': dialogEntries['uploadSlotUrl'].html(self, format='inline'),
+       'uploadSlotSubmit': uploadSlotMeter.buttonHtml(self)}
+
+packagesTable = ajaxentrytable.AjaxEntryTable('packages',
+    titleText='Packages',
+    disabled=migrationRunning,
+    url='/mgmt/xmldata?p=vspv1Packages',
+    headerSpec=(
+        ('', '', ''),
+        ('Filename', '', 'sortAttrib("filename")'),
+        ('Description', '', 'sortAttrib("description")'),
+        ('Data Flow', 'dataFlow', 'sortAttrib("dataFlow")'),
+        ('Download Link', 'download', ''),
+        ('Size', 'size', 'sortAttrib("size")')
+    ),
+    rowSpec="""
+        [AjaxEntryTable.tdSelectCheckbox('filename', 'package_'),
+         AjaxEntryTable.tdEdit('filename', 'filename'),
+         AjaxEntryTable.tdAttr('description'),
+         AjaxEntryTable.tdAttrStyle('dataFlow', 'dataFlowClass'),
+         AjaxEntryTable.tdLink('url', 'linkText'),
+         AjaxEntryTable.tdAttr('sizePretty', 'size')]
+""",
+    emptyMessage='No packages.',
+    removeName='deletePackage',
+    removeButtonText='Delete Selected Packages',
+    removeButtonAction='showDeletePackageConfirmation'
+)
+
+packagesTable.editDivContent = '''
+    <fieldset class="upload">
+      <legend>Upload</legend>
+      <div>
+        %(uploadPackageUrl)s
+        %(uploadPackageSubmit)s
+      </div>
+    </fieldset>
+    <input type="hidden" name="editPackageName" />
+''' % {'uploadPackageUrl': dialogEntries['uploadPackageUrl'].html(self, format='inline'),
+       'uploadPackageSubmit': uploadPackageMeter.buttonHtml(self)}
+
+backupsTable = ajaxentrytable.AjaxEntryTable('backups',
+    titleText='Backups',
+    disabled=migrationRunning,
+    url='/mgmt/xmldata?p=vspv1Backups',
+    headerSpec=(
+        ('', '', ''),
+        ('Filename', '', 'sortAttrib("filename")'),
+        ('Slot', '', 'sortAttrib("slotName")'),
+        ('Creation Time', '', 'sortAttrib("creationTime")'),
+        ('Download Link', 'download', ''),
+        ('Size', 'size', 'sortAttrib("size")')
+    ),
+    rowSpec="""
+        [AjaxEntryTable.tdSelectCheckbox('filename', 'backup_'),
+         AjaxEntryTable.tdEdit('filename', 'filename'),
+         AjaxEntryTable.tdAttr('slotName'),
+         AjaxEntryTable.tdAttr('creationTime'),
+         AjaxEntryTable.tdLink('url', 'linkText'),
+         AjaxEntryTable.tdAttr('sizePretty', 'size')]
+""",
+    emptyMessage='No backups.',
+    removeName='deleteBackup',
+    removeButtonText='Delete Selected Backups',
+    removeButtonAction='showDeleteBackupConfirmation'
+)
+
+backupsTable.editDivContent = '''
+    <fieldset class="upload">
+      <legend>Upload</legend>
+      <div>
+        %(uploadBackupUrl)s
+        %(uploadBackupSubmit)s
+      </div>
+    </fieldset>
+    <input type="hidden" name="editBackupName" />
+''' % {'uploadBackupUrl': dialogEntries['uploadBackupUrl'].html(self, format='inline'),
+       'uploadBackupSubmit': uploadBackupMeter.buttonHtml(self)}
+
+%>
+
+<span id="diskSpaceInfo">
+  Legacy VSP Volume Usage:
+  <%= totalDiskSpacePretty %> total,
+  <%= usedDiskSpacePretty %> used,
+  <%= freeDiskSpacePretty %> free
+</span>
+
+<form method="post"
+    action="<%= self.thisPageletRequest() %>"
+    id="wizardForm">
+  <div id="wizardDiv">
+    <fieldset>
+      <legend>VM Migration Wizard</legend>
+      <div id="wizardTextDiv" class="midLevel">
+
+        <% if migrationRunning: { %>
+
+        <p>
+          VM migration is currently in progress.
+        </p>
+        <input type="button" onclick="wizCancel();" value="Cancel" disabled="disabled"/>
+
+        <% } elif not esxiInstalled: { %>
+
+        <p>
+          The VM migration wizard is unavailable at this time.  Please run the
+          <a href="/mgmt/gui?p=setupVSP">ESXi Installation Wizard</a> first.
+        </p>
+
+        <% } elif not esxiAvailable: { %>
+
+        <p>
+          The VM migration wizard cannot be run while VSP is not available.
+        </p>
+
+        <% } else: { %>
+
+        <p>
+          This wizard will migrate your installed legacy VSP VMs so
+          that they can be used with this version of VSP.
+        </p>
+        <input type="button" value="Launch VM Migration Wizard" id="vspWizard" onclick="wizRender();" name="vspWizard" />
+
+        <% } %>
+
+      </div>
+    </fieldset>
+  </div>
+</form>
+
+<form id="slotsForm" method="post" action="/mgmt/gui?p=setupVSPv1Migration">
+  <div id="compressSlotConfirm" style="display: none">
+    <p>
+      Compressing a slot requires significant system resources and may take a
+      while. During this time, the appliance's performance may be degraded.
+    </p>
+    <%= compressSlotMeter.buttonHtml(inline=True) %>
+    <input type="button"
+           name="cancelCompress"
+           value="Cancel"
+           onclick="compressSlotConfirmDialog.hide()" />
+  </div>
+  <%= slotsTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupVSPv1Migration" />
+  </div>
+</form>
+
+<form id="packagesForm" method="post" action="/mgmt/gui?p=setupVSPv1Migration">
+  <%= packagesTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupVSPv1Migration" />
+  </div>
+</form>
+
+<form id="backupsForm" method="post" action="/mgmt/gui?p=setupVSPv1Migration">
+  <%= backupsTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="setupVSPv1Migration" />
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var compressSlotConfirmDialog;
+var slotDisplayControl;
+var migrationInProgress = <%= migrationRunning and 'true' or 'false'%>;
+
+var updater = new AjaxUpdater('/mgmt/xmldata?p=seamlessUpgradeStatus');
+updater.update = function(response) {
+    var state = response.responseXML.documentElement.firstChild.getAttribute('state');
+    var description = response.responseXML.documentElement.firstChild.getAttribute('description');
+    if (state == 'done') {
+        updater.cancel();
+        // If the conversion finishes while we're on the page, refresh.  If it
+        // never started, don't do anything.
+        if (migrationInProgress) {
+            window.location = '/mgmt/gui?p=setupVSPv1Migration';
+        }
+        return;
+    }
+
+    migrationInProgress = true;
+    var wizField = $('wizardTextDiv');
+    wizField.innerHTML = '<p>VM migration is currently in progress.</p>';
+    wizField.innerHTML += '<p><img src="/images/icon_test_running.gif" alt="" />' + description + '</p>';
+    wizField.innerHTML += '<input type="button" id="cancelButton" onclick="wizCancel();" value="Cancel" />';
+}
+
+function wizCancel() {
+    new RBT.Dialog({
+        alignNode: Y.one('#cancelButton'),
+        content: 'Are you sure you wish to cancel the migration process?',
+        buttons: [{label: 'Yes',
+                   clickFn: function() {
+                      RBT.rpc({
+                          url: '/mgmt/jsondata?p=cancelConversion'
+                      });
+                    }
+                  },
+                  {label: 'No',
+                   clickFn: RBT.Dialog.dismiss}]
+    }).render().show();
+}
+
+<% if not enableWizard: { %>
+
+Y.on('domready', function() {
+    enableElements('wizardDiv', false);
+});
+
+<% } %>
+
+Y.on('domready', function() {
+    compressSlotConfirmDialog = new RBT.Dialog({
+        alignNode: Y.one('input#compressSlotButton'),
+        buttons: null,
+        srcNode: Y.one('div#compressSlotConfirm')
+    }).render();
+
+    var migrationRunning = <%= migrationRunning and 'true' or 'false'%>;
+    slotDisplayControl = new DisplayControl();
+    slotDisplayControl.display = function(target) {
+        var el = slotsTable.getEntryElement('name', slotsTable.editName);
+        var status = el.getAttribute('status');
+
+        switch(target) {
+            case 'compressSlot':
+                return !slotsTable.disabled && status == 'uncompressed';
+            case 'uploadSlot':
+                return !slotsTable.disabled && status == 'compressed';
+            case 'slotMigratingMessage':
+                return slotsTable.disabled && migrationRunning;
+            case 'permissionsMessage':
+                return slotsTable.disabled && !migrationRunning;
+
+            default:
+                return null;
+        }
+    };
+
+    addUpdateable('display', slotDisplayControl, 'compressSlot');
+    addUpdateable('display', slotDisplayControl, 'uploadSlot');
+    addUpdateable('display', slotDisplayControl, 'slotMigratingMessage');
+    addUpdateable('display', slotDisplayControl, 'permissionsMessage');
+});
+
+// Show a spinner to inform the user that a file upload is in progress.  Also,
+// try to prevent the user from navigating away from the page.
+function showUploadSpinner(fileType) {
+    Y.later(0, null, function() {
+        new LiveStatus({
+            attachPoint: 'div#contentBody'
+        }).render().show('Uploading ' + fileType + '.');
+    });
+
+    Y.later(1000, null, function() {
+        setBeforeUnload(function() {
+            return 'A file upload is in progress.';
+        });
+    });
+}
+
+// Show a confirmation dialog before compressing a slot.
+function showCompressSlotConfirmation() {
+    compressSlotConfirmDialog.show();
+}
+
+// Show a confirmation dialog before deleting a slot.
+function showDeleteSlotConfirmation() {
+    new RBT.Dialog({
+        alignNode: Y.one('a#slotsTable_button_remove'),
+        content: 'The selected slots will be permanently deleted from the ' +
+                 'appliance. Ensure that the slots have been downloaded or ' +
+                 'migrated before continuing.',
+        buttons: [{label: 'Delete Selected Slots',
+                   clickFn: deleteSlot},
+                  {label: 'Cancel',
+                   clickFn: RBT.Dialog.dismiss}]
+    }).render().show();
+}
+
+// Delete a slot.
+function deleteSlot() {
+    submitForm('slotsForm', 'deleteSlot', 'Delete Slot');
+}
+
+// Show a confirmation dialog before deleting a package.
+function showDeletePackageConfirmation() {
+    new RBT.Dialog({
+        alignNode: Y.one('a#packagesTable_button_remove'),
+        content: 'The selected packages will be permanently deleted from the ' +
+                 'appliance. Ensure that the packages have been saved before ' +
+                 'continuing.',
+        buttons: [{label: 'Delete Selected Packages',
+                   clickFn: deletePackage},
+                  {label: 'Cancel',
+                   clickFn: RBT.Dialog.dismiss}]
+    }).render().show();
+}
+
+// Delete a package.
+function deletePackage() {
+    submitForm('packagesForm', 'deletePackage', 'Delete Package');
+}
+
+// Show a confirmation dialog before deleting a backup.
+function showDeleteBackupConfirmation() {
+    new RBT.Dialog({
+        alignNode: Y.one('a#backupsTable_button_remove'),
+        content: 'The selected backups will be permanently deleted from the ' +
+                 'appliance. Ensure that the backups have been saved before ' +
+                 'continuing.',
+        buttons: [{label: 'Delete Selected Backups',
+                   clickFn: deleteBackup},
+                  {label: 'Cancel',
+                   clickFn: RBT.Dialog.dismiss}]
+    }).render().show();
+}
+
+// Delete a backup.
+function deleteBackup() {
+    submitForm('backupsForm', 'deleteBackup', 'Delete Backup');
+}
+
+// Submit a form after adding a hidden input element with the given name and
+// value.
+function submitForm(form, name, value) {
+    var formNode = Y.one('form#' + form);
+    formNode.appendChild('<input type="hidden" name="' + name + '" value="' + value + '" />');
+    formNode.submit();
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+slotsTable.editEntry = function(editName) {
+    Y.one('input[name="editSlotName"]').set('value', editName);
+};
+
+slotsTable.postHandleResponseHook = function() {
+    styleDataflowWarnings('slotsTable_table');
+    centerDownloadLinks('slotsTable_table');
+    stylizeNotApplicableText('slotsTable_table');
+
+    var migrateErrs = <%= RVBDUtils.jsonizeAndEscapeForJs(migrateErrorDetails) %>;
+    Y.all('table#slotsTable_table td.migrate.warning').each(function(tdNode, i, tdNodeList) {
+        var slotName = tdNode.ancestor().get('children').item(1).get('text');
+        var tooltipText = migrateErrs[slotName];
+        var spanHtml = '<span title="' + tooltipText + '">' + tdNode.getContent() + '</span>';
+        tdNode.setContent(spanHtml);
+        new RBT.Tooltip({triggerNode: tdNode.one('span')}).render();
+    });
+};
+
+packagesTable.editEntry = function(editName) {
+    Y.one('input[name="editPackageName"]').set('value', editName);
+};
+
+packagesTable.postHandleResponseHook = function() {
+    styleDataflowWarnings('packagesTable_table');
+    centerDownloadLinks('packagesTable_table');
+};
+
+backupsTable.editEntry = function(editName) {
+    Y.one('input[name="editBackupName"]').set('value', editName);
+};
+
+backupsTable.postHandleResponseHook = function() {
+    centerDownloadLinks('backupsTable_table');
+};
+
+// Given the id of a table, style all the data flow warnings in that table and
+// add a tooltip that explains what the problem is.
+function styleDataflowWarnings(tableId) {
+    Y.all('table#' + tableId + ' td.dataFlow.warning').each(function(tdNode, i, tdNodeList) {
+        var tooltipText = 'This package requires data flow, so it will not ' +
+                          'work properly in this version of VSP.';
+        var spanHtml = '<span title="' + tooltipText + '">' + tdNode.getContent() + '</span>';
+        tdNode.setContent(spanHtml);
+        new RBT.Tooltip({triggerNode: tdNode.one('span')}).render();
+    });
+}
+
+// Given the id of a table, center all the Download links in that table.
+function centerDownloadLinks(tableId) {
+    Y.all('table#' + tableId + ' a').each(function(aNode, i, aNodeList) {
+        if (aNode.getContent() == 'Download') {
+            aNode.ancestor('td').addClass('download');
+        }
+    });
+}
+
+// Given the id of a table, stylize all the 'N/A' spans in that table.
+function stylizeNotApplicableText(tableId) {
+    Y.all('table#' + tableId + ' td span').each(function(spanNode, i, spanNodeList) {
+        if (spanNode.getContent() == 'N/A') {
+            spanNode.ancestor('td').addClass('download');
+            spanNode.ancestor('td').addClass('notApplicable');
+        }
+    });
+}
+
+function wizRender() {
+    wizard = new temp.Wizard(wizConfig);
+    wizard.render();
+    // The wizard framework hides the back button by default in the last step
+    // because we assume it is just a Finished step. This isn't the case in
+    // this wizard, so we need to make sure the user can go back.
+    wizard.after('currentStepChange', function() {
+        if (wizard.get('currentStep') != 0) {
+            wizard.backButton.show();
+        }
+    });
+}
+
+// ]]>
+</script>

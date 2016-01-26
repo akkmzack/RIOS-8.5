@@ -1,0 +1,28 @@
+# /etc/bashrc
+
+# System wide functions and aliases
+# Environment stuff goes in /etc/profile
+
+# by default, we want this to get set.
+# Even for non-interactive, non-login shells.
+if [ "`id -gn`" = "`id -un`" -a `id -u` -gt 99 ]; then
+	umask 002
+else
+	umask 022
+fi
+
+# are we an interactive shell?
+if [ "$PS1" ]; then
+    # Turn on checkwinsize
+    shopt -s checkwinsize
+    [ "$PS1" = "\\s-\\v\\\$ " ] && PS1="[\u@\h \W]\\$ "
+    
+    if [ "x$SHLVL" != "x1" ]; then # We're not a login shell
+        for i in /etc/profile.d/*.sh; do
+	    if [ -r "$i" ]; then
+	        . $i
+	    fi
+	done
+    fi
+fi
+# vim:ts=4:sw=4

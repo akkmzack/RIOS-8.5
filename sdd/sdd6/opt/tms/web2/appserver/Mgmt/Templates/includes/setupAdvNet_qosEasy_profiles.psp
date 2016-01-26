@@ -1,0 +1,289 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+#
+# This is an included template for the QoS page.
+# @author Andrew Hao
+%>
+
+<%@page imports="RVBDUtils" %>
+
+<psp:method name="css_profiles">
+    return '''
+/* Default AET width is too small for this wide table. */
+#profileTable_main {
+    width: 100%;
+}
+/* Numeric data in the tables should be centered,
+   and should not wrap internally  */
+#profileTable_main .numericData {
+    text-align: center;
+    white-space: pre;
+}
+/* Table headers for right-justified data look best centered, at least in this case. */
+#profileTable_main .numericDataHeader {
+    text-align: center;
+}
+/* Override inheritance of white-space above.  Otherwise,
+   the edit div is spread out all over the place. */
+#profileTable_editDiv {
+    white-space: normal;
+}
+/* Space at the top of the Add and Edit divs */
+.addEditDivTable {
+    margin-top: 1em;
+}
+/* Need padding around the sites line, and multi-lines should align with the top of the row. */
+.addEditDivTable .sitesLabel,
+.addEditDivTable .siteNames {
+    padding-top: 1em;
+    padding-bottom: 1em;
+    vertical-align: top;
+}
+/* A little extra padding to get the site names to line up correctly */
+.addEditDivTable .siteNames {
+    padding-left: 2em;
+}
+/* Width of the first column, the class name. */
+.addEditDivTable .colClass {
+    width: 12em;
+}
+/* Width of the second column.  Min BW is centered. */
+.addEditDivTable .colMinBw {
+    text-align: center;
+    width: 8em;
+}
+/* Width of the third column.  Min BW is centered. */
+.addEditDivTable .colMaxBw {
+    text-align: center;
+    width: 8em;
+}
+/* Width of the fourth column.  DSCP has lots of space so centering it
+   moves it significantly rightward. */
+.addEditDivTable .colDSCP {
+    text-align: center;
+    width: 22em;
+}
+/* "Block"-style nodes generate divs rather than tds, but we want
+   them to look like tds here, so we give them the same margins. */
+.addEditDivTable div.nodeEntry {
+    margin: 2px 0 2px 0;
+}
+/* The "Shaping Parameters" and "Marking Parameters" are bolded,
+   centered over their data, and, in the add div,  are extra tall
+   for spacing. */
+.addEditDivTable .addTableHeader,
+.addEditDivTable .editTableHeader {
+    font-weight: bold;
+    text-align: center;
+    vertical-align: bottom;
+}
+.addEditDivTable .addTableHeader {
+    height: 3em;
+}
+/* The parameter headers are extra tall and are centered over data. */
+.addEditDivTable .paramHeader {
+    text-align: center;
+    height: 3em;
+}
+/* This positions the running min BW total correctly.*/
+.addEditDivTable .totalGuaranteedClass {
+    text-align: center;
+    padding-top: 0.75em;
+}
+'''
+</psp:method>
+
+<psp:method name="dialogEntries_profiles">
+    return {
+        'name': FormUtils.NodeEntry(
+            name='name',
+            label='Name',
+            validate='qosName')
+        }
+</psp:method>
+
+<%
+self.retargetCmcPolicyNodes()
+dialogEntries_profiles = self.dialogEntries_profiles()
+addPrefix='addProfile_'
+editPrefix='editProfile_'
+
+def profilesGenerateAddOrEditDivParametersSection(namePrefix): {
+    result = """<tbody>"""
+    for cls in qos.DEFAULT_CLASSES: {
+        guaranteedField = FormUtils.NodeEntry(
+            name=qos.attributizeName(cls) + '_guaranteed',
+            widgetClass='small',
+            value='0',
+            validate=('floatInRange', '[0, 100]'))
+        if cls == 'Low-Priority': {
+            guaranteedField.tooltip = "This is the default class which connections are classified into if they don't match any rule for a site."
+        }
+        upperField = FormUtils.NodeEntry(
+            name=qos.attributizeName(cls)+'_upper',
+            widgetClass='small',
+            value='100',
+            validate=('floatInRange', '[0.01, 100]'))
+        dscpSelect = FormUtils.NodeEntry(
+            name=qos.attributizeName(cls)+'_out_dscp',
+            widget='select',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([('255', 'Reflect')], True))
+        result += """<tr>
+	    <td class="colClass">%s:</td>
+	    <td class="colMinBw">%s</td>
+	    <td class="colMaxBw">%s</td>
+	    <td class="colDSCP">%s</td>
+	    </tr>""" % (
+		cls,
+		guaranteedField.html(self, namePrefix=namePrefix, format='block'),
+		upperField.html(self, namePrefix=namePrefix, format='block'),
+		dscpSelect.html(self, namePrefix=namePrefix, format='block'))
+    }
+    result += """</tbody>"""
+    return result
+}
+
+profileTable = ajaxentrytable.AjaxEntryTable('profile',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=easyQoS_profiles'),
+    headerSpec=['',
+               ('Name', '', 'sortAttrib("name")')] + \
+               [(cls, 'numericDataHeader') for cls in qos.DEFAULT_CLASSES] + \
+               ['Associated Sites'],
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedProfile_'),
+ AjaxEntryTable.tdEdit('name', 'name'),""" + \
+ '\n'.join(["AjaxEntryTable.tdLines('table_data_%s', 'numericData')," % \
+            qos.attributizeName(cls)
+            for cls in qos.DEFAULT_CLASSES]) + \
+"""AjaxEntryTable.tdAttr('abbrSites')]""",
+    emptyMessage='No policies defined.',
+    addButtonText='Add Service Policy',
+    addButtonName='addProfile',
+    editButtonName='editProfile',
+    removeName='removeProfile',
+    removeButtonText='Remove Service Policy')
+
+def profilesGenerateAddOrEditDiv(isAdd): {
+    pfx = isAdd and addPrefix or editPrefix
+    hiddenInputs = not isAdd and '''<input type="hidden" name="editProfile_name" />''' or ''
+    return """
+<div class="midLevel">
+  <table class="addEditDivTable">
+    <tbody>
+      %(name)s
+      <tr class="%(tableHeader)s">
+	<td></td>
+	<td class="shapingHeader" colspan="2">Shaping Parameters</td>
+	<td>Marking Parameters</td>
+      </tr>
+      <tr class="paramHeader">
+	<td></td>
+	<td class="colMinBw">Minimum<br/>Bandwidth %%</td>
+	<td class="colMaxBw">Maximum<br/>Bandwidth %%</td>
+	<td class="colDSCP"><br/>DSCP</td>
+      </tr>
+    </tbody>
+    %(paramsTbody)s
+    <tbody>
+      <tr>
+	<td></td>
+	<td colspan="2" class="totalGuaranteedClass">
+	  <span id="%(tgid)s" >&nbsp;</span>
+	  total guaranteed
+	</td>
+	<td></td>
+      </tr>
+      <tr class="%(hideIfAdd)s">
+	<td class="sitesLabel">Associated sites:</td>
+	<td class="siteNames" colspan="6">
+	  <span id="%(spanId)s"></span>
+	</td>
+      </tr>
+    </tbody>
+  </table>
+  %(hiddenInputs)s
+</div>
+""" % { 'hideIfAdd': isAdd and 'hidden' or 'nothidden',
+        'tableHeader': isAdd and 'addTableHeader' or 'editTableHeader',
+        'spanId': isAdd and 'sites_addSpan' or 'sites_editSpan',
+        'name': isAdd and dialogEntries_profiles['name'].html(self, namePrefix=pfx) or '',
+        'paramsTbody': profilesGenerateAddOrEditDivParametersSection(pfx),
+        'tgid' : isAdd and 'totalGuaranteed_addSpan' or 'totalGuaranteed_editSpan',
+	'hiddenInputs': hiddenInputs }
+}
+
+profileTable.addDivContent = profilesGenerateAddOrEditDiv(True)
+profileTable.editDivContent = profilesGenerateAddOrEditDiv(False)
+
+%>
+
+<form id="easyQoS_profilesForm" method="post" action="<%= self.thisPageletRequest() %>" >
+  <div>
+    <%= profileTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_profiles" />
+  </div>
+</form>
+
+<%
+tabJs = '''
+var allClasses = %(classes)s;
+profileTable.editEntry = function(editName) {
+    var form = $('easyQoS_profilesForm');
+    var el = this.getEntryElement('name', editName);
+    setFormValue(form, 'editProfile_name', editName);
+    for (var i = 0; i < allClasses.length; i++) {
+        var cls = allClasses[i];
+        setFormValue(form,
+                     'editProfile_' + cls + '_guaranteed',
+                     el.getAttribute('rt_min_bw_pct_' + cls));
+        setFormValue(form,
+                     'editProfile_' + cls + '_upper',
+                     el.getAttribute('ul_rate_pct_' + cls));
+        setFormValue(form,
+                     'editProfile_' + cls + '_out_dscp',
+                     el.getAttribute('out_dscp_' + cls));
+    }
+    var sites = el.getAttribute('sites');
+    if (sites == '') {
+        sites = '--';
+    } else {
+        sites += '.';
+    }
+    Y.one('#sites_editSpan').setContent(sites);
+}
+
+function updateTotalGuaranteed(buttonEl, isValid) {
+    var mode = profileTable.editMode;
+    if ((mode !== 'add') && (mode !== 'edit')) {
+        return;
+    }
+    var totalPct = 0;
+    for (var i = 0; i < allClasses.length; i++) {
+        var pctVal = Y.one('input[name="' + mode + 'Profile_' + \
+            allClasses[i] + '_guaranteed"]').get('value');
+        try {
+            RBT.Validator.Syntax.floatInRange(pctVal, null, 0, 100);
+            totalPct += parseFloat(pctVal);
+        }
+        catch (e) {
+            // Leave blank; nothing needs to be done here.
+        }
+    }
+    Y.one('#totalGuaranteed_' + mode + 'Span').setContent(totalPct + '%%');
+
+    if (totalPct > 100) {
+        Y.one('#totalGuaranteed_' + mode + 'Span').addClass('warning');
+    }
+    else {
+        Y.one('#totalGuaranteed_' + mode + 'Span').removeClass('warning');
+    }
+
+    return isValid && totalPct <= 100;
+}
+
+''' % {'classes': [qos.attributizeName(cls) for cls in qos.DEFAULT_CLASSES]}
+
+self.addPageletJavascript(tabJs)
+self.addOnload('RBT.Validator.addButtonValidation("input[name=addProfile]", updateTotalGuaranteed);')
+self.addOnload('RBT.Validator.addButtonValidation("input[name=editProfile]", updateTotalGuaranteed);')
+%>

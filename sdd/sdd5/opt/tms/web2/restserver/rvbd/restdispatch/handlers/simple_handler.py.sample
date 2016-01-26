@@ -1,0 +1,32 @@
+
+from rvbd.restdispatch.handler import RequestHandler
+from rvbd.extras.wsgiutils import StringResponse
+from rvbd.extras.wsgiutils import WebError
+
+class MySimpleHandler(RequestHandler):
+
+    def __init__(self, engine):
+        RequestHandler.__init__(self, engine)
+
+    def register_paths(self, registry):
+        registry.register('simple',
+                          'rvbd.restdispatch.handlers.simpler_handler.MySimplerHandler',
+                          [
+                              ('/foo_public/{pid}', False, 'foo_public'),
+                              ('/foo_secure/{sid}', True, 'foo_secure')
+                          ])
+
+    def foo_public(self, request, pid, version):
+        if pid == '10':
+            raise WebError(500, 'OMG, DO NOT USE VALUE 10')
+
+        #request.get_env('foo')
+        #request.get_query_param('bar')
+        #request.get_post_variable('baz')
+        #all_params = request.get_query_params()
+        #all_data = request.get_post_data()
+
+        return request.respond(StringResponse('You passed in the value %s' % pid))
+
+    def foo_secure(self, request, sid, version):
+        return request.respond(StringResponse('You passed in an auth protected value of %s' % sid))

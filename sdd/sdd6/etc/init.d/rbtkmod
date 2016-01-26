@@ -1,0 +1,963 @@
+#! /bin/bash
+
+#
+#  Filename:  $Source$
+#  Revision:  $Revision: 114682 $
+#  Date:      $Date: 2012-08-08 13:27:37 -0700 (Wed, 08 Aug 2012) $
+#  Author:    $Author: akepner $
+#
+#  (C) Copyright 2003-2005 Riverbed Technology, Inc.
+#  All rights reserved.
+#
+
+#
+# rbtkmod        Kernel modules
+#
+# chkconfig: 2345 13 87
+# description: Activates/Deactivates kernel modules.
+#
+MDDBREQ=/opt/tms/bin/mddbreq
+HALDMODEL=/opt/tms/bin/hald_model
+MFDB=/config/mfg/mfdb
+ACTIVE_DB_NAME_FILE=/config/db/active
+CONFIGS=/config/db
+RBTKMODS=/opt/rbt/lib/modules
+KMODS=/lib/modules/`uname -r`/kernel
+DEVICES=/proc/devices
+HDPARM=/sbin/hdparm
+RENAME_IF=/sbin/rename-if.sh
+NAMEIF=/sbin/nameif
+HAL=/opt/hal/bin/hal
+HWTOOL=/opt/hal/bin/hwtool.py
+MACTAB=/var/tmp/mactab
+MACTAB_SPACE=/var/tmp/mactab_space
+EXPR=/usr/bin/expr
+MDADM=/sbin/mdadm
+MOUNT=/bin/mount
+UMOUNT=/bin/umount
+DD=/bin/dd
+BIOS_FIXUP=/sbin/bios-fixup.tcl
+SYSV_INIT=/etc/rc.d/init.d
+NETFLOW_MODULE=${SYSV_INIT}/netflow
+VMWARE_MODULE=${SYSV_INIT}/vmware_module
+RSP_VM_UTIL=/opt/tms/bin/rsp_vm_util
+RSP_NET_UTIL=/opt/tms/bin/rsp_net_util
+SSL_CARD=0
+SSL_DEV_CRYPTO=/dev/cryptonet 
+QOS_QDISCS="dsmark hfsc"
+QOS_IPT_SAVE=/var/tmp/qos_ipt_save
+CONNTRACK_THRESHOLD=31
+MOBO_GENERIC=
+HPP1_BLADE=0
+BOB_PLATFORM=0
+VSH_PLATFORM=0
+RSP_SUPPORTED="`$HALDMODEL | cut -f 37`"
+
+function set_mobo {
+    MOBO_GENERIC=`/opt/tms/bin/hwtool -q motherboard | awk -F- '{ print $1"-"$2}'`
+    echo "MOBO base revision $MOBO_GENERIC"
+
+    # Check if we are running on Riverblade.
+    if [ "x${MOBO_GENERIC}" = "xCMP-00HP1" ]; then
+        HPP1_BLADE=1;
+    elif [ "x${MOBO_GENERIC}" = "xBOB-MOBO" ]; then
+        BOB_PLATFORM=1;
+    elif [ "x${MOBO_GENERIC}" = "xVM-" ]; then
+        VSH_PLATFORM=1;
+    fi
+}
+
+function vsh_loop_detected {
+    local lan=$1
+    local wan=$2
+    local vsh_loop_cap=/var/tmp/vsh_loop.cap
+
+    # Delete the cap file if it exists
+    if [ -e $vsh_loop_cap ]; then
+        rm $vsh_loop_cap
+    fi
+
+    # Extract the mac address of the LAN interface
+    lan_mac=`ifconfig $lan | grep HWaddr | sed -e "s,.*HWaddr \(.*\),\1,"`
+
+    # Start the tcpdump on the WAN iface and then send an arp request
+    /usr/sbin/tcpdump -i $wan ether src $lan_mac -w $vsh_loop_cap -I 5 &
+    # Run arping long enough to send couple of arps, to account for drops
+    /usr/sbin/arping -U -w 4 -I $lan 127.0.0.1 > /dev/null
+
+    # We need this sleep time so that the pcap file gets written to disk
+    echo "Sleeping for 5 seconds to let the pcap file flush to disk"
+    sleep 5
+    sync
+    pkts=`/usr/sbin/tcpdump -r $vsh_loop_cap ether src $lan_mac 2>/dev/null | wc -l`
+
+    if [ $pkts -eq 0 ]; then
+        # We did not detect a loop
+        return 0
+    fi
+
+    # We detected a loop
+    return 1
+}
+
+#
+# test the aha zip card
+#
+ziptest()
+{
+	local AHAZIP
+	local ZIPTEST
+	local ZIPOUT
+
+	AHAZIP=/opt/rbt/bin/ahazip
+	ZIPTEST=/tmp/ziptest.$$
+	ZIPOUT=/tmp/zipout.$$
+
+	[ ! -x $AHAZIP ] && return 1
+
+	! $AHAZIP -f=$AHAZIP -o=$ZIPTEST 2> /dev/null && \
+		/bin/rm -f $ZIPTEST && return 1
+
+	! $AHAZIP -d -f=$ZIPTEST -o=$ZIPOUT && \
+		/bin/rm -f $ZIPTEST $ZIPOUT && return 1
+
+	/bin/rm -f $ZIPTEST
+
+	! /usr/bin/diff -q $AHAZIP $ZIPOUT &> /dev/null && \
+		/bin/rm -f $ZIPOUT && return 1
+
+	/bin/rm -f $ZIPOUT
+
+	return 0
+}
+
+# Riverblade-specific kernel module (de-)initialization.
+function hpp1_kmods {
+    if [ "$1" == "deinit" ]; then
+        if [ -e /proc/sys/er/bind_output_device ]; then
+            echo 0 > /proc/sys/er/bind_output_device
+        fi
+        rmmod hpp1mod > /dev/null 2>&1
+        rmmod ash > /dev/null 2>&1
+        # The following will fail if espd is running
+        rmmod filtertables > /dev/null 2>&1
+    elif [ "$1" == "init" ]; then
+        # Set the MTU of the ASH port for max ethernet frame size.
+        ifconfig eth1 mtu 9300
+
+        # ifconfig eth1, eth2 up. eth1 needs to be up when loading the ash
+        # module.
+        ifconfig eth1 up
+        ifconfig eth2 up
+
+        # Add HP's kernel modules.
+        insmod $RBTKMODS/filtertables.ko > /dev/null
+        insmod $RBTKMODS/ash.ko > /dev/null
+        ifconfig ash0 up > /dev/null
+
+        # Add the Riverblade specific module that allows integration with ermod.
+        insmod $RBTKMODS/hpp1mod.ko normal_name=eth2 ash_name=ash0 \
+            er_ifpair=lan0_0-wan0_0 > /dev/null
+
+        if [ -e /proc/sys/er/bind_output_device ]; then
+            # Use the LAN device for transmitting all packets from pktout.
+            echo 1 > /proc/sys/er/bind_output_device
+        fi
+    fi
+    return 0
+}
+
+function load_mux {
+    local __BRIDGE_IFACES=`/sbin/get_bridge_ifaces.sh [lw]an`
+    local __IFACE
+    local __MUXES
+    local __PORTS
+
+    # One mux for every physical interface.  These mux the physical
+    # interface and rios interface onto the rsp interface.  For example,
+    # traffic from lan0_0 and rios_lan0_0 is muxed onto rsp_lan0_0.
+    for __IFACE in $__BRIDGE_IFACES; do
+        __MUXES=$__MUXES,${__IFACE}-1bit-rsp_${__IFACE}
+
+        __PORTS=$__PORTS,mux_${__IFACE}-${__IFACE}-plain-${__IFACE}
+        __PORTS=$__PORTS,mux_rios_${__IFACE}-rios_${__IFACE}-plain-${__IFACE}
+    done
+
+    # One mux for all tcpdump traffic.
+    __MUXES=$__MUXES,sniffer-destructive-rsp_tcpdump
+
+    # Remove preceding commas.
+    __MUXES=${__MUXES#,}
+    __PORTS=${__PORTS#,}
+
+    insmod ${RBTKMODS}/muxmod.ko muxlist=${__MUXES} portlist=${__PORTS}
+}
+
+function load_switch {
+    local __BRIDGE_IFACES=`/sbin/get_bridge_ifaces.sh [lw]an`
+    local __IFACE
+    local __SWITCHES
+
+    # One switch for every physical interface.  The switches connect the
+    # following interfaces and allow for amazing things like bypassing RSPNet:
+    # 1. pnic     (iface for physical network traffic)
+    # 2. mux_pnic (iface for pnic traffic to/from RSPNet)
+    # 3. rios     (iface for the RIOS optimization service)
+    # 4. mux_rios (iface for rios traffic to/from RSPNet)
+    for __IFACE in $__BRIDGE_IFACES; do
+        __SWITCHES=$__SWITCHES,bob-rios_${__IFACE}-${__IFACE}-mux_${__IFACE}-rios_${__IFACE}-mux_rios_${__IFACE}
+    done
+
+    # Remove preceding commas.
+    __SWITCHES=${__SWITCHES#,}
+
+    insmod ${RBTKMODS}/switchmod.ko switches=${__SWITCHES}
+}
+
+function load_bob_modules {
+    load_mux
+    load_switch
+}
+
+function unload_bob_modules {
+    rmmod ${RBTKMODS}/switchmod.ko
+    rmmod ${RBTKMODS}/muxmod.ko
+}
+
+#
+# see how we were called.
+#
+case "$1" in
+  start)
+        touch / 2>/dev/null
+        READ_ONLY_ROOT=$?
+
+        [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,rw
+
+        # flag datastore as initting, see bug 15426
+        touch /var/opt/rbt/.datastore_initting
+
+        #
+        # dump the model into /var/opt/rbt/model so that
+        # the web UI and other monitor-access binaries can
+        # determine the model #.
+        # this is necessary because only root can directly query
+        # the manufacturing database to determine the model # and
+        # for binaries that don't have access to mgmtd (ie. the web
+        # UI during login/logout), we need this.
+        #
+        MODEL=`$MDDBREQ -v $MFDB query get "" /rbt/mfd/model`
+        echo "$MODEL" > /var/opt/rbt/model
+
+        #
+        # based on the hardware detected, correctly set
+        # the hal symlink
+        #
+        HAL_PATH=`${HWTOOL} -q hal-path`
+        if [ $? != 0 ]; then
+            echo "Unable to determine HAL, defaulting to base."
+            rm -f ${HAL}
+            ln -s /opt/hal/bin/amax/hal ${HAL}
+        else
+            rm -f ${HAL}
+            ln -s ${HAL_PATH} ${HAL}
+        fi
+
+        # Set motherboard type
+        set_mobo
+
+        # Load vmxnet3, vsock and vmci drivers for virtual SH and BOB
+        if [ "$MOBO_GENERIC" == "VM-" -o "$MOBO_GENERIC" == "BOB-MOBO" ]; then
+            insmod /opt/rbt/lib/modules-smp/vmxnet3.ko disable_lro=1 > /dev/null 2>&1
+            insmod /opt/rbt/lib/modules-smp/vmci.ko > /dev/null 2>&1
+            insmod /opt/rbt/lib/modules-smp/vsock.ko > /dev/null 2>&1
+            # Sleep for a while till the dev nodes are created
+            c=0
+            while [ $c -le 10 ]; do
+                if [ ! -e /dev/vsock ]; then
+                    echo "vsock not ready as yet sleeping for a second"
+                    sleep 1
+                fi
+                (( c++ ))
+            done
+        fi
+
+        #
+        # call HAL initializer
+        #
+        ${HAL} init_hardware_phase1
+
+        # Load the VMWare server modules on all non BOB and VSH appliances
+        if [ "$MOBO_GENERIC" != "VM-" -a "$MOBO_GENERIC" != "BOB-MOBO" ]; then
+            # Load modules and device nodes for VMware Server 2.0.
+            # Clear any RSP VM locks. These locks might prevent VMs from powering
+            # up.
+            # Remove any temporary disks, which may be left over from virtual
+            # disk creation.
+            if [ "$RSP_SUPPORTED" = "true" ]; then
+                ${VMWARE_MODULE} start > /dev/null
+                ${RSP_VM_UTIL} clear_locks
+                ${RSP_VM_UTIL} clear_tmp_disks
+            fi
+        fi
+
+        #
+        # insmod QoS Modules
+        # 
+        # k_cls_rb depends on k_qos_hdr_rules
+        # the ipt_rb module depends on the iptables kernel module.  
+        # 
+        # the ip_tables kernel module is never rmmod-ed, so 
+        # always check for its presence before insmod-ing. 
+        # 
+        insmod $RBTKMODS/k_qos_hdr_rules.o 
+        insmod $RBTKMODS/k_cls_rb.o
+        insmod $KMODS/net/sched/sch_dsmark.ko 
+        insmod $KMODS/net/sched/sch_rrtcp.ko
+        insmod $KMODS/net/sched/sch_sfq.ko
+        insmod $KMODS/net/sched/cls_u32.ko
+
+        QOS_IPT_KMOD=`cat /proc/modules | cut -f1 -d ' ' | grep ip_tables`
+        if [ "x$QOS_IPT_KMOD" == "x" ]; then 
+            insmod $KMODS/net/ipv4/netfilter/ip_tables.ko > /dev/null 2>&1
+        fi
+        insmod $RBTKMODS/k_ipt_rb.o 
+        insmod $RBTKMODS/k_ipt_rb_inbound.o
+        if [ -e $QOS_IPT_SAVE ]; then 
+            /sbin/iptables-restore < $QOS_IPT_SAVE
+            rm -f $QOS_IPT_SAVE
+        fi
+
+        # always create /dev/qos_hdr_rules, so minor number will be right
+        rm -f /dev/qos_hdr_rules
+        QOS_HDR_RULES_MAJOR=`cat /sys/class/misc/qos_hdr_rules/dev | cut -f1 -d ':'`
+        QOS_HDR_RULES_MINOR=`cat /sys/class/misc/qos_hdr_rules/dev | cut -f2 -d ':'`
+        mknod /dev/qos_hdr_rules c $QOS_HDR_RULES_MAJOR $QOS_HDR_RULES_MINOR
+
+        # make sure /dev/cls_rb was created
+        if [ ! -e /dev/cls_rb ]; then
+            CLS_RB_MAJOR=`cat /sys/class/misc/cls_rb/dev | cut -f1 -d ':'`
+            CLS_RB_MINOR=`cat /sys/class/misc/cls_rb/dev | cut -f2 -d ':'`
+            mknod /dev/cls_rb c $CLS_RB_MAJOR $CLS_RB_MINOR
+        fi
+
+        #
+        # insmod the watchdog drives and determine which card is available
+        # inside the box. note that there is an assumption here that we
+        # only support 1 type of card being in the box although there can
+        # be N number of them.
+        #
+        # once the card type is discovered, we create a symbolic link
+        # to the correct control binary for that card.
+        #
+        # Check for Silicom SSL card
+        if [ $SSL_CARD -eq 0 ]; then
+            insmod $RBTKMODS/bcm582x.ko > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                if [ -c $SSL_DEV_CRYPTO ]; then
+                    rm -f $SSL_DEV_CRYPTO
+                fi
+                CRYPTO_MAJOR_NO=`grep -w "cryptonet" /proc/devices | head -1 | awk '{print $1}'`
+                mknod $SSL_DEV_CRYPTO c $CRYPTO_MAJOR_NO 1             
+                chmod o+w $SSL_DEV_CRYPTO 
+                SSL_CARD=1                
+            fi
+        fi
+
+        # check for 10/100 ADLink first
+        insmod $RBTKMODS/LanWDT.o > /dev/null 2>&1
+
+        # check for Gigabit ADLink
+        insmod $RBTKMODS/8246_WDT.o > /dev/null 2>&1
+
+        # check for Interface Masters
+        insmod $RBTKMODS/n22xx_WDT.o > /dev/null 2>&1
+
+	# For Intel 10G support (use ixgbe-intel only if we have a PCIe gen2 NIC)
+	${HWTOOL} -q getniccard | grep -qE '410-00301-02|410-00302-02' \
+		&& ( modprobe ixgbe_intel > /dev/null 2>&1 ) \
+		|| ( modprobe ixgbe > /dev/null 2>&1 )
+
+        # check for Silicom using side driver
+	modprobe sbp_mod > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+	    modprobe bypass_sbp > /dev/null 2>&1
+	fi
+
+	# Add the at24 eeprom driver in case this box is a minnow.
+	if [ "$MOBO_GENERIC" == "400-00099" -o "$MOBO_GENERIC" == "400-00098" ]; then
+   		modprobe at24 > /dev/null 2>&1
+		if [ $? -eq 0 ]; then
+		     echo "Loaded at24 driver "
+		else	
+		     echo "Failed to Load at24 driver "
+		fi
+	fi
+	
+        # modprobe the aha36x driver.
+
+        HAS_AHA_CARD=`${HWTOOL} -q has_card="^410-00303"`
+        HAS_AHA_CARD_10X=`${HWTOOL} -q has_card="^410-00055"`
+        if [ "x${HAS_AHA_CARD}" = "xTrue" -o "x${HAS_AHA_CARD_10X}" = "xTrue" ]; then
+            if [ -f ${RBTKMODS}/aha36x.ko ]; then
+                insmod ${RBTKMODS}/aha36x.ko > /dev/null 2>&1
+	        AHA_MAJOR=`cat /proc/devices | grep aha36x | awk '{print $1}'`
+                if [ -n "$AHA_MAJOR" ]; then
+                    AHA_DEV_NODE=/dev/sdrcard
+
+                    [ ! -c ${AHA_DEV_NODE} ] &&
+                        /bin/mknod ${AHA_DEV_NODE} c ${AHA_MAJOR} 0
+
+		    if ! ziptest > /dev/null 2>&1; then
+		        /bin/rm -f ${AHA_DEV_NODE}
+		        err="Compression offload card (aha363) failed initialization tests"
+		        echo "1 $err" >> /tmp/hwerrors.txt
+		        /usr/bin/logger -p user.WARN -t aha "$err" 
+		    fi
+                fi
+            fi
+        fi
+
+	# for barramundi, sturgeon, minnow and axiomtex units,
+	# the onboard card watchdog is loaded in the hal
+
+	#
+	# Fix BIOS configuration settings as needed
+	#
+	$BIOS_FIXUP
+
+
+	# Virtual Steelhead bypass support.  This needs to be called after
+	# the interfaces are available, but before renaming.  This will
+	# temporarily bring up interfaces as it probes for silicom
+	# bypass support.
+        # 76 is the field in hald_model_matrix.h
+        # corresponding to vsh bypass limits
+        VSH_BYPASS_PROBE_RESULT=1
+        VSH_BYPASS_LIMIT=$($HALDMODEL | cut -f 76)
+        if [[ $MOBO_GENERIC == "VM-" ]]; then
+            ${HAL} vsh_bypass_init $VSH_BYPASS_LIMIT
+            VSH_BYPASS_PROBE_RESULT=$?
+        fi
+
+        #
+        # rename the interfaces. this will cause the generic set of eth0-ethN
+        # network interfaces to be renamed to prihw, aux, lan0-lanN, and
+        # wan0-wanN.
+        #
+	rm -f $MACTAB_SPACE
+	$HWTOOL -q mactab=$MACTAB > /dev/null 2>&1
+	RESULT=$?
+	sed -i "s/^primary/prihw/" $MACTAB
+	$DD if=/dev/zero of=$MACTAB_SPACE bs=5K count=1 2>/dev/null
+ 	if [ $RESULT = 0 ]; then
+	    if (($HPP1_BLADE)); then
+		cat ${MACTAB} | sed 's/eth/ethhp/' > ${MACTAB}_tmp
+		${NAMEIF} -c ${MACTAB}_tmp
+	    fi
+	
+	    if (($HPP1_BLADE)); then
+		cat ${MACTAB} | sed 's/eth/ethhp/' > ${MACTAB}_tmp
+		${NAMEIF} -c ${MACTAB}_tmp
+	    fi
+	
+	    $NAMEIF -c $MACTAB
+	else
+	    echo "***WARNING: UNKNOWN MOTHERBOARD OR ERROR, USING RENAME_IF"
+	    $RENAME_IF
+	fi
+
+        # Finalize virtual steelhead bypass init now that
+        # all the interfaces have the expected lan/wan names
+        if [[ $VSH_BYPASS_PROBE_RESULT -eq 0 ]]; then
+            ${HAL} vsh_bypass_init_post_rename $VSH_BYPASS_LIMIT
+        fi
+
+        # Check if ipv6 needs to be insmod-ed. intercept modules have weak
+        # dependencies to ipv6.
+        if [ -f $ACTIVE_DB_NAME_FILE ]; then
+            ACTIVE_DB=$CONFIGS/`cat $ACTIVE_DB_NAME_FILE`
+            IPV6_ENABLED=`$MDDBREQ -v $ACTIVE_DB query get - \
+                            /net/config/ipv6/enable`
+        else
+            IPV6_ENABLED="false"
+        fi
+
+        if [ "$IPV6_ENABLED" = "true" ]; then
+            modprobe ipv6
+        fi
+
+        insmod $RBTKMODS/rbtutlmod.ko
+        # If running on Riverblade, create the LAN and WAN interfaces.
+        if (($HPP1_BLADE)); then
+            # Use the normal interface's MAC address for LAN.
+            insmod $RBTKMODS/palmod.ko er=lan0_0-wan0_0 dev=eth2-eth1
+        else
+            insmod $RBTKMODS/palmod.ko > /dev/null
+        fi
+        insmod $RBTKMODS/rbtbrmod.ko >/dev/null
+        insmod $RBTKMODS/rbtctmod.ko ct_threshold=`$HALDMODEL | cut -f $CONNTRACK_THRESHOLD` >/dev/null
+
+        #
+        # get the list of interfaces on this box and go through all the
+        # lans to figure out the bridge pairs. also write out the rt_tables
+        # file while we're iterating through the interfaces.
+        #
+        INTERFACES=`/sbin/get_bridge_ifaces.sh lan`
+	OPT_NAME_LIST=""
+	OPT_LAN_WAN_LIST=""
+	OPT_RIOS_LAN_WAN_LIST=""
+	OPT_RIOS_LAN_LIST=""
+	OPT_RIOS_WAN_LIST=""
+	OPT_WATCH_FAIL_LIST=""
+	OPT_CHAN_INIT_LIST=""
+        COUNT=0
+        for IFACE in $INTERFACES; do
+            SLOT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\1,"`
+            PORT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\2,"`
+	    WDTFILE=/dev/nbtwd${SLOT}${PORT} 
+	    if [ -e ${WDTFILE} -a ! -c ${WDTFILE} ]; then 
+		rm -f ${WDTFILE}
+	    fi
+            DNUM=""
+
+            CARD_TYPE=`$HAL get_if_type lan${SLOT}_${PORT}`
+            if [ "$CARD_TYPE" == "adlink" ]; then
+                ADNUM=`cat $DEVICES|grep LAN_WDT|/bin/sed -e 's, LAN_WDT,,'`
+                mknod /dev/nbtwd${SLOT}${PORT} c $ADNUM 0
+            fi
+
+            if [ "$CARD_TYPE" == "n22xx" ]; then
+                DNUM=`cat $DEVICES|grep n22xx_WDT|/bin/sed -e 's, n22xx_WDT,,'`
+            fi
+
+            if [ "x$DNUM" != "x" ]; then
+                mknod /dev/nbtwd${SLOT}${PORT} c $DNUM $COUNT
+            fi
+
+            if [ "$CARD_TYPE" == "8246" ]; then
+                DNUM=`cat $DEVICES|grep 8246_WDT|/bin/sed -e 's, 8246_WDT,,'`
+
+                # special handling for ADLink 8246 cards
+                BASE_ADDRESS=`ifconfig -a lan${SLOT}_${PORT} | grep "Base address:" | sed -e 's,.*Base address:\(.*\) Memory.*,\1,'`
+                if [ "x$BASE_ADDRESS" != "x" -a -f /proc/wdt/map ]; then
+                    MINOR_NUMBER=`cat /proc/wdt/map | grep "$BASE_ADDRESS" | sed -e 's,\([0-9]*\) .*,\1,'`
+                    mknod /dev/nbtwd${SLOT}${PORT} c $DNUM $MINOR_NUMBER
+                fi
+            fi
+
+            # Check for loops only on VSH
+            if (($VSH_PLATFORM)); then
+                # Always bring up the devices so that we can do a loop check.
+                # Please note that this will create a blip in the network
+                ifconfig lan${SLOT}_${PORT} up > /dev/null
+                ifconfig wan${SLOT}_${PORT} up > /dev/null
+
+                # Clear the flag file before checking for lan-wan loop
+                rm -f /var/tmp/lan_wan_loop
+                vsh_loop_detected lan${SLOT}_${PORT} wan${SLOT}_${PORT}
+                if [ $? == 1 ]; then
+                    err="ERROR: Packet loop detected between lan${SLOT}_${PORT} and wan${SLOT}_${PORT} on VSH."
+                    err="$err Aborting rbtkmod script.";
+                    echo $err
+                    usr/bin/logger -p user.err -t VSH "$err"
+                    # Touch flag file. This is used by mgmtd to trigger the alarm
+                    touch /var/tmp/lan_wan_loop
+                    $0 stop
+                fi
+
+                # Interfaces will be brought down just after the loop
+            fi
+
+            ifconfig lan${SLOT}_${PORT} down > /dev/null
+            ifconfig wan${SLOT}_${PORT} down > /dev/null
+            /sbin/ethtool -s lan${SLOT}_${PORT} wol d > /dev/null
+            /sbin/ethtool -s wan${SLOT}_${PORT} wol d > /dev/null
+
+            # Disable WOL on primary and aux as well
+            /sbin/ethtool -s prihw wol d > /dev/null
+            /sbin/ethtool -s aux wol d > /dev/null
+
+            if [ -f $ACTIVE_DB_NAME_FILE ]; then
+                ACTIVE_DB=/config/db/`cat $ACTIVE_DB_NAME_FILE`
+                BYPASS_ENABLED=`$MDDBREQ -v $ACTIVE_DB query get "" /rbt/wdt/config/interface/inpath${SLOT}_${PORT}/fail_to_bypass`
+            else
+                BYPASS_ENABLED="true"
+            fi
+		
+	    # get the wdt mode for ether-relay 2=>block 1=>bypass
+            if [ "$BYPASS_ENABLED" = "false" ]; then 
+                ER_WATCHDOG="2"
+            else
+                ER_WATCHDOG="1"
+            fi
+
+	    if [ -z "$OPT_NAME_LIST" ]; then
+		OPT_NAME_LIST="inpath${SLOT}_${PORT}"
+	    else
+		OPT_NAME_LIST="$OPT_NAME_LIST,inpath${SLOT}_${PORT}"
+	    fi
+	    if [ -z "$OPT_LAN_WAN_LIST" ]; then
+		OPT_LAN_WAN_LIST="lan${SLOT}_${PORT}-wan${SLOT}_${PORT}"
+	    else
+		OPT_LAN_WAN_LIST="$OPT_LAN_WAN_LIST,lan${SLOT}_${PORT}-wan${SLOT}_${PORT}"
+	    fi
+	    if [ -z "$OPT_RIOS_LAN_WAN_LIST" ]; then
+		OPT_RIOS_LAN_WAN_LIST="rios_lan${SLOT}_${PORT}-rios_wan${SLOT}_${PORT}"
+	    else
+		OPT_RIOS_LAN_WAN_LIST="$OPT_RIOS_LAN_WAN_LIST,rios_lan${SLOT}_${PORT}-rios_wan${SLOT}_${PORT}"
+	    fi
+	    if [ -z "$OPT_RIOS_LAN_LIST" ]; then
+		OPT_RIOS_LAN_LIST="rios_lan${SLOT}_${PORT}"
+	    else
+		OPT_RIOS_LAN_LIST="$OPT_RIOS_LAN_LIST,rios_lan${SLOT}_${PORT}"
+	    fi
+	    if [ -z "$OPT_RIOS_WAN_LIST" ]; then
+		OPT_RIOS_WAN_LIST="rios_wan${SLOT}_${PORT}"
+	    else
+		OPT_RIOS_WAN_LIST="$OPT_RIOS_WAN_LIST,rios_wan${SLOT}_${PORT}"
+	    fi
+	    if [ -z "$OPT_WATCH_FAIL_LIST" ]; then
+		OPT_WATCH_FAIL_LIST="${ER_WATCHDOG}"
+	    else
+		OPT_WATCH_FAIL_LIST="$OPT_WATCH_FAIL_LIST,${ER_WATCHDOG}"
+	    fi
+	    if [ -z "$OPT_CHAN_INIT_LIST" ]; then
+		OPT_CHAN_INIT_LIST="${ER_WATCHDOG}"
+	    else
+		OPT_CHAN_INIT_LIST="$OPT_CHAN_INIT_LIST,${ER_WATCHDOG}"
+	    fi
+            COUNT=`expr $COUNT + 1`
+        done
+
+        # Add the primary interface relay for the OOP intercept feature to the option lists
+        if [ -z "$OPT_NAME_LIST" ]; then
+            OPT_NAME_LIST="primary"
+        else
+            OPT_NAME_LIST="$OPT_NAME_LIST,primary"
+        fi
+        if [ -z "$OPT_LAN_WAN_LIST" ]; then
+            OPT_LAN_WAN_LIST="prihw-prihw"
+        else
+            OPT_LAN_WAN_LIST="$OPT_LAN_WAN_LIST,prihw-prihw"
+        fi
+        if [ -z "$OPT_RIOS_LAN_WAN_LIST" ]; then
+            OPT_RIOS_LAN_WAN_LIST="prihw-prihw"
+        else
+            OPT_RIOS_LAN_WAN_LIST="$OPT_RIOS_LAN_WAN_LIST,prihw-prihw"
+        fi
+        if [ -z "$OPT_RIOS_LAN_LIST" ]; then
+            OPT_RIOS_LAN_LIST="prilan"
+        else
+            OPT_RIOS_LAN_LIST="$OPT_RIOS_LAN_LIST,prilan"
+        fi
+        if [ -z "$OPT_RIOS_WAN_LIST" ]; then
+            OPT_RIOS_WAN_LIST="priwan"
+        else
+            OPT_RIOS_WAN_LIST="$OPT_RIOS_WAN_LIST,priwan"
+        fi
+        if [ -z "$OPT_WATCH_FAIL_LIST" ]; then
+            OPT_WATCH_FAIL_LIST="1"
+        else
+            OPT_WATCH_FAIL_LIST="$OPT_WATCH_FAIL_LIST,1"
+        fi
+        if [ -z "$OPT_CHAN_INIT_LIST" ]; then
+            OPT_CHAN_INIT_LIST="1"
+        else
+            OPT_CHAN_INIT_LIST="$OPT_CHAN_INIT_LIST,1"
+        fi
+
+        RELAYS=${OPT_NAME_LIST}
+        PHYSICAL_PAIRS=${OPT_LAN_WAN_LIST}
+        RELAY_PAIRS=${OPT_LAN_WAN_LIST}
+        DUMMY_LANS=${OPT_RIOS_LAN_LIST}
+        DUMMY_WANS=${OPT_RIOS_WAN_LIST}
+
+        if (($BOB_PLATFORM)); then
+            load_bob_modules
+
+            RELAY_PAIRS=${OPT_RIOS_LAN_WAN_LIST}
+            DUMMY_LANS=
+            DUMMY_WANS=
+        fi
+
+        #
+        # insmod the kernel modules and make the corresponding
+        # device nodes.
+        #
+        rm -f /dev/bpoll
+        mknod /dev/bpoll c 63 1
+        rm -f /dev/nbt0
+        mknod /dev/nbt0 c 61 0
+        rm -f /dev/net/tun
+
+        #RbtRing module needs to be inserted before nbt.o as nbt uses the api
+        #exposed by rbtring
+        insmod $RBTKMODS/rbtring.o > /dev/null
+        
+        insmod $RBTKMODS/blockpoll.ko > /dev/null
+        $SYSV_INIT/link_control load md=$MDDBREQ db=$ACTIVE_DB lc_path=$RBTKMODS \
+                                er_name=${RELAYS} \
+                                er=${PHYSICAL_PAIRS} \
+                                er_chan_init_mode=${OPT_CHAN_INIT_LIST},1
+
+        insmod $RBTKMODS/ealmod.ko er_name=${RELAYS} \
+                                   er_lan_name=${DUMMY_LANS} \
+                                   er_wan_name=${DUMMY_WANS} \
+                                   er_watchdog_fail_mode=${OPT_WATCH_FAIL_LIST},1 > /dev/null
+        # Enable IPv6 interception in eal, turned-off by default.
+        if [ "$IPV6_ENABLED" = "true" ]; then
+            echo 1 > /proc/sys/eal/ipv6_enabled
+        fi
+
+        insmod $RBTKMODS/mipmod.ko >/dev/null
+        insmod $RBTKMODS/ermod.ko er_name=${RELAYS} \
+                                  er=${RELAY_PAIRS} > /dev/null
+        if (($HPP1_BLADE)); then
+            hpp1_kmods init
+        fi
+        modprobe ip_tables
+        echo 1 > /proc/sys/er/register
+        modprobe ipt_LOG
+        insmod $RBTKMODS/nbt.o >/dev/null
+        ${NETFLOW_MODULE} start > /dev/null
+
+        # k_cls_rbt_inbound depends on nbt
+        # sch_hfsc depends on nbt
+        # k_cls_proc depends on sch_hfsc
+        insmod $RBTKMODS/k_cls_rbt_inbound.o > /dev/null
+        insmod $KMODS/net/sched/sch_hfsc.ko 
+        insmod $RBTKMODS/k_cls_proc.o
+
+        #
+        # bring the lan/wan pairs up
+        #
+        INTERFACES=`/sbin/get_bridge_ifaces.sh lan`
+        for IFACE in $INTERFACES; do
+            SLOT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\1,"`
+            PORT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\2,"`
+            # Hack to make the inpath interface running
+            ifconfig inpath${SLOT}_${PORT} down > /dev/null
+            ifconfig inpath${SLOT}_${PORT} up > /dev/null
+        done
+
+        #
+        # extra NIC settings
+        #
+        ethtool -K prihw tso off > /dev/null 2>&1
+        ethtool -K aux tso off > /dev/null 2>&1
+
+	#
+        # Run script that deals with poor autonegotiation in e100 chips
+	#
+	/sbin/dtaa-net.sh
+
+        #
+        # tune kernel parameters.
+        #
+
+        echo "2" > /proc/sys/vm/overcommit_memory 2>&1
+        echo "100" > /proc/sys/vm/overcommit_ratio 2>&1
+        
+        echo "3000" > /proc/sys/net/core/netdev_max_backlog 2>&1
+        echo "4096" > /proc/sys/net/ipv4/neigh/default/gc_thresh3 2>&1
+        sysctl -w net.ipv4.conf.all.arp_filter=1 > /dev/null 2>&1
+        sysctl -w net.ipv4.ip_local_port_range='8000 63000'
+
+        #
+        # create megaraid device node
+        #
+        MEGA_MAJOR=`/bin/grep megadev /proc/devices | /bin/awk '{print $1}'`
+        if [ ! x$MEGA_MAJOR = x ]; then
+            # major device number found
+            rm -f /dev/megadev0       
+            mknod /dev/megadev0 c $MEGA_MAJOR 0
+        fi
+
+        #
+        # call HAL initializer
+        #
+        ${HAL} init_hardware_phase2
+
+	# can't do this before phase2 on the new hardware
+	# loop over the interfaces and apply the fail-to-X config
+        INTERFACES=`/sbin/get_bridge_ifaces.sh lan`
+        for IFACE in $INTERFACES; do
+            SLOT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\1,"`
+            PORT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\2,"`
+
+            if [ -f $ACTIVE_DB_NAME_FILE ]; then
+                ACTIVE_DB=/config/db/`cat $ACTIVE_DB_NAME_FILE`
+                BYPASS_ENABLED=`$MDDBREQ -v $ACTIVE_DB query get "" /rbt/wdt/config/interface/inpath${SLOT}_${PORT}/fail_to_bypass`
+            else
+                BYPASS_ENABLED="true"
+            fi
+
+            if [ "$BYPASS_ENABLED" = "false" ]; then
+                $HAL set_if_wdt_block lan${SLOT}_${PORT}
+                ER_WATCHDOG="2"
+            else
+                $HAL set_if_wdt_bypass lan${SLOT}_${PORT}
+                ER_WATCHDOG="1"
+            fi
+
+	done
+
+        #
+        # hardware watchdog ping logging 
+        #
+        if [ -r /var/opt/rbt/.wdt ]; then
+            mv -f /var/opt/rbt/.wdt /var/opt/rbt/.wdt_last
+        fi
+
+        #
+        # make tcpdump/syslog available to everyone
+        #
+        chmod a+s /usr/sbin/tcpdump
+        touch /var/log/messages
+        chmod a+r /var/log/messages*
+        touch /var/log/user_messages
+        chmod a+r /var/log/user_messages*
+
+        #
+        # finished.
+        #
+        touch /var/lock/subsys/rbtdev
+
+        [ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,ro
+        ;;
+
+  stop)
+        # Set motherboard type
+        set_mobo
+
+        #
+        # call HAL deinitializer
+        #
+        ${HAL} deinit_hardware_phase2
+
+        # rmmod qos modules, which depend on nbt
+        rmmod k_cls_proc 
+        rmmod sch_hfsc 
+        rmmod k_cls_rbt_inbound > /dev/null 2>&1
+
+        ${NETFLOW_MODULE} stop > /dev/null 2>&1
+        rmmod nbt > /dev/null 2>&1
+        ${RSP_NET_UTIL} rsp_stop > /dev/null 2>&1
+        if (($HPP1_BLADE)); then
+            hpp1_kmods deinit
+        fi
+        rmmod ermod > /dev/null 2>&1
+        rmmod mipmod > /dev/null 2>&1
+        rmmod ealmod > /dev/null 2>&1
+        $SYSV_INIT/link_control unload
+        if (($BOB_PLATFORM)); then
+        unload_bob_modules
+        fi
+        rmmod rbtctmod > /dev/null 2>&1
+        rmmod rbtbrmod > /dev/null 2>&1
+        rmmod palmod > /dev/null 2>&1
+        rmmod rbtutlmod > /dev/null 2>&1
+        rmmod blockpoll > /dev/null 2>&1
+        rmmod rbtring > /dev/null 2>&1
+        rmmod n22xx_WDT > /dev/null 2>&1
+        rmmod 8246_WDT > /dev/null 2>&1
+        rmmod LanWDT > /dev/null 2>&1
+        if [ $SSL_CARD -eq 1 ]; then
+            rmmod bcm582x > /dev/null 2>&1
+            rm -f $SSL_DEV_CRYPTO
+            SSL_CARD=0             
+        fi
+            
+        # Unload the VMWare server modules on all non BOB and VSH appliances
+        if [ "$MOBO_GENERIC" != "VM-" -a "$MOBO_GENERIC" != "BOB-MOBO" ]; then
+            # Give any active RSP packages time to shut down, and then
+            # remove modules and device nodes for VMware
+            if [ "$RSP_SUPPORTED" = "true" ]; then
+                ${RSP_VM_UTIL} check_vm_shutdown 60
+                ${VMWARE_MODULE} stop > /dev/null
+            fi
+        fi
+
+        # 
+        # rmmod QoS modules
+        # 
+        # All QoS marking and classification configs from 
+        # the kernel are deleted. To restore, restart pm. 
+        # 
+        if [ ! -e $QOS_IPT_SAVE ]; then 
+            /sbin/iptables-save -t mangle > $QOS_IPT_SAVE 
+        fi
+        iptables -F -t mangle > /dev/null 2>&1
+        rmmod k_ipt_rb 
+        rmmod k_ipt_rb_inbound
+        rmmod iptable_mangle  > /dev/null 2>&1
+        rmmod ip_tables       > /dev/null 2>&1
+        INTERFACES=`/sbin/get_bridge_ifaces.sh [wl]an`
+        INTERFACES="$INTERFACES aux"
+        for IFACE in $INTERFACES; do
+            IFACE_QDISCS=`tc qdisc show dev $IFACE | cut -f2 -d ' ' | tr '\n' ' '`
+            IFACE_QDISCS_DELETED=0
+            for IFACE_QDISC in $IFACE_QDISCS; do 
+                for QOS_QDISC in $QOS_QDISCS; do 
+                    if [ "$IFACE_QDISC" == "$QOS_QDISC" ]; then 
+                        echo "$IFACE: Deleting QoS qdiscs, $IFACE_QDISCS"
+                        tc qdisc del root dev $IFACE 
+                        IFACE_QDISCS_DELETED=1
+                        break
+                    fi 
+                done
+                if [ $IFACE_QDISCS_DELETED -eq 1 ]; then 
+                    break 
+                fi
+            done
+            # Delete ingress QDISC if present
+            tc qdisc show ingress dev "${IFACE}" | grep hfsc | grep -q 8000:
+            if [ $? -eq 0 ]; then
+                echo "$IFACE: Deleting Inbound QoS qdiscs"
+                tc qdisc del ingress dev "${IFACE}" root handle 8000:
+            fi
+        done
+        rmmod k_cls_rb 
+        rmmod k_qos_hdr_rules
+        # Removing all possible QoS related kmods. 
+        rmmod sch_dsmark > /dev/null 2>&1
+        rmmod cls_u32    > /dev/null 2>&1
+        rmmod sch_rrtcp  > /dev/null 2>&1
+        rmmod sch_sfq    > /dev/null 2>&1
+
+        INTERFACES=`/sbin/get_bridge_ifaces.sh lan`
+        for IFACE in $INTERFACES; do
+            SLOT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\1,"`
+            PORT=`echo $IFACE | /bin/sed -e "s,lan\(.*\)_\(.*\),\2,"`
+            rm -f /dev/nbtwd${SLOT}${PORT}
+            ifconfig lan${SLOT}_${PORT} down > /dev/null 2>&1
+            ifconfig wan${SLOT}_${PORT} down > /dev/null 2>&1
+        done
+	
+        rm -f /dev/bpoll
+        rm -f /dev/nbt0
+        rm -f /dev/nbtwd*
+        rm -f /dev/watchdog
+        rm -f /var/lock/subsys/rbtdev
+
+        #
+        # call HAL deinitializer
+        #
+        ${HAL} deinit_hardware_phase1
+        ;;
+
+  status)
+        lsmod
+	;;
+
+  restart|reload)
+	$0 stop
+	$0 start
+	;;
+  *)
+        echo $"Usage: $0 {start|stop|restart|reload|status}"
+        exit 1
+esac
+
+exit 0

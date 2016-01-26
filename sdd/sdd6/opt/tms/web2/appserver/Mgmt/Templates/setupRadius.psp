@@ -1,0 +1,382 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupRadius.psp
+## This is the template for setting up remote RADIUS servers.
+%>
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:formSubmitButtons, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupSecurity',) %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        # server is a wildcard, used in the ajaxentrytable.
+        'server': FormUtils.NodeEntry(
+            path='/radius/server/*'),
+        'key-usage': FormUtils.NodeEntry(
+            name='radiusGlobal_key-usage',
+            widget='checkboxLeft',
+            label='Set a Global Default Key',
+            enableDiv='globalKeyDiv_div'),
+        'timeout': FormUtils.NodeEntry(
+            path='/radius/global/timeout',
+            type='duration_sec',
+            validate=('intInRange', '[1, 60]'),
+            widgetClass='small',
+            widget='text',
+            hint='(1 - 60)',
+            label='Timeout (seconds)'),
+        'retransmit': FormUtils.NodeEntry(
+            path='/radius/global/retransmit',
+            type='int32',
+            validate=('intInRange', '[0, 5]'),
+            widgetClass='small',
+            widget='text',
+            hint='(0 - 5)',
+            label='Retries')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries" params="globalTimeout, globalRetransmit">
+    entries = {
+
+        'radiusGlobal_key': FormUtils.NodeEntry(
+            name='radiusGlobal_key',
+            widget='password',
+            label='Global Key',
+            hint='(leave unchanged to leave the global key unchanged)',
+            validate='password'),
+        'radiusGlobal_keyConfirm': FormUtils.NodeEntry(
+            name='radiusGlobal_keyConfirm',
+            widget='password',
+            label='Confirm Global Key',
+            validate='password'),
+
+        'serverAddress': FormUtils.NodeEntry(
+            name='address',
+            type='string',
+            validate='hostnameOrIp',
+            widgetClass='hostname',
+            widget='text',
+            label='Hostname or IP Address'),
+        'serverAuthenticationPort': FormUtils.NodeEntry(
+            name='auth-port',
+            type='uint16',
+            validate='port',
+            widgetClass='small',
+            widget='text',
+            value='1812',
+            label='Authentication Port'),
+        'addServerKeyUsage': FormUtils.NodeEntry(
+            name='radiusAdd_keyUsage',
+            type='string',
+            value='true',
+            widget='checkboxLeft',
+            label='Override the Global Default Key',
+            enableDiv='radiusAddKeyDiv_div'),
+        'editServerKeyUsage': FormUtils.NodeEntry(
+            name='radiusEdit_keyUsage',
+            type='string',
+            value='true',
+            widget='checkboxLeft',
+            label='Override the Global Default Key',
+            enableDiv='radiusEditKeyDiv_div'),
+        'serverKey': FormUtils.NodeEntry(
+            name='key',
+            widget='password',
+            label='Server Key',
+            validate='password'),
+        'serverKeyConfirm': FormUtils.NodeEntry(
+            name='keyConfirm',
+            widget='password',
+            label='Confirm Server Key',
+            validate='password'),
+        'serverTimeout': FormUtils.NodeEntry(
+            name='timeout',
+            type='duration_sec',
+            value=globalTimeout,
+            validate=('intInRange', '[1, 60]'),
+            widgetClass='small',
+            widget='text',
+            hint='(1 - 60)',
+            label='Timeout (seconds)'),
+        'serverRetransmit': FormUtils.NodeEntry(
+            name='retransmit',
+            type='int32',
+            value=globalRetransmit,
+            validate=('intInRange', '[0, 5]'),
+            widgetClass='small',
+            widget='text',
+            hint='(0 - 5)',
+            label='Retries'),
+        'serverEnable': FormUtils.NodeEntry(
+            name='enable',
+            type='bool',
+            value='true',
+            widget='checkboxLeft',
+            label='Enabled')
+    }
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+globalKeyStandIn = Nodes.present(mgmt, pathPrefix + '/radius/global/key', '')
+globalTimeout = Nodes.present(mgmt, pathPrefix + '/radius/global/timeout', '3')
+globalRetransmit = Nodes.present(mgmt, pathPrefix + '/radius/global/retransmit', '1')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(globalTimeout, globalRetransmit)
+
+nodeEntries['key-usage'].value = globalKeyStandIn and 'true' or 'false'
+globalKeyStandIn = globalKeyStandIn and FormUtils.bogusPassword or ''
+dialogEntries['radiusGlobal_key'].value = globalKeyStandIn
+dialogEntries['radiusGlobal_keyConfirm'].value = globalKeyStandIn
+%>
+
+<script type="text/javascript">
+<!--
+function updateEditElement(idPrefix, xmlEl, editEl)
+{
+    var inputElements = editEl.getElementsByTagName('input');
+    var i = 0;
+    for (i = 0; i < inputElements.length; i++) {
+        var inp = inputElements[i];
+        switch (inp.name) {
+        case idPrefix + 'Edit_address':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'ip', '');
+            break;
+        case idPrefix + 'Edit_auth-port':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'port', '49');
+            break;
+        case idPrefix + 'Edit_keyUsage':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.checked = false;
+                break;
+            case '(Specific)':
+                inp.checked = true;
+                break;
+            }
+            updateUpdateables();
+            break;
+        case idPrefix + 'Edit_key':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.value = '';
+                break;
+            case '(Specific)':
+                inp.value = '<%= FormUtils.bogusPassword %>';
+                break;
+            }
+            break;
+        case idPrefix + 'Edit_keyConfirm':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.value = '';
+                break;
+            case '(Specific)':
+                inp.value = '<%= FormUtils.bogusPassword %>';
+                break;
+            }
+            break;
+        case idPrefix + 'Edit_timeout':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'timeout', 3);
+            if (0 == inp.value.indexOf('(')) {
+                inp.value = '';
+            }
+            break;
+        case idPrefix + 'Edit_retransmit':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'retries', 3);
+            if (0 == inp.value.indexOf('(')) {
+                inp.value = '';
+            }
+            break;
+        case idPrefix + 'Edit_enable':
+            if ('enabled' == getAttributeValueOrDefault(xmlEl, 'status', '')) {
+                inp.checked = true;
+            } else {
+                inp.checked = false;
+            }
+            break;
+        case idPrefix + 'Edit_ord':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'ord', '0');
+            break;
+        }
+    }
+}
+
+function sendServerControl(opt) {
+    opt.name = 'control' + opt.name;
+    opt.form.submit();
+}
+
+// -->
+</script>
+
+<% self.beginPagelet() %>
+
+<form method="post" id="globalForm" action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Default RADIUS Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['key-usage'].html(self, format='block') %>
+      <div class="indent" id="globalKeyDiv_div">
+        <table>
+          <%= dialogEntries['radiusGlobal_key'].html(self) %>
+          <%= dialogEntries['radiusGlobal_keyConfirm'].html(self) %>
+        </table>
+      </div>
+    </div>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['timeout'].html(self) %>
+        <%= nodeEntries['retransmit'].html(self) %>
+      </table>
+    </div>
+    <input type="hidden" name="_action_" value="setupSecurity_globalRadius" />
+  </fieldset>
+  <%= formSubmitButtons(self) %>
+</form>
+
+<form method="post" id="radiusServersForm"
+  action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupSecurity_radiusServers" />
+<%
+radiusTable = ajaxentrytable.AjaxEntryTable('radius',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=radiusServers'),
+    titleText='RADIUS Servers',
+    headerSpec=(
+        '',
+        'Server',
+        'Port',
+        'Key',
+        ('Timeout', 'table_radius_timeout'),
+        ('Retries', 'table_radius_retries'),
+        'Status'),
+    rowSpec="""
+[   AjaxEntryTable.tdSelectCheckbox('ord', 'radius_'),
+    AjaxEntryTable.tdEdit('ord', 'ip'),
+    AjaxEntryTable.tdAttr('port'),
+    AjaxEntryTable.tdAttr('key'),
+    AjaxEntryTable.tdAttr('timeout', 'table_radius_timeout'),
+    AjaxEntryTable.tdAttr('retries', 'table_radius_retries'),
+    AjaxEntryTable.tdActiveSelect('status', 'Radius_', 'ord', [['enabled', 'Enabled'], ['disabled', 'Disabled']], 'sendServerControl(this)')
+]""",
+    emptyMessage='No RADIUS servers.',
+    removeName='removeRadius',
+    removeButtonText='Remove Selected',
+    removePrefix='radius_',
+    addButtonText='Add a RADIUS Server',
+    addButtonName='addRadius',
+    editButtonName='editRadius')
+
+radiusTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %(address)s
+    %(auth-port)s
+  </table>
+</div>
+<div class="midLevel">
+  %(keyUsage)s
+  <div class="indent" id="radiusAddKeyDiv_div">
+    <table>
+      %(key)s
+      %(keyConfirm)s
+    </table>
+  </div>
+</div>
+<div class="midLevel">
+  <table>
+    %(timeout)s
+    %(retransmit)s
+  </table>
+</div>
+%(enable)s
+''' % {
+    'address': dialogEntries['serverAddress'].html(
+        self, namePrefix='radiusAdd_'),
+    'auth-port': dialogEntries['serverAuthenticationPort'].html(
+        self, namePrefix='radiusAdd_'),
+    'keyUsage': dialogEntries['addServerKeyUsage'].html(
+        self, format='block'),
+    'key': dialogEntries['serverKey'].html(
+        self, namePrefix='radiusAdd_'),
+    'keyConfirm': dialogEntries['serverKeyConfirm'].html(
+        self, namePrefix='radiusAdd_'),
+    'timeout': dialogEntries['serverTimeout'].html(
+        self, namePrefix='radiusAdd_'),
+    'retransmit': dialogEntries['serverRetransmit'].html(
+        self, namePrefix='radiusAdd_'),
+    'enable': dialogEntries['serverEnable'].html(
+        self, format='block', namePrefix='radiusAdd_')
+}
+
+radiusTable.editDivContent = '''
+<input type="hidden" name="radiusEdit_ord" />
+<div class="midLevel">
+  <table>
+    %(address)s
+    %(auth-port)s
+  </table>
+</div>
+<div class="midLevel">
+  %(keyUsage)s
+  <div class="indent" id="radiusEditKeyDiv_div">
+    <table>
+      %(key)s
+      %(keyConfirm)s
+    </table>
+  </div>
+</div>
+<div class="midLevel">
+  <table>
+    %(timeout)s
+    %(retransmit)s
+  </table>
+</div>
+%(enable)s
+''' % {
+    'address': dialogEntries['serverAddress'].html(
+        self, namePrefix='radiusEdit_'),
+    'auth-port': dialogEntries['serverAuthenticationPort'].html(
+        self, namePrefix='radiusEdit_'),
+    'keyUsage': dialogEntries['editServerKeyUsage'].html(
+        self, format='block'),
+    'key': dialogEntries['serverKey'].html(
+        self, namePrefix='radiusEdit_'),
+    'keyConfirm': dialogEntries['serverKeyConfirm'].html(
+        self, namePrefix='radiusEdit_'),
+    'timeout': dialogEntries['serverTimeout'].html(
+        self, namePrefix='radiusEdit_'),
+    'retransmit': dialogEntries['serverRetransmit'].html(
+        self, namePrefix='radiusEdit_'),
+    'enable': dialogEntries['serverEnable'].html(
+        self, namePrefix='radiusEdit_')
+}
+%>
+    <%= radiusTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+// editEntry is called with the value of the attribute specified
+// in the tdEdit closure in the rowspec, in this case, 'ord'.
+radiusTable.editEntry = function(serverOrd) {
+    var radiusForm = document.getElementById('radiusServersForm');
+    var radiusXmlEl = this.getEntryElement('ord', serverOrd);
+    var editDivEl = document.getElementById('radiusTable_editDiv');
+    if (!editDivEl || !radiusXmlEl) return;
+    updateEditElement('radius', radiusXmlEl, editDivEl);
+}
+// -->
+</script>

@@ -1,0 +1,193 @@
+## Path:        System/Kernel/LKCD
+## Description: Linux Kernel Crash Dump (LKCD) options
+#
+# Copyright 1999 Silicon Graphics, Inc. All rights reserved.
+#
+# This file contains the configuration variables for Linux kernel crash
+# dumps.  The file should reside in /etc/sysconfig/dump, permissions
+# set to 0644. 
+
+## Type:        list(0,1)
+## Default:     1
+# DUMP_ACTIVE indicates whether the dump process is active or not.  If this
+# variable is 0, the dump kernel process will not be activated.
+#
+DUMP_ACTIVE="1"
+
+## Type:        string
+## Default:     eth0
+#
+# DUMPDEV represents the name of the dump device.
+#
+# For local disk dumps, it is typically the primary swap partition on
+# the local system, although any disk device can be used.  Please be
+# EXTRA careful when defining this value, as one false slip can cause
+# all kinds of problems. Currently, a link is created from /dev/vmdump
+# to the first swap device; rename this to the exact device to dump to
+# if that's what you want.
+#
+# For network dumps, it is the name of the interface used for sending
+# the crash dump. Note that this needs to support polled operation.
+#
+DUMPDEV="/dev/vmdump"
+
+## Type:        string
+## Default:     /var/log/dump
+#
+# DUMPDIR is the location where crash dumps are saved.  In that
+# directory, a file called 'bounds' will be created, which is
+# the current index of the last crash dump saved.  The 'bounds'
+# file will be updated with an incremented once a new crash dump or
+# crash report is saved.
+#
+DUMPDIR="/var/log/dump"
+
+## Type:        list(0,1,2,4,8)
+## Default:     2
+#
+# DUMP_LEVEL has a number of possible values:
+#
+#     DUMP_NONE (0):  Do nothing, just return if called.
+#   DUMP_HEADER (1):  Dump the dump header and first 128K bytes out.
+#     DUMP_KERN (2):  Everything in DUMP_HEADER and kernel pages only.
+#     DUMP_USED (4):  Everything except kernel free pages.
+#      DUMP_ALL (8):  All memory.
+#
+# NOTE:  You must use the numeric value, not the name of the variable.
+DUMP_LEVEL="2"
+
+## Type:        integer(0:2)
+## Default:     2
+#
+# DUMP_COMPRESS indicates which compression mechanism the kernel should
+# attempt to use for compression -- the default is not to use dump
+# compression unless someone specifically asks for it.
+#
+# The values for DUMP_COMPRESS are currently:
+#
+#   DUMP_COMPRESS_NONE(0):  Don't compress this dump.
+#    DUMP_COMPRESS_RLE(1):  Use RLE compression.
+#   DUMP_COMPRESS_GZIP(2):  Use GZIP compression.
+#
+DUMP_COMPRESS="2"
+
+## Type:        list(0x80000000,0x80000001,0x40000000)
+## Default:     0x40000000
+#
+# DUMP_FLAGS are the flag parameters to use when configuring system dumps.
+#
+#         DUMP_FLAGS_NONE(0x00000000):  No flags are required.
+#   DUMP_FLAGS_NONDISRUPT(0x00000001):  Do not reboot after dumping;
+#					continue running.
+#     DUMP_FLAGS_DISKDUMP(0x80000000):  Dump target is a local block device.
+#      DUMP_FLAGS_NETDUMP(0x40000000):  Dump target is a network device.
+# 
+# Valid combinations:
+# DUMP_FLAGS_DISKDUMP - Disruptive diskdump
+# DUMP_FLAGS_DISKDUMP|DUMP_FLAGS_NONDISRUTP - Non disruptive diskdump
+#
+# The below option is present only present with lkcd on 2.5 kernels. 
+# DUMP_FLAGS_NETDUMP - Disruptive netdump
+#
+# DUMP_FLAGS_NONDISRUPT flag is not used in lkcd on 2.5 kernels. The dump
+# will be non-disruptive if it is invoked from alt-sysrq key. In other
+# panic cases, disruptive dumps will be taken.
+#
+# Note: DUMP_FLAGS must be specified as a hexadecimal number
+#
+DUMP_FLAGS="0x80000000"
+
+## Type:        list(0,1)
+## Default:     1
+#
+# DUMP_SAVE defines whether to save the memory image to disk or not.
+# If the value is 1, the vmcore image is stored, and a crash report
+# is created from the saved dump.  If it is not set to 1, only a crash
+# report will be created, and the dump will not be saved.  This option
+# can be used on systems that do not want their disk space consumed
+# by large crash dump images.
+#
+DUMP_SAVE="1"
+
+## Type:        integer
+## Default:     5
+#
+# PANIC_TIMEOUT represents the timeout (in seconds) before reboot after a
+# panic occurs.  Typically this is set to 0 on the system, which means the
+# kernel sits and spins until someone resets the machine.  This is not the
+# preferred action if we want to recover the dump after the reboot.
+#
+PANIC_TIMEOUT="2"
+
+## Type:	integer
+## Default:	10
+#
+# BOUNDS_LIMIT places a limit on the number of dumps that can be retained 
+# in the /var/log/dump directory. Default value is 10. This implies after 
+# dump.9, the next dump is stored as dump.0, replacing the existing file.
+# Set this value to 0 if you do not want to limit the number of dumps.
+#
+BOUNDS_LIMIT=10
+
+## Type:	string
+## Default:     /boot/vmlinuz
+#
+# Kexec based softboot dump specific configuration variables (currently
+# valid only for lkcd on 2.5 kernels)
+#
+# KEXEC_IMAGE is the kernel boot image in the /boot directory which
+# needs to be booted after the dump. This will be picked by
+# kexec as the next kernel to be softbooted. The next kernel
+# can normally be the same kernel on which the dump occurs.
+#
+# Only relevant for dumping via kexec (present only in lkcd for 2.6 kernels)
+KEXEC_IMAGE=/boot/vmlinuz
+
+## Type:	string
+## Default:	"root console=tty0"
+#
+# KEXEC_CMDLINE command line arguments to the kernel(specified by
+# KEXEC_IMAGE) which will be booted after the dump  This can
+# normally be the output of /proc/cmdline.
+#
+# Note the value given here is only an example.
+KEXEC_CMDLINE="root console=tty0"
+
+## Type:	string
+## Default:	192.168.100.1
+#
+# TARGET_HOST is the hostname/ip address of the target machine to which
+# network dump needs to be sent. This target machine needs to be running
+# netdump server application. The ip address should be in standard
+# dotted format.
+# TARGET_HOST _must_ be configured before netdump can be used.
+# No default value is given here; the setting needs to be adapted 
+# to the local network configuration.
+TARGET_HOST=""
+
+## Type:	integer
+## Default:	6688
+#
+# TARGET_PORT is the port on which the netdump server in the TARGET_HOST 
+# machine is listening for network dumps. Default is 6688.
+#
+TARGET_PORT=6688
+
+## Type:	integer
+## Default:	6688
+#
+# SOURCE_PORT is the port used on dumping machine to send dump data over
+# the network. Default is 6688.
+#
+SOURCE_PORT=6688
+
+## Type:	string
+## Default:	ff:ff:ff:ff:ff:ff
+#
+# ETH_ADDRESS is the ethernet address used by the dumping machine to send
+# out the data packets. This should be specified in standard
+# hex-digits-and-colons notation.
+# By default, broadcast ethernet address is used which can increase
+# the load on other systems in the same ethernet segment.
+#
+ETH_ADDRESS=ff:ff:ff:ff:ff:ff

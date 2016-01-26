@@ -1,0 +1,547 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring the RiOS Data Store</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.06.01.html#250341">Chapter 4	Configuring Optimization Features</a> : Configuring the RiOS Data Store</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="250341">Configuring the RiOS Data Store</a></div>
+      <div class="Body"><a name="250342">This section describes how to configure RiOS data store settings. It includes these sections:</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDatastore.html#250370', '');" title="Configuring the RiOS Data Store" name="250346">Encrypting the RiOS Data Store</a></span> </li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDatastore.html#250472', '');" title="Configuring the RiOS Data Store" name="250350">Synchronizing Peer RiOS Data Stores</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDatastore.html#250582', '');" title="Configuring the RiOS Data Store" name="250354">Clearing the RiOS Data Store</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDatastore.html#250598', '');" title="Configuring the RiOS Data Store" name="250358">Improving Steelhead Mobile Client Performance</a></span></li>
+      <div class="Body"><a name="250361">You display and modify RiOS data store settings in the Configure &gt; Optimization &gt; Data Store page. This </a>page is typically used to turn on RiOS data store encryption and synchronization. </div>
+      <div class="Body"><a name="250365">Steelhead appliances transparently intercept and analyze all of your WAN traffic. TCP traffic is segmented, </a>indexed, and stored as <span class="Emphasis">segments</span> of data, and the <span class="Emphasis">references</span> representing that data is stored on the RiOS data store within Steelhead appliances on both sides of your WAN. After the data has been indexed, it is compared to data already on the disk. Segments of data that have been seen before are not transferred across the WAN again; instead a reference is sent in its place that can index arbitrarily large amounts of data, thereby massively reducing the amount of data that needs to be transmitted. One small reference can refer to megabytes of existing data that has been transferred over the WAN before.</div>
+      <div class="Heading2"><a name="250370">Encrypting the RiOS Data Store</a></div>
+      <div class="Body"><a name="250374">You enable RiOS data store encryption in the Configure &gt; Optimization &gt; Data Store page.</a></div>
+      <div class="Body"><a name="250376">Encrypting the RiOS data store significantly limits the exposure of sensitive data in the event an appliance </a>is compromised by loss, theft, or a security violation<span style="font-family: &quot;Times New Roman&quot;">. </span>The secure data is difficult for a third party to retrieve.</div>
+      <div class="Body"><a name="250378">Before you encrypt the RiOS data store, the secure vault must be unlocked. The encryption key is stored in </a>the secure vault. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupVault.html#282498', '');" title="Unlocking the Secure Vault">Unlocking the Secure Vault</a></span>.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="250383">Encrypting the RiOS data store </a><span class="Emphasis">and</span> enabling SSL optimization provides maximum security. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'ssl.09.02.html#221259', '');" title="Configuring SSL Server Certificates and Certificate Authorities">Configuring SSL Server Certificates and Certificate Authorities</a></span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250387">RiOS data store synchronization traffic is not encrypted. </a></div>
+      <div class="Heading4"><a name="250388">Encryption Strengths</a></div>
+      <div class="Body"><a name="250389">Encrypting the RiOS data store can have performance implications; generally, higher security means less </a>performance. Several encryption strengths are available to provide the right amount of security while maintaining the desired performance level. When selecting an encryption type, you must evaluate the network structure, the type of data that travels over it, and how much of a performance trade-off is worth the extra security.</div>
+      <div class="Heading4"><a name="250391">Encrypted RiOS Data Store Downgrade Limitations </a></div>
+      <div class="Body"><a name="250399">The Steelhead appliance cannot use an encrypted RiOS data store with an earlier RiOS software version, </a>unless the release is an update (v8.0.x): for example, an encrypted RiOS data store created in v8.0.2 would work with v8.0.3, but not with v8.5. </div>
+      <div class="Body"><a name="250400">Before downgrading to an earlier software version, you must select none as the encryption type, clear the </a>RiOS data store, and restart the service. After you clear the RiOS data store, the data is removed from persistent storage and cannot be recovered.</div>
+      <div class="Body"><a name="250401">If you return to a previous software version and there is a mismatch with the encrypted RiOS data store, the </a>status bar indicates that the RiOS data store is corrupt. You can either: </div>
+      <li class="Bullet"><a name="250403">Use the backup software version after clearing the RiOS data store and rebooting the service.</a></li>
+      <div class="Indent1"><a name="250404">&#8212;</a><span style="font-style: italic">or</span>&#8212; </div>
+      <li class="Bullet"><a name="250405">Return to the software version in use when the RiOS data store was encrypted, and continue using it. </a></li>
+      <div class="HeadingProcedure"><a name="250419">To encrypt the RiOS data store</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="250420"> Choose Configure &gt; Optimization &gt; Data Store to display the Data Store page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250425">Under General Settings, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 145.18728pt">
+            <div class="CellHeading"><a name="738787">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 323.68824pt">
+            <div class="CellHeading"><a name="738789">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738792">Data Store Encryption Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738794">Select one of these encryption types from the drop-down list. The encryption </a>types are listed from the least to the most secure. </div>
+            <li class="CellBullet"><span class="Bold"><a name="738796">None</a></span><span class="Bold" style="font-weight: normal"> - </span>Turns off data encryption.</li>
+            <li class="CellBullet"><span class="Bold"><a name="738797">AES_128</a></span><span class="Bold" style="font-weight: normal"> - </span>Encrypts data using the AES cryptographic key length of 128 bits.</li>
+            <li class="CellBullet"><span class="Bold"><a name="738798">AES_192</a></span><span class="Bold" style="font-weight: normal"> - </span>Encrypts data using the AES cryptographic key length of 192 bits.<span class="Bold"> </span></li>
+            <li class="CellBullet"><span class="Bold"><a name="738800">AES_256</a></span><span class="Bold" style="font-weight: normal"> - </span>Encrypts data using the AES cryptographic key length of 256 bits. </li>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250448">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250449">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250456">Select </a><span class="Bold">Clear the Data Store on Reboot</span> and reboot the Steelhead appliance as described in <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAppliance_shutdown.html#1432804', '');" title="Rebooting and Shutting Down the Steelhead Appliance">Rebooting and Shutting Down the Steelhead Appliance</a></span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="250464">You must clear the RiOS data store and reboot the optimization service on the Steelhead appliance after </a>turning on, changing, or turning off the encryption type. After you clear the RiOS data store, the data cannot be recovered. If you do not want to clear the RiOS data store, reselect your previous encryption type and reboot the service. The Steelhead appliance uses the previous encryption type and encrypted RiOS data store. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAppliance_shutdown.html#1432804', '');" title="Rebooting and Shutting Down the Steelhead Appliance">Rebooting and Shutting Down the Steelhead Appliance</a></span>.</div>
+      <div class="Heading2"><a name="250472">Synchronizing Peer RiOS Data Stores</a></div>
+      <div class="Body"><a name="551244">For deployments requiring the highest levels of redundancy and performance, RiOS supports </a><span style="font-style: italic">warm</span> standby between designated master and backup devices. Using automated RiOS data store synchronization, the data segments and the references created via data streamlining are automatically copied from the master to the backup appliance. In the event of a failure in the master appliance, the backup appliance takes its place with a <span class="Emphasis" style="font-style: normal">warm</span> RiOS data store, and can begin delivering fully optimized performance immediately. Warm data transfers send only new or modified data, dramatically increasing the rate of data transfer over the WAN.</div>
+      <div class="Body"><a name="250476">RiOS supports active-active configurations, in which each appliance is serving both as a master</a><span style="font-family: &quot;Times New Roman&quot;; font-size: 12.0pt"> </span>for some traffic and as a backup for the other appliance, with full RiOS data store synchronization.<span style="font-family: &quot;Times New Roman&quot;; font-size: 12.0pt"> </span>Automatic synchronization can include appliances in a serial or WCCP cluster, and appliances using connection forwarding.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250477">Synchronization takes place over the primary or auxiliary port only.</a></div>
+      <div class="Body"><a name="250478">Failover is not required for RiOS data store synchronization. Although the failover and synchronization </a>features are typically enabled together, you can enable RiOS data store synchronization independently of standard failover.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250485">In most implementations in which both failover and synchronization are enabled, the same Steelhead appliance </a>serves as the master for both failover and RiOS data store synchronization. However, if you enable failover and synchronization, the failover master and the synchronization master do not have to be the same Steelhead appliance. </div>
+      <div class="Body"><a name="250493">You configure two Steelhead appliances to enable synchronization, one as a server (the synchronization </a>master) and the other as a backup. The synchronization master and its backup:</div>
+      <li class="Bullet"><a name="250494">must be on the same LAN. </a></li>
+      <li class="Bullet"><a name="250495">do not have to be in the same physical location. If they are in different physical locations, they must be </a>connected via a fast, reliable LAN connection with minimal latency.</li>
+      <li class="Bullet"><a name="250496">must be running the same version of the RiOS software.</a></li>
+      <li class="Bullet"><a name="250497">must have the same hardware model. </a></li>
+      <li class="Bullet"><a name="250498">must be configured on the primary or auxiliary interface.</a></li>
+      <div class="Body"><a name="250502">When you have configured the master and backup appliances, you must restart the optimization service on </a>the backup Steelhead appliance. The master restarts automatically.</div>
+      <div class="Body"><a name="250506">After you have enabled and configured synchronization, the RiOS data stores are actively kept </a>synchronized. For details about how synchronized appliances replicate data and how RiOS data store synchronization is commonly used in high-availability designs, see the <span class="book_title">Steelhead Appliance Deployment </span><span class="book_title">Guide</span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250513">If one of the synchronized Steelhead appliances is under high load, some data might not be copied. For details, </a>see the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250517">If RiOS data store synchronization is interrupted for any reason (such as a network interruption or if one of the </a>Steelhead appliances is taken out of service), the Steelhead appliances continue other operations without disruption. When the interruption is resolved, RiOS data store synchronization resumes without risk of data corruption. </div>
+      <div class="HeadingProcedure"><a name="250524">To synchronize the RiOS data store</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="250528">Choose one Steelhead appliance to be the master and one to be the backup. The backup has its RiOS data </a>store overwritten by the master RiOS data store.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250532">Make sure there is a network connection between the two Steelhead appliances.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="277540">Connect to the Management Console on the Steelhead appliance you have chosen to be the master </a>appliance.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="277541">Choose Configure &gt; Optimization &gt; Data Store to display the Data Store page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="277542">Under General Settings, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 145.18728pt">
+            <div class="CellHeading"><a name="738807">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 323.68824pt">
+            <div class="CellHeading"><a name="738809">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738811">Enable Automated Data Store </a>Synchronization</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738816">Enables automated RiOS data store synchronization. Data Store </a>synchronization ensures that each RiOS data store in your network has <span class="Emphasis">warm</span> data for maximum optimization. </div>
+            <div class="CellBody"><a name="738820">All operations occur in the background and do not disrupt operations on any of </a>the systems.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738822">Current Appliance</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738824">Select Master or Backup from the drop-down list. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738826">Peer IP Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738828">Specify the IP address for the peer appliance. You must specify either the IP </a>address for the primary or auxiliary interface (if you use the auxiliary interface in place of the primary). </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738830">Synchronization Port</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738832">Specify the destination TCP port number used when establishing a connection </a>to synchronize data. The default value is 7744. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738834">Reconnection Interval</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="738836">Specify the number of seconds to wait for reconnection attempts. The default </a>value is <span class="Bold" style="font-weight: normal">30</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250570">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250571">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250572">Choose Configure &gt; Maintenance &gt; Services to display the Services page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">9.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250576">Select Clear the Data Store and click </a><span class="Bold">Restart</span> to restart the service on the Steelhead appliance. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250579">When redeploying a synchronized pair, you must clear the RiOS data store. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDatastore.html#250582', '');" title="Configuring the RiOS Data Store">Clearing the RiOS Data Store</a></span>.</div>
+      <div class="Heading2"><a name="250582">Clearing the RiOS Data Store</a></div>
+      <div class="Body"><a name="250583">The appliance continues to write data references to the RiOS data store until it reaches capacity. In certain </a>situations, you must clear the RiOS data store; for example, you must clear the RiOS data store:</div>
+      <li class="Bullet"><a name="250584">after turning encryption on or off, or changing the encryption type.</a></li>
+      <li class="Bullet"><a name="250585">before downgrading to an earlier software version.</a></li>
+      <li class="Bullet"><a name="250586">to redeploy an active-active synchronization pair.</a></li>
+      <li class="Bullet"><a name="250587">after testing or evaluating the appliance.</a></li>
+      <li class="Bullet"><a name="250588">after receiving a &#8220;data store corruption&#8221; or &#8220;data store clean required&#8221; alarm message.</a></li>
+      <div class="Body"><a name="250591">For details about clearing the RiOS data store, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAppliance_shutdown.html#1432804', '');" title="Rebooting and Shutting Down the Steelhead Appliance">Rebooting and Shutting Down the Steelhead Appliance</a></span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="250593">After clearing the RiOS data store and restarting the optimization service or rebooting the appliance, the data </a>transfers are cold. Performance improves with subsequent warm data transfers over the WAN.</div>
+      <div class="Heading2"><a name="250598">Improving Steelhead Mobile Client Performance</a></div>
+      <div class="Body"><a name="250603">You enable branch warming for Steelhead Mobile Clients in the Configure &gt; Optimization &gt; Data Store </a>page. By default, branch warming is enabled.</div>
+      <div class="Body"><a name="250609">Branch warming keeps track of data segments created while a Steelhead Mobile user is in a Steelhead </a>appliance-enabled branch office and sends the new data back to the Steelhead Mobile user&#8217;s laptop. When the user leaves the branch office, the Steelhead Mobile client provides warm performance, they receive warm performance. </div>
+      <div class="Body"><a name="250614">Branch warming co-operates with and optimizes transfers for a server-side Steelhead appliance. New data </a>transfers between the client and server are populated in the Steelhead Mobile RiOS data store, the branch Steelhead appliance RiOS data store, and the server-side Steelhead appliance RiOS data store. </div>
+      <div class="Body"><a name="254201">When the server downloads data, the server-side Steelhead appliance checks if either the Steelhead Mobile </a>Client or the branch Steelhead appliance has the data in their RiOS data store. If either device already has the data segments, the server-side Steelhead appliance sends only references to the data. The Mobile Client and the branch Steelhead appliance communicate with each other to resolve the references.</div>
+      <div class="Body"><a name="250639">Other clients at a branch office benefit from branch warming as well, because data transferred by one client </a>at a branch also populates the branch Steelhead appliance RiOS data store. Performance improves with all clients at the branch because they receive warm performance for that data.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="282416">For details, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading3"><a name="265985">Requirements</a></div>
+      <div class="Body"><a name="266003">These requirements must be met for branch warming to work:</a></div>
+      <li class="Bullet"><a name="266004">Enable latency-based location awareness and branch warming on the Steelhead Mobile Controller.</a></li>
+      <li class="Bullet"><a name="266005">Enable branch warming on both the client-side and server-side Steelhead appliances.</a></li>
+      <li class="Bullet"><a name="565083">Both the client-side and server-side Steelhead appliances must be deployed in-path.</a></li>
+      <li class="Bullet"><a name="565087">Enable enhanced auto-discovery on both the client-side and server-side Steelhead appliances.</a></li>
+      <li class="Bullet"><a name="565094">The Mobile Controller appliance must be running RiOS v3.0 or later.</a></li>
+      <li class="Bullet"><a name="266202">The Steelhead appliances must be running RiOS v6.0 or later.</a></li>
+      <li class="Bullet"><a name="266103">The Steelhead Mobile Client must be running RiOS v3.0 or later.</a></li>
+      <div class="Body"><a name="266127">Branch Warming does not improve performance for configurations using:</a></div>
+      <li class="Bullet"><a name="250648">SSL connections</a></li>
+      <li class="Bullet"><a name="250649">Out-of-path with fixed-target rules</a></li>
+      <li class="Bullet"><a name="250653">Steelhead Mobile Clients that communicate with multiple server-side appliances in different scenarios: </a>for example, if a Steelhead Mobile Client home user peers with one server-side Steelhead appliance after logging in through a VPN network and peers with a different server-side Steelhead appliance after logging in from the branch office, branch warming does not improve performance.</li>
+      <div class="HeadingProcedure"><a name="250663">To enable branch warming</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="250664">On both the client-side and the server-side Steelhead appliances, choose Configure &gt; Optimization &gt; </a>Data Store to display the Data Store page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250672">Under General Settings, select Enable Branch Warming for Steelhead Mobile Clients. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250673">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="250674">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="254168">You must restart the optimization service. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAppliance_service.html#281155', '');" title="Starting and Stopping the Optimization Service">Starting and Stopping the Optimization Service</a></span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading2"><a name="438343">Receiving a Notification When the RiOS Data Store Wraps</a></div>
+      <div class="Body"><a name="438419">You enable RiOS data store wrap notifications in the Configure &gt; Optimization &gt; Data Store page. By </a>default, data store wrap notifications are enabled.</div>
+      <div class="Body"><a name="438453">This feature triggers an SNMP trap and sends an email when data in the RiOS data store is replaced with </a>new data before the time period specified.</div>
+      <div class="HeadingProcedure"><a name="438431">To receive a notification when the data store wraps</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="438284">Choose Configure &gt; Optimization &gt; Data Store to display the Data Store page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="438317">Under General Settings, select Enable Data Store Wrap Notifications. Optionally, specify the number of </a>days before the data in the data store is replaced. The default value is 1 day.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="438293">Click </a><span class="Bold">Apply</span> to apply your settings.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="438294">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="250675">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceGeneral.html#249551', '');" title="Configuring General Service Settings" name="250679">Enabling Failover</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServicePerformance.html#250690', '');" title="Improving Performance" name="250683">Improving Performance</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupVault.html#282498', '');" title="Unlocking the Secure Vault" name="250687">Unlocking the Secure Vault</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'reportDatastore.html#299003', '');" title="Viewing Data Store Status Reports" name="563978">Viewing Data Store Status Reports</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: aaa                                                     -->
+<!--   Module Root: /aaa                                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_aaa.c                      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/aaa/config/myconfig</name>                               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="aaa">
+    <config>
+        <name>/aaa/auth/config/policies/enable</name>
+        <description>Enable account control policies</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/max_retry</name>
+        <description>Maximum number of unsuccessful login before account lockout</description>
+        <value type="int32">-1</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/retry_unlock_time</name>
+        <description>Seconds to wait before user can re-login after account lockout</description>
+        <value type="duration_sec">300</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_len</name>
+        <description>Minimum password length</description>
+        <value type="uint32" min="6">6</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_ucredit</name>
+        <description>Minimum upper case characters in password</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_lcredit</name>
+        <description>Minimum lower case characters in password</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_dcredit</name>
+        <description>Minimum numerical characters in password</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_ocredit</name>
+        <description>Minimum special characters in password</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_reuse_interval</name>
+        <description>Minimum interval for password reuse</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_min_char_diff</name>
+        <description>Minimum character change between the old and new passwords</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_max_char_repeat</name>
+        <description>Maximum number of consecutive characters that can repeat. 0 = no check done.</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_no_dict_word</name>
+        <description>Prevent the use of dictionary words for passwords</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_expire</name>
+        <description>Days before password is expired</description>
+        <value type="int32" min="-1">-1</value>
+        <commit-descriptor>
+          <check-func>md_aaa_pass_min_max_check</check-func>
+        </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_expire_warn</name>
+        <description>Days to warn user of an expiring password</description>
+        <value type="uint32">7</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_lock</name>
+        <description>Days before password is locked</description>
+        <value type="int32" min="-1">-1</value>
+    </config>
+
+    <config>
+        <name>/aaa/auth/config/policies/pass_change_interval</name>
+        <description>Days before password and be changed again</description>
+        <value type="int32" min="0">0</value>
+         <commit-descriptor>
+           <check-func>md_aaa_pass_min_max_check</check-func>
+         </commit-descriptor>
+    </config>
+
+    <config>
+        <name>/aaa/telnet_permit_admin</name>
+        <description>Permit admin login via unsecured telnet connection</description>
+        <value type="bool">true</value>
+    </config>
+    
+</node-list>

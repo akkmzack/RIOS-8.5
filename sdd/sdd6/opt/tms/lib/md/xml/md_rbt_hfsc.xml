@@ -1,0 +1,557 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_hfsc                                                -->
+<!--   Module Root: /rbt/hfsc                                               -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_hfsc.c           -->
+
+
+<node-list module="rbt_hfsc">
+
+   <config>
+      <name>/rbt/hfsc/config/max_qos_data</name>
+      <description>Max amount of cumulative optimized data to classify in bytes</description>
+      <value type="uint32" min="1" max="262144">6144</value>
+   </config>
+
+   <config>
+      <name>/rbt/hfsc/config/max_qos_pkts</name>
+      <description>Max number of cumulative optimized packets to classify</description>
+      <value type="uint32" min="1" max="20">5</value>
+   </config>
+
+   <config>
+      <name>/rbt/hfsc/config/max_qos_pt_data</name>
+      <description>Max amount of cumulative pass through data to classify in bytes</description>
+      <value type="uint32" min="1" max="262144">6144</value>
+   </config>
+
+   <config>
+      <name>/rbt/hfsc/config/max_qos_pt_pkts</name>
+      <description>Max number of cumulative pass through packets to classify</description>
+      <value type="uint32" min="1" max="20">5</value>
+  </config>
+
+   <config>
+      <name>/rbt/hfsc/config/global/po_max_pkt</name>
+      <description>Max number of pakcets in packet order queue</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/hfsc/config/global/po_max_dep</name>
+      <description>Max number of packets in each flow in packet order queue</description>
+      <value type="uint32">0</value>
+   </config>
+
+    <config>
+   	<name>/rbt/hfsc/config/global/num_sites</name>
+   	<description>Number of sites currently configured in the system.</description>
+   	<value type="uint16">0</value>
+   	</config>
+
+    <config>
+    <name>/rbt/hfsc/config/global/easy_qos_mode</name>
+    <description>QoS mode - representing whether it is easy qos or advanced qos.</description>
+    <value type="bool" squash="false">true</value>
+    </config>
+
+    <config>
+    <name>/rbt/hfsc/config/global/kernel_rules_enable</name>
+    <description>Whether the kernel header rules are enabled.</description>
+    <value type="bool">true</value>
+    </config>
+
+	<config>
+	<name>/rbt/hfsc/config/global/bw_overcommit</name>
+	<description>Bandwidth Overcommit mode for Easy QoS</description>
+	<value type="bool">false</value>
+	</config>
+
+    <config>
+   	<name>/rbt/hfsc/config/global/num_profiles</name>
+   	<description>Number of profiles currently configured in the system.</description>
+   	<value type="uint16">0</value>
+   	</config>
+
+    <config>
+   	<name>/rbt/hfsc/config/global/qosd_stats/enable</name>
+   	<description>Whether Qosd stats reports are enabled.</description>
+   	<value type="bool">true</value>
+   	</config>
+
+    <config>
+   	<name>/rbt/hfsc/config/global/qosd_stats/duration</name>
+   	<description>Duration btwn Qosd stats reports.</description>
+   	<value type="uint32">180</value>
+   	</config>
+
+    <!-- ~~~ interface ~~~ --> 
+
+    <config>
+        <name>/rbt/hfsc/config/global/interface/*/po_max_pkt</name>
+    <description>Qos packet order queue size</description>
+    <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/hfsc/config/global/interface/*/po_max_dep</name>
+    <description>Qos packet order queue flow depth</description>
+    <value type="uint32">0</value>
+    </config>
+
+    <!-- ~~~ SITES ~~~ -->
+
+    <config-wildcard>
+    <name>/rbt/hfsc/config/site/*</name>
+    <description>Site Name</description>
+    <value type="uint16"/>
+    </config-wildcard>
+
+    <config>
+    <name>/rbt/hfsc/config/site/*/site_name</name>
+    <description>Name of the site.</description>
+    <value type="string"></value>
+    </config>
+
+    <config>
+    <name>/rbt/hfsc/config/site/*/default_class</name>
+    <description>Name of the site.</description>
+    <value type="string"></value>
+    </config>
+
+    <config>
+    <name>/rbt/hfsc/config/site/*/out_dscp_def_rule</name>
+    <description>Dscp Marking value for the default rule.</description>
+    <value type="uint8">255</value>
+    </config>
+
+    <config-wildcard>
+    <name>/rbt/hfsc/config/site/*/networks/*</name>
+    <description>List of Network addresses.</description>
+    <value type="uint16"/>
+    </config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/networks/*/network</name>
+	<description>Network address of the site with netmask</description>
+	<value type="ipv4prefix">0.0.0.0/0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/wan_bw</name>
+	<description>Wan bandwidth of the site</description>
+	<value type="uint32">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/profile_name</name>
+	<description>The profile associated with the site</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/num_nets</name>
+	<description>Number of networks in the site.</description>
+	<value type="uint16">1</value>
+	</config>
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/site/*/class/*</name>
+	<description>Classes within the site.</description>
+	<value type="string"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/class/*/class_name</name>
+	<description>Name of the class.</description>
+	<value type="string"></value>
+	</config>
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/site/*/filter/*</name>
+	<description>Order of the global application.</description>
+	<value type="uint16"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/class_name</name>
+	<description> Name of the class. </description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/src/port</name>
+	<description>QoS application rule- source port</description>
+	<value type="string">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/src/network</name>
+	<description>QoS application rule- source network</description>
+	<value type="ipv4prefix">0.0.0.0/0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/dst/port</name>
+	<description>QoS application rule- destination port</description>
+	<value type="string">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/dst/network</name>
+	<description>QoS application rule- destination network</description>
+	<value type="ipv4prefix">0.0.0.0/0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/dscp</name>
+	<description>QoS application rule- dscp option</description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/vlan</name>
+	<description>QoS application rule- vlan </description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/l7protocol</name>
+	<description>QoS application rule- Layer 7 protocol name.</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/l7protocol_index</name>
+	<description>QoS application rule- Layer 7 protocol index.</description>
+	<value type="uint16">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/protocol</name>
+	<description>QoS application rule- protocol </description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/traffic_type</name>
+	<description>QoS application rule- type of traffic- optimized, passthrough, etc </description>
+	<value type="string">all</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/out_dscp</name>
+	<description>QoS dscp mark that will be applied for classified packets. Default value is '254' which means inherit dscp value from 'class'</description>
+	<value type="uint8">254</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/desc</name>
+	<description> Description about the rule. </description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/site/*/filter/*/rule_name</name>
+	<description> Name of the rule. </description>
+	<value type="string"></value>
+	</config>
+
+
+    <!-- ~~~ PROFILES ~~~ -->
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/profile/*</name>
+	<description>Profile Name.</description>
+	<value type="string"/>
+	</config-wildcard>
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/profile/*/class/*</name>
+	<description>Name of the default class.</description>
+	<value type="string"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/profile/*/class/*/min_bw_pct</name>
+	<description> Minimum bandwith percent.</description>
+	<value type="float32" min="0" max="100">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/profile/*/class/*/ul_rate_pct</name>
+	<description> Maximum bandwith percent.</description>
+	<value type="float32" min="0.01" max="100">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/profile/*/num_classes</name>
+	<description> Total number of classess in the profile.</description>
+	<value type="uint16">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/profile/*/class/*/out_dscp</name>
+	<description>QoS dscp mark that will be applied for packets classified under this class instance. Default value is '254' which means inherit dscp value from 'class'</description>
+	<value type="uint8">255</value>
+	</config>
+
+    <!-- ~~~ DEFAULT CLASSES ~~~ -->
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/default_class/*</name>
+	<description> List of predefined classes.</description>
+	<value type="string"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/default_class/*/class_type</name>
+	<description> Type of the class- say 'business', 'low priority', etc. </description>
+	<value type="string"></value>
+	</config>
+
+    <!-- ~~~ GLOBAL APPLICATIONS ~~~ -->
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/global_app/*</name>
+	<description> Order of the global application. </description>
+	<value type="uint16"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/global_app_name</name>
+	<description> Name of the global app.</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/default_class</name>
+	<description> Name of the default class to which the application rule is associated. This is primarily used for Easy QoS. This is the class name found at /rbt/hfsc/config/default_class/*/class_name.</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/src/port</name>
+	<description>QoS application rule- source port</description>
+	<value type="string">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/src/network</name>
+	<description>QoS application rule- source network</description>
+	<value type="ipv4prefix">0.0.0.0/0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/dst/port</name>
+	<description>QoS application rule- destination port</description>
+	<value type="string">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/dst/network</name>
+	<description>QoS application rule- destination network</description>
+	<value type="ipv4prefix">0.0.0.0/0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/dscp</name>
+	<description>QoS application rule- dscp option</description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/vlan</name>
+	<description>QoS application rule- vlan </description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/l7protocol</name>
+	<description>QoS application rule- Layer 7 protocol name.</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/l7protocol_index</name>
+	<description>QoS application rule- Layer 7 protocol index.</description>
+	<value type="uint16">0</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/protocol</name>
+	<description>QoS application rule- protocol </description>
+	<value type="int16">-1</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/traffic_type</name>
+	<description>QoS application rule- type of traffic- optimized, passthrough, etc </description>
+	<value type="string">all</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/out_dscp</name>
+	<description>QoS dscp mark that will be applied for classified packets. Default value is '254' which means inherit dscp value from 'class'. </description>
+	<value type="uint8">254</value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/global_app/*/desc</name>
+	<description> Description about the global app. </description>
+	<value type="string"></value>
+	</config>
+
+    <!-- ~~~ LAYER-7-PROTOCOLS : ICA and HTTP ~~~         -->
+    <!-- each global app, that has l7protocol as http/ica -->
+    <!-- will store is additional params under here, with -->
+    <!-- a unique idx, and use l7protocol_index to point  -->
+    <!-- to it.                                           -->
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/l7protocol/http/*</name>
+	<description>QoS layer 7 protocol</description>
+    <value type="uint16"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/l7protocol/http/*/domain_name</name>
+	<description>QoS l7 protocol - name with which the lib identifies it</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/l7protocol/http/*/relative_path</name>
+	<description>QoS http rule- relative path</description>
+	<value type="string"></value>
+	</config>
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/l7protocol/ica/*</name>
+	<description>QoS layer 7 protocol - ICA</description>
+    <value type="uint16"/>
+	</config-wildcard>
+
+	<config-wildcard>
+	<name>/rbt/hfsc/config/l7protocol/ica/*/priority/*</name>
+	<description>QoS Citrix subrule - each ica prio shows up here</description>
+	<value type="uint16"/>
+	</config-wildcard>
+
+	<config>
+	<name>/rbt/hfsc/config/l7protocol/ica/*/priority/*/class</name>
+	<description>QoS Citrix subrule - the class that this ica prio falls under</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/l7protocol/ica/*/priority/*/out_dscp</name>
+	<description>QoS dscp marking value to be applied for packets falling in this priority. Default value is '254' which means inherit dscp value from 'class'. </description>
+	<value type="uint8">254</value>
+	</config>
+
+    <!-- ~~~ CLASSES ~~~ -->
+
+	<config>
+	<name>/rbt/hfsc/config/class/*/params/site_name</name>
+	<description>Site to which it is associated.</description>
+	<value type="string"></value>
+	</config>
+
+	<config>
+	<name>/rbt/hfsc/config/class/*/params/out_dscp</name>
+	<description>QoS dscp mark that will be applied for packets classified under this class. Default value is '254' which means inherit dscp value from 'class'. </description>
+	<value type="uint8">255</value>
+	</config>
+
+    <!-- ~~~ QoS Marking ~~~ -->
+	<config>
+	<name>/rbt/hfsc/config/global/mark_enable</name>
+	<description>Global QoS dscp marking enable/disable flag.</description>
+	<value type="bool">false</value>
+	</config>
+
+    <!-- ~~~ Subnet Side Rules ~~~ -->
+	<config>
+	<name>/rbt/hfsc/config/global/subnet_side_rules_enable</name>
+	<description>Subnet Side rules enable/disable flag.</description>
+	<value type="bool">true</value>
+	</config>
+
+    <!-- ~~~ Adaptive mx-tcp ~~~ -->
+	<config>
+	<name>/rbt/hfsc/config/global/adaptive_mxtcp_enable</name>
+	<description>Adaptive MX-TCP enable/disable flag.</description>
+	<value type="bool">false</value>
+	</config>
+    <!-- ~~~ Actions ~~~ -->
+    <action>
+        <name>/rbt/hfsc/action/cls/service</name>
+        <description>Start/Stop Traffic Classifiers</description>
+        <action-func>mrh_action_enable_disable_cls</action-func>
+    </action>
+
+    <action>
+        <name>/rbt/hfsc/action/advanced/shaping/global_set</name>
+        <description>Set global outbound advanced QoS configuration</description>
+        <config-func>mrh_action_set_global_config</config-func>
+        <parameter type="bool">shaping_enable</parameter>
+        <parameter type="bool">marking_enable</parameter>
+        <parameter type="bool">hier_mode_enable</parameter>
+        <!-- Array containing interface configuration -->
+        <parameter type="bool">interface/name/enable</parameter>
+        <parameter type="uint32">interface/name/rate</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/hfsc/action/basic/shaping/global_set</name>
+        <description>Set global outbound basic QoS configuration</description>
+        <config-func>mrh_action_set_global_config</config-func>
+        <parameter type="bool">shaping_enable</parameter>
+        <parameter type="bool">marking_enable</parameter>
+        <parameter type="bool">wan_os_enable</parameter>
+        <parameter type="uint32">wan_rate</parameter>
+        <!-- Array containing interface configuration -->
+        <parameter type="bool">interface/name/enable</parameter>
+    </action>
+
+    <!-- ~~~ State nodes ~~~ -->
+    <state>
+        <name>/rbt/hfsc/state/global/limits/wan</name>
+        <description>Maximum QoS WAN throughput</description>
+        <value type="uint32"/>
+        <get-func>mrh_get_limit</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/global/limits/classes</name>
+        <description>Maximum number of QoS classes</description>
+        <value type="uint32"/>
+        <get-func>mrh_get_limit</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/global/limits/rules</name>
+        <description>Maximum number of QoS rules</description>
+        <value type="uint32"/>
+        <get-func>mrh_get_limit</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/global/limits/advanced/sites</name>
+        <description>Maximum number of Advanced QoS sites</description>
+        <value type="uint32"/>
+        <get-func>mrh_get_limit</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/global/limits/basic/sites</name>
+        <description>Maximum number of Basic QoS sites</description>
+        <value type="uint32"/>
+        <get-func>mrh_get_limit</get-func>
+    </state>
+</node-list>

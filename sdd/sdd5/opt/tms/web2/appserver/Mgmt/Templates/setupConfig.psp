@@ -1,0 +1,199 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_config.psp
+##
+## Configuration Manager.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RVBDUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'configDB': FormUtils.NodeEntry(
+        path='/mgmtd/db')
+    }
+</psp:method>
+
+
+<psp:method name="dialogEntries">
+    return {
+        'import_host': FormUtils.NodeEntry(
+            name='import_host',
+            validate='hostnameOrIp',
+            label='IP/Hostname'),
+        'import_password': FormUtils.NodeEntry(
+            name='import_password',
+            widget='password',
+            label='Remote Admin Password'),
+        'import_remoteName': FormUtils.NodeEntry(
+            name='import_remoteName',
+            label='Remote Config Name',
+            validate='nonempty'),
+        'import_name': FormUtils.NodeEntry(
+            name='import_name',
+            label='New Config Name',
+            validate='nonempty'),
+        'import_sharedData': FormUtils.NodeEntry(
+            name='import_sharedData',
+            widget='checkbox',
+            value='true',
+            label='Import Shared Data Only'),
+        'saveAsName': FormUtils.NodeEntry(
+            name='saveAsName',
+            validate='nonempty',
+            label='New Configuration Name')
+    }
+</psp:method>
+
+<%
+Mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+configNames = Nodes.getMgmtLocalChildrenNames(Mgmt, '/mgmtd/db/info/saved')
+activeConfig = Mgmt.get('/mgmtd/db/info/running/db_name')
+configDirty = Mgmt.get('/mgmtd/db/info/running/unsaved_changes')
+localUserId = self.session().value('localId')
+
+# Only capability-based accounts (admin and monitor) can view running config,
+# or RBM accounts with "write" permissions for General Settings (bugid: 50884)
+#(bugid: 109902) If this is an SMC, check smc_general_settings instead
+if localUserId not in ('admin', 'monitor'): {
+    hasGenSetPerm = Nodes.present(Mgmt, \
+    '/rbm/config/user/%s/role/general_settings/permissions' % (localUserId), '') == 'write' or \
+    Nodes.present(Mgmt, '/rbm/config/user/%s/role/smc_general_settings/permissions' % (localUserId), '') == 'write'
+}
+
+permitted = localUserId in ('admin', 'monitor') or hasGenSetPerm
+
+disabled = (permitted and ' ') or ' disabled="disabled"'
+viewRunningConfig = (permitted and
+    '<a href="" style="color: #666699" onclick="return popupWindow(\'p=cfg\', \'RunningConfig\', 600, 600);">View Running Config</a>') or \
+    '<span class="disabled">View Running Config</span>'
+
+# current selection is disabled and selected (Ironic, eh?)
+changeActiveConfigSelects = ''
+for configName in configNames: {
+    if configName == activeConfig: {
+        changeActiveConfigSelects += '<option value="" selected="selected">%s</option>' \
+            % configName
+    } else: {
+        changeActiveConfigSelects += '<option value="%s">%s</option>' \
+            % (configName, configName)
+    }
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" id="currentConfigForm" action="/mgmt/gui?p=setupConfig" >
+<fieldset>
+  <legend>Current Configuration: <%= activeConfig %></legend>
+  <p><%= viewRunningConfig %></p>
+  <div class="submitButtons">
+    <input type="hidden" name="_action_" value="setupApplianceConfig" />
+    <input type="button" name="saveCurrentConfig" value="Save" onclick="buttonSubmit(this)" />
+    <input type="button" name="revertCurrentConfig" value="Revert" onclick="buttonSubmit(this)" />
+  </div>
+</fieldset>
+</form>
+
+
+<form method="post" action="/mgmt/gui?p=setupConfig" >
+<fieldset>
+  <legend>Save Current Configuration</legend>
+  <div class="midLevel">
+    <input type="hidden" name="_action_" value="setupApplianceConfig" />
+      <table>
+        <%= dialogEntries['saveAsName'].html(self) %>
+      </table>
+      <%= FormUtils.formSubmitButtons(self, {'name': 'saveCurrentConfigAs', 'value': 'Save'}) %>
+  </div>
+</fieldset>
+</form>
+<%
+# Configs table
+
+configsTable = ajaxentrytable.AjaxEntryTable('configs',
+    url='/mgmt/xmldata?p=hostConfigs',
+    titleText='Configurations',
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'),
+                ('Configuration', '', "sortAttrib('prettyName')"),
+                ('Date', '', "sortAttrib('mtime')")),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedConfig_'),
+ AjaxEntryTable.tdClick('prettyName', viewConfig),
+ AjaxEntryTable.tdAttr('mtime')]""",
+    emptyMessage='No current configurations.',
+    addButtonText='Import a New Configuration',
+    removeName='removeConfigs',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedConfig_',
+    disabled=not permitted)
+
+if not RVBDUtils.isGW(): {
+    configsTable.addDivContent = '''
+    <div class="midLevel">
+    <table>
+        %s
+        %s
+        %s
+        %s
+        %s
+    </table>
+    %s
+    </div>
+    ''' % (dialogEntries['import_host'].html(self),
+        dialogEntries['import_password'].html(self),
+        dialogEntries['import_remoteName'].html(self),
+        dialogEntries['import_name'].html(self),
+        dialogEntries['import_sharedData'].html(self),
+        FormUtils.formSubmitButtons(self, {'name': 'importConfig', 'value': 'Import'}))
+}
+%>
+
+<form method="post" action="/mgmt/gui?p=setupConfig" >
+  <div class="table_configMgr">
+    <input type="hidden" name="_action_" value="setupApplianceConfig" />
+    <%= configsTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<form method="post" action="/mgmt/gui?p=setupConfig" >
+  <fieldset class="topLevel">
+    <legend>Change Active Configuration</legend>
+    <div class="midLevel">
+      <select name="activateConfig"<%= disabled %>><%= changeActiveConfigSelects %></select>
+      <input type="submit" name="activate" value="Activate"<%= disabled %>
+             onclick="return ('' != this.form.activateConfig.value)" />
+    </div>
+    <input type="hidden" name="_action_" value="setupApplianceConfig" />
+  </fieldset>
+</form>
+
+<script type="text/javascript">
+<!--
+
+// Note: window name must be alphanumeric+underscore
+function viewConfig(element) {
+    var name = element.getAttribute('name');
+    var url = 'p=cfg&name=' + name;
+    return popupWindow(url, 'configuration_' + name.replace(/\W/g, '_'), 600, 600);
+}
+
+// -->
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+nonConfigForms.push('currentConfigForm');
+
+// ]]>
+</script>
+

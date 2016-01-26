@@ -1,0 +1,394 @@
+<%
+## Copyright 2008, Riverbed Technology, Inc., All rights reserved.
+
+## Installs and configures the RSP service.
+## Author: Robin Schaufler
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, rsp, os, re, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+div#statusText {
+  margin-bottom: 10px;
+}
+.rspStatus {
+  clear: both;
+  margin: 0 0 12px 36px;
+}
+.rspStatus td.rspLabel {
+  white-space: nowrap;
+  vertical-align: top;
+}
+.rspStatus td {
+  vertical-align: top;
+}
+div.serviceButtons,
+form#rspImageInstallForm {
+  display: %s;
+}
+tr#rspSupported,
+tr#rspInstalled {
+  display: %s;
+}
+''' % (RVBDUtils.isEX() and 'none' or 'block',
+       RVBDUtils.isEX() and 'none' or 'table-row')
+</psp:method>
+
+<psp:method name="pageletNodes">
+    return [
+        '/rbt/rsp2/image/action/install_image',
+        '/rbt/rsp2/state/supported',
+        '/rbt/rsp2/image/state/installed',
+        '/rbt/rsp2/config/enable',
+        '/rbt/rsp2/state/running',
+        '/rbt/rsp2/state/service_state',
+        '/rbt/rsp2/image/state/installed_release',
+        '/rbt/rsp2/state/free_space',
+        '/rbt/rsp2/state/free_memory',
+    ]
+</psp:method>
+
+<psp:method name="getValidImages">
+    mgmt = self.session().value('mgmt')
+
+    images = mgmt.getChildren('/rbt/rsp2/image/state/image')
+    return [image for image in images.keys()
+            if 'true' == Nodes.present(mgmt,
+                                       '/rbt/rsp2/image/state/image/%s/valid' % image)]
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    entries = {
+        'imageSource': FormUtils.NodeEntry(
+            name='imageSource',
+            selectOptions=(('url', 'URL'),
+                           ('file', 'Local File')),
+            value='url',
+            label='Install %s From' % rsp.publicName(),
+            displayDiv={'url': 'urlContainer',
+                        'file': 'fileContainer'}),
+        'imageUrl': FormUtils.NodeEntry(
+            name='imageUrl',
+            widgetClass='wide3pt5',
+            validate='url'),
+        'imageFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('rspTmpImageDirectory',
+                                               'rspImageFile'),
+            widget='file',
+            validate='nonempty'),
+    }
+    images = self.getValidImages()
+    if images:
+        entries['imageExists'] = FormUtils.NodeEntry(
+            name='imageExists',
+            selectOptions=[(image, image) for image in images])
+        entries['imageSource'].selectOptions += \
+               ('exists', 'Existing Image'),
+        entries['imageSource'].displayDiv['exists'] = 'existsContainer'
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+rspPublicName = rsp.publicName()
+meter = FormUtils.Meter(self, name='rspImageInstall', \
+                        unloadWarningMsg='Leaving this page may interrupt the %s installation.' % rspPublicName, \
+                        filter='adjustInstallButton')
+
+# Check if RSP is supported in the current disk layout.
+rspDiskLayout = Nodes.present(mgmt, '/rbt/rsp2/state/disk_layout/supported', 'true') == 'true'
+if not rspDiskLayout: {
+    self.beginPagelet()
+    self.writeln('<p>VSP is not supported in the current ' \
+                 '<a href="/mgmt/gui?p=setupDiskManagement">disk layout</a>.</p>')
+    self.endPagelet()
+    return
+}
+
+rspPublicVirtualInpathName = rsp.publicVirtualInpathName()
+%>
+
+<% self.beginPagelet() %>
+
+<form id="serviceForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Service</legend>
+    <p id="mgmtWarning" class="warning" style="display: none;">
+      <%= rspPublicName %> Service cannot be started with inpath management enabled.
+    </p>
+    <p id="restartWarning" class="warning" style="display: none;">
+      Note: The optimization service must be restarted after starting
+      or stopping <%= rspPublicVirtualInpathName %>.
+    </p>
+    <div class="interactiveCommand" style="height: auto;">
+      <div id="statusText" class="serviceStatus">
+        Status:
+      </div>
+      <div class="serviceButtons">
+        <input type="submit" name="start" value="Start" disabled="disabled" onclick="adjustServiceState('start'); return false;" />
+        <input type="submit" name="stop" value="Stop" disabled="disabled" onclick="adjustServiceState('stop'); return false;" />
+      </div>
+      <div class="rspStatus">
+        <table>
+          <tr id="rspSupported">
+            <td class="labelPaddedRight"><%= rspPublicName %> Supported:</td><td><span id="RSP_Supported"></span></td>
+          </tr>
+          <tr id="rspInstalled">
+            <td class="labelPaddedRight"><%= rspPublicName %> Installed:</td><td><span id="RSP_Installed"></span></td>
+          </tr>
+          <tr>
+            <td class="labelPaddedRight"><%= rspPublicName %> Free Space:</td><td><span id="RSP_FreeSpace"></span></td>
+          </tr>
+          <tr>
+            <td class="labelPaddedRight"><%= rspPublicName %> Free Memory:</td><td><span id="RSP_FreeMemory"></span></td>
+          </tr>
+          <tr id="rspEnabled">
+            <td class="labelPaddedRight"><%= rspPublicName %> Enabled:</td><td><span id="RSP_Enabled"></span></td>
+          </tr>
+          <tr>
+            <td class="labelPaddedRight"><%= rspPublicName %> State:</td><td><span id="RSP_State"></span></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+</form>
+
+<form id="rspImageInstallForm"
+      method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>">
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="setupRspImage" />
+      <%= dialogEntries['imageSource'].html(self, format='inline') %>
+      <span id="urlContainer" class="indent">
+        <%= dialogEntries['imageUrl'].html(self, format='inline') %>
+      </span>
+      <span id="fileContainer" class="indent">
+        <%= dialogEntries['imageFile'].html(self, format='inline') %>
+      </span>
+<%
+if 'imageExists' in dialogEntries.keys(): {
+%>
+      <span id="existsContainer" class="indent">
+        <%= dialogEntries['imageExists'].html(self, format='inline') %>
+      </span>
+<%
+}
+%>
+    </div>
+  <%= meter.buttonHtml() %>
+</form>
+
+<%
+# Parse the RSP image history file, which has lines that look like these:
+#
+# First-install 5.5.0 rbt_sh 5.5.0 #50 2008-11-20 19:36:01 x86_64 root@nusaybin:svn://svn/mgmt/branches/guam_branch on Wed May  6 21:51:00 PDT 2009
+# Installed 6.1.0 rbt_sh rsp-image-6.1.0-x86_64-25 #0 2010-02-17 13:41:33 x86_64 root@montreux.lab.nbttech.com on Wed Mar 24 20:28:32 PDT 2010
+# Reverted 6.0.2 rbt_sh rsp-image-6.0.2-x86_64-27 #0 2010-02-26 16:57:53 x86_64 root@montreux.lab.nbttech.com on Thu Apr 22 18:45:36 PDT 2010
+if os.path.exists('/var/opt/tms/rsp_image_history') == True: {
+    versions = []
+    try: {
+        tf = open('/var/opt/tms/rsp_image_history')
+        versions = tf.readlines()
+    } finally: {
+        tf.close()
+    }
+    # Strip white space off version strings.
+    versions = [v.strip() for v in versions]
+    # Keep only non-empty version strings.
+    versions = [v for v in versions if v]
+    versionsPretty = []
+    for v in versions: {
+        if ' on ' in v: {
+            parts = re.match('\S+ (\S+) .* on (.*)', v)
+            versionsPretty.append('%s (%s)<br />' % parts.groups())
+        } else: {
+            parts = re.match('\S+ (\S+) .*', v)
+            versionsPretty.append('%s (date not available)<br />' % parts.group(1))
+        }
+    }
+%>
+  <fieldset>
+    <legend><%= rspPublicName %> Version History</legend>
+    <div class="midLevel">
+    <%= '\n'.join(versionsPretty) %>
+    </div>
+  </fieldset>
+<%
+}
+%>
+
+<%
+if not RVBDUtils.isEX(): {
+    self.addOnload('connectServiceToInstallButton()')
+}
+
+self.addOnload('setupServiceStatePoller()')
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+<!--
+
+//********************** Service State JavaScript ***********************
+
+// Poll for service state independently of polling the progress meter.
+// Update the state all the time, whether there is an install in progress
+// or not.
+function setupServiceStatePoller() {
+    adjustServiceState(null);
+}
+
+// Although it has nothing to do with progress metering,
+// the service form state is dependent on the installation state,
+// and needs to be triggered by the install button.
+function connectServiceToInstallButton() {
+    var installButtonEl = getFormElement('rspImageInstallForm', 'rspImageInstallSubmit');
+    compat.addListener(installButtonEl, 'submit', function() {
+        adjustServiceState('disable');
+    });
+}
+
+// If we're in VRSP mode and we start or stop RSP, we need to restart
+// the optimization service.  But since the RSP start/stop is done
+// asynchronously, we can't catch the action message and display a
+// blue box.  Instead, we'll keep track of whether we're in VRSP mode
+// and whether a start/stop is in progress.  These will be used later
+// to unhide a warning message.
+var pendingAction = null;
+var vrspMode = false;
+
+// Update the service status text and buttons.  Valid values for the
+// action parameter are "start" and "stop".  Additionally, the value
+// can be "disable" to grey out the buttons or null to sync the
+// display with the current service state.
+//
+// If an installation is in progress we disable the buttons but we
+// still query the current service state.  (This prevents the service
+// state from being blank if the page reloads during an install.)
+function adjustServiceState(action) {
+    var serviceStatePoller = null;
+
+    // Disable the buttons to prevent the form from being submitted
+    // again.  We'll turn them back on when we're done.
+    var form = document.forms['serviceForm'];
+    if (action) {
+        enableElements(getFormElement(form, 'start'), false)
+        enableElements(getFormElement(form, 'stop'), false)
+        if (action == 'disable') {
+            return;
+        }
+    }
+
+    // Remember the pending action if we're starting or stopping RSP.
+    // When the service state changes later we can decide whether to
+    // show the "restart service" warning.
+    if ((action == 'start') || (action == 'stop')) {
+        pendingAction = action;
+    }
+
+    var args = (action && !rspImageInstallMeter.inProgress) ?
+               {'action': action } : {};
+
+    performRemoteCall('rspAccessServiceState', args, function(respEl) {
+        setElementText('RSP_Supported', respEl.getAttribute('supported'));
+        $('RSP_Supported').className = respEl.getAttribute('supportedClass');
+        setElementText('RSP_Installed', respEl.getAttribute('installed'));
+        $('RSP_Installed').className = respEl.getAttribute('installedClass');
+        setElementText('RSP_FreeSpace', respEl.getAttribute('freeSpace'));
+        setElementText('RSP_FreeMemory', respEl.getAttribute('freeMemory'));
+        var rspIsEnabled = respEl.getAttribute('enabled');
+        setElementText('RSP_Enabled', rspIsEnabled);
+        rspIsEnabled = rspIsEnabled.indexOf('Yes') != -1;
+        var serviceState = respEl.getAttribute('state');
+        var mgmtEnabled = respEl.getAttribute('mgmtEnabled') == 'true';
+        var errorState = false;
+
+        // If the "enabled" attribute ever contains the string "VRSP",
+        // then we're in VRSP mode.  Never clear this because we're
+        // still in VRSP mode if we stop the service and the "enabled"
+        // string changes.
+        vrspMode = vrspMode ||
+            (respEl.getAttribute('enabled').indexOf('<%= rspPublicVirtualInpathName %>') != -1);
+
+        // If a pending action has just completed, show the service
+        // restart warning if we're in VRSP mode.
+        if (((pendingAction == 'start') && (serviceState == 'running')) ||
+            ((pendingAction == 'stop') && (serviceState == 'disabled'))) {
+            if (vrspMode) {
+                Y.one('#restartWarning').setStyle('display', 'block');
+            }
+            pendingAction = null;
+        }
+
+        // Enable error state if inpath management is enabled
+        Y.one('#mgmtWarning').setStyle('display',
+                                       (mgmtEnabled) ? 'block' : 'none');
+        errorState = errorState || mgmtEnabled;
+
+        if (serviceState != $('RSP_State')) {
+            // Case all states defined in md_rbt_rsp2.c
+            setElementText('RSP_State', serviceState);
+            setElementClass($('RSP_State'),
+                            respEl.getAttribute('serviceStateClass'));
+
+            if (!errorState) {
+                // Enable 'start'/'stop' button based on service state
+                switch (serviceState) {
+                    case 'not compatible':
+                    case 'running':
+                    case 'starting':
+                        enableElements(getFormElement(form, 'stop'),
+                                       rspIsEnabled &&
+                                       !rspImageInstallMeter.inProgress);
+                        enableElements(getFormElement(form, 'start'), false);
+                        break;
+                    case 'not installed':
+                    case 'initializing':
+                    case 'shutting down':
+                        enableElements(getFormElement(form, 'stop'), false);
+                        enableElements(getFormElement(form, 'start'), false);
+                        break;
+                    case 'stopped':
+                    case 'disabled':
+                        enableElements(getFormElement(form, 'stop'), false);
+                        enableElements(getFormElement(form, 'start'),
+                                       !rspImageInstallMeter.inProgress);
+                    break;
+                }
+            } else {
+                // Disable 'start'/'stop' button in an error state
+                enableElements(getFormElement(form, 'stop'), false);
+                enableElements(getFormElement(form, 'start'), false);
+            }
+            RBT.Validator.validateForm('#rspImageInstallForm');
+        }
+        if (!args.action) {
+            serviceStatePoller = setTimeout('adjustServiceState(null);', 5000);
+        }
+    }, function(errorMsg) {
+        setElementText('RSP_State', 'Error');
+        setElementClass($('RSP_State'), 'stateStopped');
+    });
+}
+
+function adjustInstallButton(buttonEl, isValid) {
+    var rspStateTextNode = $('RSP_State').firstChild;
+    var rspState = rspStateTextNode ? rspStateTextNode.nodeValue : '';
+    return isValid &&
+        (rspState == 'not installed' ||
+         rspState == 'not compatible' ||
+         rspState == 'stopped' ||
+         rspState == 'disabled');
+}
+
+// -->
+</script>

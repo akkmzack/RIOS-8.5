@@ -1,0 +1,142 @@
+#!/bin/bash
+#
+# Perform various RSP-related VM actions
+#
+
+VMWARE_VM_PROCESS="vmware-vmx"
+RSP_SLOTS_DIR="/proxy/__RBT_VSERVER_SHELL__/rsp2/slots"
+RSP_TMP_DISKS_DIR="/proxy/__RBT_VSERVER_SHELL__/rsp2/tmp_disk_creation"
+
+usage()
+{
+    log_error "Invalid params passed to $0"
+    exit 1
+}
+
+log_error()
+{
+    echo $1
+    /usr/bin/logger -p user.err "RSP VM check" $1
+}
+
+log_info()
+{
+    echo $1
+    /usr/bin/logger -p user.info "RSP VM check" $1
+}
+
+get_pid_from_vmx()
+{
+    ps aux | grep "$1" | grep $VMWARE_VM_PROCESS | awk '{print $2}'
+}
+
+case "$1" in
+
+        # Wait the given number of seconds ($2) and then proceed with
+        # shutdown.
+
+        check_vm_shutdown)
+            pidof $VMWARE_VM_PROCESS 2>&1 >/dev/null
+            if [ $? -eq 0 ]; then
+                log_info "Detected running RSP virtual machines."
+                log_info "Waiting $2 seconds before proceeeding...."
+                sleep $2 2>&1 >/dev/null
+                if [ $? -ne 0 ]; then
+                    log_error "Unable to sleep."
+                fi
+                pidof $VMWARE_VM_PROCESS 2>&1 >/dev/null
+                if [ $? -eq 0 ]; then
+                    log_info "RSP virtual machines are still running."
+                    log_info "Proceeding with hard shutdown."
+                else
+                    log_info "RSP virtual machines have shutdown."
+                fi
+            else
+                log_info "No running RSP virtual machines detected."
+            fi
+        ;;
+
+        # Remove all occurences of VMDK locks beneath the slot ($2)
+        # directory. This may prevents VMs from powering up. We might
+        # have been brought down previously by a power loss.
+
+        clear_locks)
+            if [ -d "$RSP_SLOTS_DIR" ]; then
+                find "$RSP_SLOTS_DIR" -follow -type d -name "*.lck" | while read lockdir; do
+                    log_info "Deleting directory $lockdir"
+                    rm -rf "$lockdir" 2>&1 >/dev/null
+                    if [ $? -ne 0 ]; then
+                        log_error "Unable to remove $lockdir"
+                        exit 1
+                    fi
+                done
+            fi
+        ;;
+
+        # Remove all temporary disks used during creation of virtual disks.
+        # This could happen if there was a power loss during creation. These
+        # files can be rather large (~GB) so are worth clearing up.
+        clear_tmp_disks)
+            if [ -d $RSP_TMP_DISKS_DIR ]; then
+                for dir in `ls $RSP_TMP_DISKS_DIR`; do
+                    rm -rf $RSP_TMP_DISKS_DIR/$dir/*
+                    if [ $? -ne 0 ]; then
+                        log_error "Unable to remove temporary disks in $dir"
+                    fi
+                done
+            fi
+        ;;
+
+        renice)
+            # Does the VMX file even exist?
+            if [ ! -f $2 ]; then
+                log_error "Unable to locate VMX file $2"
+                exit 1
+            fi
+
+            RENICE_VALUE=$3
+
+            # Get the PID of the VM's process
+            PID=`get_pid_from_vmx $2`
+
+            if [ ! -z "$PID" ]; then
+                renice $RENICE_VALUE -p $PID 
+                if [ $? -ne 0 ]; then
+                    log_error "Unable to renice VM proccess, PID $PID."
+                    exit 1
+                fi
+                log_info "Reniced $2 ($PID) $RENICE_VALUE."
+            else
+                log_info "$2 does not appear to be running."
+            fi
+        ;;
+
+        kill)
+            # Does the VMX file even exist?
+            if [ ! -f $2 ]; then
+                log_error "Unable to locate VMX file $2"
+                exit 1
+            fi
+
+            # Get the PID of the VM's process
+            PID=`get_pid_from_vmx $2`
+
+            if [ ! -z "$PID" ]; then
+                kill -s SIGKILL $PID
+                if [ $? -ne 0 ]; then
+                    log_error "Unable to kill VM ($PID)"
+                    exit 1
+                fi
+                log_info "Killed VM ($PID)."
+            else
+                log_info "$2 does not appear to be running."
+            fi
+        ;;
+
+        *)
+            usage
+		;;
+
+esac
+
+exit 0

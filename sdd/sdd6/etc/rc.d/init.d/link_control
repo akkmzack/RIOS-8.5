@@ -1,0 +1,143 @@
+#!/bin/bash
+#
+# link_control
+#
+# chkconfig: 2345 50 50
+# description: Saves link-control state from lcmod.ko.
+
+#
+# Currently does nothing during startup. During shutdown, MUST run before pm
+# and rbtkmod.
+#
+# $Id: link_control 91484 2011-09-20 02:16:17Z anoop $
+#
+
+. /etc/init.d/functions
+
+LOGGER="/usr/bin/logger -p user.notice -t link_control"
+LCMOD_LSP_STATES=/var/tmp/lcmod_lsp_states
+
+umask 077
+
+ARG2="$2"
+DBREQ=`echo "$ARG2"| cut -d\= -f2`
+ARG3="$3"
+DB=`echo "$ARG3"| cut -d\= -f2`
+ARG4="$4"
+LC_PATH=`echo "$ARG4"| cut -d\= -f2`
+ER_NAME="$5"
+ER="$6"
+ER_CHAN_INIT_MODE="$7"
+
+start() {
+    # Ask rc to kill/stop link_control.
+    touch /var/lock/subsys/link_control
+
+    return 0
+}
+
+load() {
+    lsp_enabled="false"
+    if [ "$DB" != "" ]; then
+        lsp_enabled=`$DBREQ -v $DB query get "" /rbt/sport/intercept/config/lsp_enable`
+    fi
+
+    # Before inserting lcmod, check if preexisting LSP state is available.
+    LC_OPTS="$ER_NAME $ER $ER_CHAN_INIT_MODE"
+    if [ -f $LCMOD_LSP_STATES ]; then
+        if [ "$lsp_enabled" == "true" ]; then
+            LC_OPTS="$LC_OPTS er_lsp_state=`cat $LCMOD_LSP_STATES`"
+        else
+            $LOGGER "Unable to apply LSP init state:`cat $LCMOD_LSP_STATES`"
+        fi
+    fi
+    rm -f $LCMOD_LSP_STATES
+
+    insmod $LC_PATH/lcmod.ko $LC_OPTS >/dev/null
+}
+
+stop() {
+    LSP_STATES=
+    # When LSP is disabled the 'link state' is not present
+    LSP_STATE_PROC_OUTPUT=`cat /proc/lc/state | grep -i "link state " \
+                            | awk '{print $3}'`
+
+    for lsp_state in $LSP_STATE_PROC_OUTPUT
+        do
+            if [ -n "$lsp_state" ]; then
+                $LOGGER "Saving LSP state '$lsp_state'"
+            fi
+
+            if [ $lsp_state == "LAN_forced_down" ]; then
+                LSP_STATES="1-0,$LSP_STATES"
+            elif [ $lsp_state == "WAN_forced_down" ]; then
+                LSP_STATES="0-1,$LSP_STATES"
+            else
+                LSP_STATES="0-0,$LSP_STATES"
+            fi
+        done
+
+    if [ -n "$LSP_STATES" ]; then
+        LSP_STATES=`echo $LSP_STATES | sed -e "s/,$//"`
+        echo $LSP_STATES > $LCMOD_LSP_STATES
+    else
+        rm -f $LCMOD_LSP_STATES
+    fi
+
+    rmmod lcmod > /dev/null 2>&1
+    return 0
+}
+
+restart() {
+    stop
+    start
+}
+
+status() {
+    if [ -f /proc/lc/state ]; then
+        echo "/proc/lc/state:"
+        cat /proc/lc/state
+    else
+        echo "lcmod not present"
+    fi
+
+    echo
+
+    if [ -f $LCMOD_LSP_STATES ]; then
+        echo "$LCMOD_LSP_STATES: `cat $LCMOD_LSP_STATES`"
+    else
+        echo "No saved lc state"
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+
+    unload)
+        stop
+        ;;
+
+    stop)
+        stop
+        ;;
+
+    status)
+        status
+        ;;
+
+    restart|reload)
+        restart
+        ;;
+
+    load)
+        load
+        ;;
+
+    *)
+        echo "Usage: $0 {start | stop | status | restart | load | unload }"
+        exit 1
+esac
+
+exit $?

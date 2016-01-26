@@ -1,0 +1,840 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: David Scott
+##
+## setupServiceProtocolsSSLCRLs.psp
+##
+## SSL CRL Management page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, SSLUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupServiceProtocolsSSLCAs','setupServiceProtocolsSSLSCEP')
+%>
+
+<psp:method name="css">
+    return '''
+#sslCaTable_main {
+    width: 100%;
+}
+.textData {
+    padding: 5px 0;
+}
+.centered {
+    text-align: center;
+}
+.notAvailable {
+    font-style: italic;
+}
+.CDP_edit {
+    width: 580px;
+    overflow-x: auto;
+}
+.CDPManual_edit {
+    width: 560px;
+    overflow-x: auto;
+}
+.CDP_edit p, .CDPManual_edit p {
+    white-space: nowrap;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+.CDP_edit span {
+    white-space: nowrap;
+}
+.CDPTab {
+    margin: 5px 0 5px 0;
+    width: 518px;
+    overflow-x: auto;
+}
+.CDPManualTab {
+    margin: 5px 0 5px 0;
+    width: 535px;
+    overflow-x: auto;
+}
+.CDPTab h3 {
+    /* This is to work around an apparent FF bug */
+    clear: both;
+}
+.CDPTab ul {
+    margin-left: 36px;
+}
+.CDP_edit_details {
+    padding-top: 5px;
+}
+.CDP_edit_CDPs {
+    padding: 0;
+}
+.CDP_edit_CDPs li {
+    list-style: none;
+    padding: 5px 0;
+}
+.CDP_edit_CDPSelect {
+    border: #bbb 1px solid;
+    padding: 0 0 10px 10px;
+    margin: 0 0 5px 36px;
+}
+.CDP_edit_ap_prefix {
+    font-weight: bold;
+    padding-right: 5px;
+}
+.CDP_view_CRL {
+    margin: 10px 0 5px 10px;
+    overflow-x: auto;
+}
+.CDP_view_error {
+    text-align: center;
+    margin: 0 0 5px 0;
+}
+.CDP_view_error span {
+    white-space: normal;
+}
+#sslCRLHistoryTable_main, #sslCRLHistoryPeeringTable_main {
+    width: 510px;
+    margin-bottom: 5px;
+}
+#sslManualCRLHistoryTable_main, #sslManualCRLHistoryPeeringTable_main {
+    width: 535px;
+    margin-bottom: 5px;
+}
+#tableTabs>.grayBorder {
+    width: 618px;
+}
+#tableTabs>div>div>.ajaxEntryTable {
+    width: 618px;
+}
+.treeNav {
+    height: 10px;
+    padding-left: 15px;
+    background-repeat: no-repeat;
+    color: #558;
+    cursor: pointer;
+}
+.treeClosed {
+    background-image: url(/images/aet_tree_closed.png);
+}
+.treeOpen {
+    background-image: url(/images/aet_tree_open.png);
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    # Permissions on this node work on both SH and CMC policy page.
+    # SH:  /role_primitive/acceleration/ssl
+    # CMC: /role_primitive/steelhead/acceleration/ssl
+    return {
+        'permNode': NodeEntry(
+            path='/rbt/sport/ssl/config/global/enable'),
+        'failHandshakes': NodeEntry(
+            path='/rbt/sport/ssl/config/crl/global/handshake/fail_if_missing',
+            type='bool',
+            widget='checkboxLeft',
+            label='Fail Handshakes If A Relevant CRL Cannot Be Found'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'polling_enable': NodeEntry(
+            path='/rbt/sport/ssl/config/crl/ca/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Automatic CRL Polling For CAs'
+        ),
+        'polling_enable_peering': NodeEntry(
+            path='/rbt/sport/ssl/config/crl/tunnel/ca/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Automatic CRL Polling For Peering CAs'
+        ),
+        'addManualCDP_CAName': NodeEntry(
+            widget='select',
+            name='addManualCDP_CAName',
+            label='CA Names'
+        ),
+        'addManualCDP_URI': NodeEntry(
+            name='addManualCDP_URI',
+            label='Override URI',
+            widgetClass='wide',
+            validate='valid_cdpUrl'
+        ),
+        'editManualCDP_URI': NodeEntry(
+            name='editManualCDP_URI',
+            label='Override URI',
+            widgetClass='wide',
+            validate='valid_cdpUrl'
+        ),
+        'addManualCDPPeering_CAName': NodeEntry(
+            widget='select',
+            name='addManualCDPPeering_CAName',
+            label='CA Names'
+        ),
+        'addManualCDPPeering_URI': NodeEntry(
+            name='addManualCDPPeering_URI',
+            label='Override URI',
+            widgetClass='wide',
+            validate='valid_cdpUrl'
+        ),
+        'editManualCDPPeering_URI': NodeEntry(
+            name='editManualCDPPeering_URI',
+            label='Override URI',
+            widgetClass='wide',
+            validate='valid_cdpUrl'
+        ),
+        'editCDPSettings_Hostname': NodeEntry(
+            name='editCDPSettings_Hostname',
+            label='Hostname',
+            widgetClass='wide'
+        ),
+        'editCDPSettings_Port': NodeEntry(
+            name='editCDPSettings_Port',
+            label='Port',
+            widgetClass='uint32',
+        ),
+        'editCDPSettings_Attribute': NodeEntry(
+            name='editCDPSettings_Attribute',
+            label='Attribute',
+            widgetClass='wide',
+        ),
+        'editCDPSettingsPeering_Hostname': NodeEntry(
+            name='editCDPSettingsPeering_Hostname',
+            label='Hostname',
+            widgetClass='wide'
+        ),
+        'editCDPSettingsPeering_Port': NodeEntry(
+            name='editCDPSettingsPeering_Port',
+            label='Port',
+            widgetClass='uint32',
+        ),
+        'editCDPSettingsPeering_Attribute': NodeEntry(
+            name='editCDPSettingsPeering_Attribute',
+            label='Attribute',
+            widgetClass='wide',
+        ),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+caNames = SSLUtils.getCANameSelectOptions(mgmt)
+dialogEntries['addManualCDP_CAName'].selectOptions = caNames
+peeringCaNames = SSLUtils.getCANameSelectOptions(mgmt, peering=True)
+dialogEntries['addManualCDPPeering_CAName'].selectOptions = peeringCaNames
+
+self.beginPagelet()
+%>
+
+<%
+sslCDPTable = ajaxentrytable.AjaxEntryTable('sslCDP',
+    titleText='Automatically Discovered CRL Distribution Points (CDPs) For CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslCDPs'),
+    headerSpec=('',
+                ('Certificate Authority', '', "sortAttrib('ca_name')"),
+                'Override URI'),
+    rowSpec="""
+[
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.td([AjaxEntryTable.edit('ca_name', 'ca_name_pretty')], ''),
+ AjaxEntryTable.tdAttr('override_pretty', '')
+]""",
+    emptyMessage='No CDPs Discovered.'
+)
+sslCDPPeeringTable = ajaxentrytable.AjaxEntryTable('sslCDPPeering',
+    titleText='Automatically Discovered CRL Distribution Points (CDPs) For Peering CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslCDPs&peering=true'),
+    headerSpec=('',
+                ('Certificate Authority', '', "sortAttrib('ca_name')"),
+                'Override URI'),
+    rowSpec="""
+[
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.td([AjaxEntryTable.edit('ca_name', 'ca_name_pretty')], ''),
+ AjaxEntryTable.tdAttr('override_pretty', '')
+]""",
+    emptyMessage='No CDPs Discovered.'
+)
+
+sslManualCDPTable = ajaxentrytable.AjaxEntryTable('sslManualCDP',
+    titleText='Manual CDP Overrides For CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslManualCDPs'),
+    headerSpec=('',
+                ('Certificate Authority', '', "sortAttrib('ca_name')"),
+                'Override URI'),
+    rowSpec="""
+[
+  AjaxEntryTable.tdSelectCheckbox('ca_name', 'manualCDP_'),
+  AjaxEntryTable.td([AjaxEntryTable.edit('ca_name', 'ca_name_pretty')], ''),
+  AjaxEntryTable.tdAttr('uri_pretty', '')
+]""",
+    emptyMessage='No Manual Overrides.',
+    removeName='removeManualCDPs',
+    removeButtonText='Remove Selected Manual Overrides',
+    addButtonText='Add Manual Override',
+    addButtonName='addManualCDP'
+)
+sslManualCDPPeeringTable = ajaxentrytable.AjaxEntryTable('sslManualCDPPeering',
+    titleText='Manual CDP Overrides For Peering CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslManualCDPs&peering=true'),
+    headerSpec=('',
+                ('Certificate Authority', '', "sortAttrib('ca_name')"),
+                'Override URI'),
+    rowSpec="""
+[
+  AjaxEntryTable.tdSelectCheckbox('ca_name', 'manualCDPPeering_'),
+  AjaxEntryTable.td([AjaxEntryTable.edit('ca_name', 'ca_name_pretty')], ''),
+  AjaxEntryTable.tdAttr('uri_pretty', '')
+]""",
+    emptyMessage='No Manual Overrides.',
+    removeName='removeManualCDPPeering',
+    removeButtonText='Remove Selected Manual Overrides',
+    addButtonText='Add Manual Override',
+    addButtonName='addManualCDPPeering'
+)
+
+# There are four CRL history table prototypes: peering vs non, manual vs auto
+historyTableParams = {
+    'titleText':'CRL Access History',
+    'headerSpec':(('Date / Time','', "sortAttrib('report_id')"),
+                  'Status Message',
+                  'Next Update'),
+    'rowSpec':"""[
+    AjaxEntryTable.tdAttr('last_query_date', ''),
+    AjaxEntryTable.tdAttr('status_msg', ''),
+    AjaxEntryTable.tdAttr('next_update_date', '')
+]""",
+    'rowDescSpec':('crl_issuer', 'AjaxEntryTable.cellFillDesc("crl_issuer", "CRL Issuer: ")', 0),
+    'emptyMessage':'No Reports Available.'
+}
+sslCRLHistoryTable = ajaxentrytable.AjaxEntryTable('sslCRLHistory', **historyTableParams)
+sslCRLHistoryPeeringTable = ajaxentrytable.AjaxEntryTable('sslCRLHistoryPeering', **historyTableParams)
+sslManualCRLHistoryTable = ajaxentrytable.AjaxEntryTable('sslManualCRLHistory', **historyTableParams)
+sslManualCRLHistoryPeeringTable = ajaxentrytable.AjaxEntryTable('sslManualCRLHistoryPeering', **historyTableParams)
+sslCRLHistoryTableURL = self.urlForCmcEdit('/mgmt/xmldata?p=sslCRLHistory')
+
+sslCRLsTable = ajaxentrytable.AjaxEntryTable('sslCRLs',
+    titleText='Discovered CRLs For CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslCRLList'),
+    headerSpec=('',
+                'CRL Name'),
+    rowSpec="""[
+    AjaxEntryTable.tdSelectCheckbox('name', 'CRLs_'),
+    AjaxEntryTable.tdAttr('name', '')
+]""",
+    emptyMessage='No CRLs Discovered.',
+    removeName='removeCRLs',
+    removeButtonText='Remove Selected CRLs'
+)
+sslCRLsPeeringTable = ajaxentrytable.AjaxEntryTable('sslCRLsPeering',
+    titleText='Discovered CRLs For Peering CAs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslCRLList&peering=true'),
+    headerSpec=('',
+                'CRL Name'),
+    rowSpec="""[
+    AjaxEntryTable.tdSelectCheckbox('name', 'CRLsPeering_'),
+    AjaxEntryTable.tdAttr('name', '')
+]""",
+    emptyMessage='No Peering CRLs Discovered.',
+    removeName='removeCRLsPeering',
+    removeButtonText='Remove Selected Peering CRLs'
+)
+%>
+
+<psp:method name="CDPEditContent" params="peering,manual,dialogEntries,historyTable">
+
+    # edit div for automatic CDP table (CA and peering CA)
+    editNodeId = peering and 'CDP_edit_peering' or 'CDP_edit'
+    tabSetId = peering and 'CDPTabs_peering' or 'CDPTabs'
+    detailsTabId = peering and 'CDPTab_details_peering' or 'CDPTab_details'
+    crlTabId = peering and 'CDPTab_crl_peering' or 'CDPTab_crl'
+    editDirNameId = peering and 'CDP_edit_dirname_peering' or 'CDP_edit_dirname'
+    editHostname = peering and 'editCDPSettingsPeering_Hostname' or 'editCDPSettings_Hostname'
+    editPort = peering and 'editCDPSettingsPeering_Port' or 'editCDPSettings_Port'
+    editAttribute = peering and 'editCDPSettingsPeering_Attribute' or 'editCDPSettings_Attribute'
+    innerTabControls = FormUtils.radioTabControl(
+            self,
+            tabSetId,
+            ('details', 'CDP Details', detailsTabId),
+            ('crl', 'View CRL', crlTabId))
+    submitButtons = FormUtils.formSubmitButtons(self, {
+            'name': 'updateCRL',
+            'value': 'Check For Update',
+            'onclick': 'queryCRLNow(); return false;'
+    })
+    CDPDetailContent = '''
+<div class="tabControl">
+  <div class="grayBorder">
+    %s
+    <div class="CDPTab" id="%s">
+      <h3>Access Points:</h3>
+      <ul class="CDP_edit_APList textData"><li class="dummy"></li></ul>
+      <div id="%s">
+        <h3>Update CDP Settings</h3>
+        <table class="midlevel">
+          %s
+          %s
+          %s
+        </table>
+        %s
+      </div>
+    </div>
+    <div class="CDPTab" id="%s">
+      <div class="CDP_view_error hidden"></div>
+      <h3>CRL:</h3>
+      <div class="CDP_view_CRL"></div>
+      %s
+      %s
+    </div>
+  </div>
+</div>
+''' % (innerTabControls,
+       detailsTabId,
+       editDirNameId,
+       dialogEntries[editHostname].html(self),
+       dialogEntries[editPort].html(self),
+       dialogEntries[editAttribute].html(self),
+       FormUtils.formSubmitButtons(self, { 'name': 'editCRLDirName', 'value': 'Apply' }),
+       crlTabId,
+       submitButtons,
+       historyTable.html(self))
+       
+    editDivContent='''
+<div id="%s" class="CDP_edit midLevel">
+  <h3>Certificate Authority:</h3>
+  <p class="CDP_edit_CAName indent"></p>
+  <div class="CDP_edit_override hidden">
+    <h3>Manual CDP Override URI:</h3>
+    <p class="CDP_edit_override_value indent"></p>
+  </div>
+  <div class="CDP_edit_auto_CDPs hidden">
+    <h3>Automatic CDPs:</h3>
+    <ul class="CDP_edit_CDPs indent">
+      <li class="dummy"></li>
+    </ul>
+  </div>
+  <div class="CDP_edit_details hidden">
+    %s
+  </div>
+</div>
+''' % (editNodeId,
+       CDPDetailContent)
+
+    # edit div for manual CDP override table (CA and peering CA)
+    editNodeId = peering and 'CDPManual_edit_peering' or 'CDPManual_edit'
+    tabSetId = peering and 'CDPManualTabs_peering' or 'CDPManualTabs'
+    detailsTabId = peering and 'CDPManualTab_details_peering' or 'CDPManualTab_details'
+    crlTabId = peering and 'CDPManualTab_crl_peering' or 'CDPManualTab_crl'
+    innerTabControls = FormUtils.radioTabControl(
+            self,
+            tabSetId,
+            ('details', 'CDP Details', detailsTabId),
+            ('crl', 'View CRL', crlTabId))
+    manualApplyButton = FormUtils.formSubmitButtons(self, {
+            'name': peering and 'editManualCDPPeering' or 'editManualCDP',
+            'value': 'Apply'
+    })
+    submitButtons = FormUtils.formSubmitButtons(self, {
+            'name': 'updateCRL',
+            'value': 'Check For Update',
+            'onclick': 'queryCRLNow(true); return false;'
+    })
+    manualURINodeId = peering and 'editManualCDPPeering_URI' or 'editManualCDP_URI'
+    ManualCDPDetailContent = '''
+<div class="tabControl">
+  <div class="grayBorder">
+    %s
+    <div class="CDPManualTab" id="%s">
+      %s
+      %s
+    </div>
+    <div class="CDPManualTab" id="%s">
+      <div class="CDP_view_error hidden"></div>
+      <h3>CRL:</h3>
+      <div class="CDP_view_CRL"></div>
+      %s
+      %s
+    </div>
+  </div>
+</div>
+''' % (innerTabControls,
+       detailsTabId,
+       dialogEntries[manualURINodeId].html(self, format='block'),
+       manualApplyButton,
+       crlTabId,
+       submitButtons,
+       historyTable.html(self))
+
+    manualEditDivContent='''
+<div id="%s" class="CDPManual_edit midLevel">
+  <h3>Certificate Authority:</h3>
+  <p class="CDP_edit_CAName indent"></p>
+  <h3>CDP:</h3>
+  <p class="CDP_edit_CDPName indent"></p>
+  %s
+</div>
+''' % (editNodeId,
+       ManualCDPDetailContent)
+    return manual and manualEditDivContent or editDivContent
+</psp:method>
+
+<%
+sslCDPTable.editDivContent = self.CDPEditContent(False, False, dialogEntries, sslCRLHistoryTable)
+sslCDPPeeringTable.editDivContent = self.CDPEditContent(True, False, dialogEntries, sslCRLHistoryPeeringTable)
+
+manualCDPAddDivContent='''
+<div class="midLevel">
+    %s
+    %s
+</div>
+''' % (dialogEntries['addManualCDP_CAName'].html(self, format='block'),
+       dialogEntries['addManualCDP_URI'].html(self, format='block'))
+sslManualCDPTable.addDivContent = manualCDPAddDivContent
+manualCDPPeeringAddDivContent='''
+<div class="midLevel">
+    %s
+    %s
+</div>
+''' % (dialogEntries['addManualCDPPeering_CAName'].html(self, format='block'),
+       dialogEntries['addManualCDPPeering_URI'].html(self, format='block'))
+sslManualCDPPeeringTable.addDivContent = manualCDPPeeringAddDivContent
+
+sslManualCDPTable.editDivContent = self.CDPEditContent(False, True, dialogEntries, sslManualCRLHistoryTable)
+sslManualCDPPeeringTable.editDivContent = self.CDPEditContent(True, True, dialogEntries, sslManualCRLHistoryPeeringTable)
+
+## Conventional CAs and Peering CAs each have a separate tab
+## More can be added in future if there are more types of CAs
+## (eg apache/webasd CAs)
+tableTabControls = FormUtils.radioTabControl(
+            self,
+            'tableTabs',
+            ('cas', 'CAs', 'tableTab_ca'),
+            ('peering_cas', 'Peering CAs', 'tableTab_peering'))
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="sslCRLForm">
+  <div>
+    <input type="hidden" name="_action_" value="sslCDPs" />
+    <input type="hidden" name="isPeering" value="false" />
+    
+    <fieldset>
+      <legend>CRL Settings</legend>
+      <%= dialogEntries['polling_enable'].html(self) %>
+      <%= dialogEntries['polling_enable_peering'].html(self) %>
+      <%= nodeEntries['failHandshakes'].html(self) %>
+      <%= FormUtils.formSubmitButtons(self) %>
+    </fieldset>
+    
+    <div id="tableTabs" class="tabControl">
+      <div class="grayBorder">
+        <%= tableTabControls %>
+        <div id="tableTab_ca">
+          <input type="hidden" name="CANameCache"/>
+          <input type="hidden" name="CDPIdxCache"/>
+          <%= sslCDPTable.html(self, 'midLevel') %>
+          <%= sslManualCDPTable.html(self, 'topLevel') %>
+          <%= sslCRLsTable.html(self, 'topLevel') %>
+        </div>
+        <div id="tableTab_peering">
+          <input type="hidden" name="CANameCache_peering"/>
+          <input type="hidden" name="CDPIdxCache_peering"/>
+          <%= sslCDPPeeringTable.html(self, 'midLevel') %>
+          <%= sslManualCDPPeeringTable.html(self, 'topLevel') %>
+          <%= sslCRLsPeeringTable.html(self, 'topLevel') %>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+</form>
+
+<%
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+
+// <![CDATA[
+
+// A gimmick to inform the page which tab (CAs/Peering CAs) is selected
+// so it can do the right thing in a variety of circumstances
+var pageTabs = Y.all('#tableTabs>div>div>a');
+pageTabs.on('click', function(e) {
+    var tabContent = Y.Node.getDOMNode(e.target).innerHTML;
+    $('sslCRLForm').elements['isPeering'].value = (tabContent == 'Peering CAs' ? 'true' : 'false' );
+    //closeAllEdits();
+});
+
+// preEditClick hook from AET.editClick, called before the edit window logic is invoked
+var closeAll = function(table, element, attribId) {
+    closeAllEdits();
+}
+sslCDPTable.preEditClick = closeAll;
+sslCDPPeeringTable.preEditClick = closeAll;
+
+//Logic to populate the CRL tab in the edit div
+//This is kept separate because there is an update button that triggers this too
+var populateCRLTab = function(isManual) {
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var nameCache = isPeering ? 'CANameCache_peering' : 'CANameCache'
+    var idxCache = isPeering ? 'CDPIdxCache_peering' : 'CDPIdxCache'
+    var caName = form.elements[nameCache].value;
+    var cdpIdx = form.elements[idxCache].value;
+    var paramDict =  {p: 'sslCRL', ca: caName, cdp_idx: cdpIdx}
+    if (isPeering) {
+        paramDict['peering'] = 'true';
+    }
+    if (isManual) {
+        paramDict['manual'] = 'true';
+    }
+    var crlUrl = dictToUri('/mgmt/xmldata', paramDict);
+    var crlText;
+    simpleAjaxRequest(crlUrl, "GET", "", function(request) {
+        var crl = request.responseXML.documentElement.firstChild;
+        if (crl.childNodes.length) {
+            crlTextNode = crl.firstChild;
+            crlText = crlTextNode.firstChild.nodeValue;
+        }
+        var editNodeId;
+        if (isManual) {
+            editNodeId = isPeering ? 'CDPManual_edit_peering' : 'CDPManual_edit';
+        }
+        else {
+            editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit';
+        }
+        Y.one('#' + editNodeId + ' .CDP_view_CRL').setContent(crlText ? '<pre>' + crlText + '</pre>' :
+                                    '<span class="notAvailable">CRL Not Available</span>');
+        var historyParamDict = {ca: caName, cdp_idx: cdpIdx};
+        if (isPeering) {
+            historyParamDict['peering'] = 'true';
+        }
+        if (isManual) {
+            historyParamDict['manual'] = 'true'
+        }
+        var crlHistoryUrl = dictToUri('<%= sslCRLHistoryTableURL %>', historyParamDict);
+        var historyTable;
+        if (isManual) {
+            historyTable = isPeering ? sslManualCRLHistoryPeeringTable : sslManualCRLHistoryTable;
+        }
+        else {
+            historyTable = isPeering ? sslCRLHistoryPeeringTable : sslCRLHistoryTable;
+        } 
+        historyTable.sendRequest(crlHistoryUrl);
+        var crlParamDict = {p: 'sslCRLList'};
+        if (isPeering) {
+            crlParamDict['peering'] = 'true';
+        }
+        sslCRLsTable.sendRequest(dictToUri('/mgmt/xmldata', crlParamDict));
+    });
+};
+var queryCRLNow = function(isManual) {
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var nameCache = isPeering ? 'CANameCache_peering' : 'CANameCache'
+    var idxCache = isPeering ? 'CDPIdxCache_peering' : 'CDPIdxCache'
+    var caName = form.elements[nameCache].value;
+    var cdpIdx = form.elements[idxCache].value;
+    if (! (caName && cdpIdx))
+        return;
+    var paramDict = {p: 'sslCRLQueryNow', ca: caName, cdp_idx: cdpIdx}
+    if (isPeering) {
+        paramDict['peering'] = 'true';
+    }
+    if (isManual) {
+        paramDict['manual'] = 'true';
+    }
+    var queryNowUrl = dictToUri('/mgmt/xmldata', paramDict);
+    simpleAjaxRequest(queryNowUrl, 'POST', '', function(request) {
+        var queryNow = request.responseXML.documentElement;
+        var error = queryNow.firstChild.getAttribute('error');
+        if (error) {
+            var editNodeId;
+            if (isManual) {
+                editNodeId = isPeering ? 'CDPManual_edit_peering' : 'CDPManual_edit';
+            }
+            else {
+                editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit';
+            }
+            Y.one('#' + editNodeId + ' .CDP_view_error').setContent('<span class="warning">' + error + '</span>')
+                .removeClass('hidden')
+        }
+        else {
+            setTimeout(function() {populateCRLTab(isManual);}, 1000);
+        }
+    });
+};
+var openEdit = function(target, cdpEl) {
+    closeAllEdits();
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    target.replaceClass('treeClosed', 'treeOpen');
+    var editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit'
+    var editNode = Y.one('#' + editNodeId);
+    var detailNode = Y.one('#' + editNodeId + ' .CDP_edit_details');
+    detailNode.removeClass('hidden');
+    // There is a funny rendering bug in FF that the next line appears to work around
+    Y.one('#' + editNodeId + ' .CDP_view_error').addClass('hidden');
+    target.ancestor('li').appendChild(editNode.removeChild(detailNode));
+    showCDPDetails(target.getAttribute('id'), cdpEl);        
+};
+var closeEdit = function(target) {
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    target.replaceClass('treeOpen', 'treeClosed');
+    var editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit'
+    var editNode = Y.one('#' + editNodeId);
+    var detailNode = Y.one('#' + editNodeId + ' .CDP_edit_details');
+    var parent = target.ancestor('li');
+    // if parent contains the detail panel, remove it.
+    if (parent.contains(detailNode)) {
+        detailNode.addClass('hidden');
+        editNode.appendChild(parent.removeChild(detailNode));
+    }
+};
+var closeAllEdits = function() {
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit'
+    var allNavs = Y.all('#' + editNodeId + ' .CDP_edit_CDPs .treeNav');
+    Y.each(allNavs, function(value, index, array) {
+        closeEdit(value);
+    });
+}
+var showCDPDetails = function(cdpId, cdpEl, isManual) {
+    var tokens = cdpId.split('|');
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var nameCache = isPeering ? 'CANameCache_peering' : 'CANameCache'
+    var idxCache = isPeering ? 'CDPIdxCache_peering' : 'CDPIdxCache'
+    form.elements[nameCache].value = tokens[0];
+    form.elements[idxCache].value = tokens[1];
+    if (! isManual) {
+        var apList = cdpEl.childNodes;
+        var editNodeId = isPeering ? 'CDP_edit_peering' : 'CDP_edit';
+        var dirEditId = isPeering ? 'CDP_edit_dirname_peering' : 'CDP_edit_dirname';
+        Y.one('#' + editNodeId + ' .CDP_view_error').all('span').remove();
+        var cdpUl = Y.one('#' + editNodeId + ' .CDP_edit_APList');
+        cdpUl.all('li').remove();
+        Y.each(apList, function(value, index, array) {
+            prefix = value.getAttribute('prefix')
+            address = value.getAttribute('address')
+            cdpUl.append('<li><span class="CDP_edit_ap_prefix">' + prefix + ':</span>'
+                + '<span class="CDP_edit_ap_address">' + address + '</span></li>');
+        });
+        
+        if (cdpEl.getAttribute('cdp_updatable') != 'true') {
+            enableElements(dirEditId, false);
+            enableElements(dirEditId, 'hide');
+        } else {
+            enableElements(dirEditId, true);
+            var cdpHostname =  cdpEl.getAttribute('cdp_hostname');
+            var cdpAttribute = cdpEl.getAttribute('cdp_attribute');
+            var cdpPort = cdpEl.getAttribute('cdp_port');
+            if (cdpPort == 0)
+            {
+                cdpPort = '';
+            }
+            editHostname = isPeering ? 'editCDPSettingsPeering_Hostname' : 'editCDPSettings_Hostname';
+            editPort = isPeering ? 'editCDPSettingsPeering_Port' : 'editCDPSettings_Port';
+            editAttribute = isPeering ? 'editCDPSettingsPeering_Attribute' : 'editCDPSettings_Attribute';
+            setFormValue(form, editHostname, cdpHostname);
+            setFormValue(form, editPort, cdpPort);
+            setFormValue(form, editAttribute, cdpAttribute);
+        }
+    }
+    populateCRLTab(isManual);
+    return true;
+};
+
+var cdpEditEntry = function(editName) {
+    var form = $('sslCRLForm');
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var caEl = this.getEntryElement('ca_name', editName);
+    var editDivId = isPeering ? 'CDP_edit_peering' : 'CDP_edit';
+    Y.one('#' + editDivId + ' .CDP_edit_CAName').setContent(editName);
+    var override = caEl.getAttribute('override');
+    if (override) {
+        Y.one('#' + editDivId + ' .CDP_edit_override').removeClass('hidden');
+        Y.one('#' + editDivId + ' .CDP_edit_auto_CDPs').addClass('hidden');
+        Y.one('#' + editDivId + ' .CDP_edit_override_value').setContent(override);
+    }
+    else {
+        Y.one('#' + editDivId + ' .CDP_edit_override').addClass('hidden');
+        Y.one('#' + editDivId + ' .CDP_edit_auto_CDPs').removeClass('hidden');
+        Y.one('#' + editDivId + ' .CDP_edit_override_value').setContent('');
+    }
+    var cdpNodes = caEl.childNodes;
+    var cdpListNode = Y.one('#' + editDivId + ' .CDP_edit_CDPs');
+    cdpListNode.all('li').remove();
+    var cdpDict = {};
+    Y.each(cdpNodes, function(value, index, array) {
+        var cdpName = value.getAttribute('name');
+        var cdpId = editName + '|' + value.getAttribute('index');
+        cdpDict[cdpId] = value;
+        cdpListNode.append('<li><a id="' + cdpId + '" class="treeNav treeClosed">'
+                          + '<span class="CDP_edit_CDPName">' + cdpName + '</span></a></li>');
+    });
+    cdpListNode.all('.treeNav').on('click', function(e) {
+        var target = e.currentTarget;
+        if (target.hasClass('treeClosed')) {
+            var cdpId = target.getAttribute('id');
+            openEdit(target, cdpDict[cdpId]);
+        }
+        else {
+            closeEdit(target);
+        }
+    })
+}
+sslCDPTable.editEntry = cdpEditEntry;
+sslCDPPeeringTable.editEntry = cdpEditEntry;
+
+var manualCDPEditEntry = function(editName) {
+    var el = this.getEntryElement('ca_name', editName);
+    var cdpName = el.getAttribute('crl_entity');
+    // for a manual override there is only one CDP
+    var cdpIdx = 1;
+    var cdpId = editName + '|' + cdpIdx;
+    var uri = el.getAttribute('uri');
+    var form = $('sslCRLForm')
+    var isPeeringStr = form.elements['isPeering'].value;
+    var isPeering = (isPeeringStr == 'true');
+    var editDivId = isPeering ? 'CDPManual_edit_peering' : 'CDPManual_edit';
+    var nameField = isPeering ? 'editManualCDPPeering_CAName' : 'editManualCDP_CAName'
+    var uriField = isPeering ? 'editManualCDPPeering_URI' : 'editManualCDP_URI'
+    Y.one('#' + editDivId + ' .CDP_edit_CAName').setContent(editName);
+    Y.one('#' + editDivId + ' .CDP_edit_CDPName').setContent(cdpName);
+    // hidden fields
+    setFormValue(form, nameField, editName);
+    setFormValue(form, uriField, uri);
+    showCDPDetails(cdpId, el, true)
+};
+sslManualCDPTable.editEntry = manualCDPEditEntry;
+sslManualCDPPeeringTable.editEntry = manualCDPEditEntry;
+
+var valid_cdpUrl = function(val) {
+    if (!val.match(/^(http|ldap):\/\/./)) {
+        throw 'The url must be <protocol>://<location>, http or ldap only.';
+    }
+}
+
+// ]]>
+
+</script>

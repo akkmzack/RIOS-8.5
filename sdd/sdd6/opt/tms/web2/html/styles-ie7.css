@@ -1,0 +1,172 @@
+/*
+ * styles-ie7.css
+ * Support for IE7 CSS bugs and departures goes here.
+ * Author: Robin Schaufler
+ */
+
+body {
+  padding-bottom: 20px;
+}
+
+p.announcement, .rawText {
+  white-space: pre;
+  word-wrap: break-word;
+}
+
+select, option {
+  behavior: url(/option.htc);
+}
+/*
+ * we need a way to avoid option.htc's actions on select pull-downs which
+ * 1) have an onchange attribute AND
+ * 2) get moved around in the DOM tree ,
+ * as the onDetach() function in option.htc causes havoc on the select's
+ * onchange when a containing HTML Element gets moved.
+ * See http://bugzilla.lab.nbttech.com/bugzilla/show_bug.cgi?id=90499
+ */
+select.noOptionHTC {
+  behavior: none;
+}
+
+/* simulates display: inline-block */
+table.stackedNodeEntry {
+  zoom: 1;
+  *display: inline;
+}
+
+div#username a:link, div#username a:visited {
+  color: white;
+}
+
+/*
+ * Without a border the menu bar overlaps the white border between the
+ * header and the page contents.  This creates an unsightly gap around
+ * the menu bar, but oh well...
+ */
+div#menuBar {
+  border: 1px solid #27293D;
+}
+
+/*
+ * Without this the cursor doesn't turn into a hand when it's placed
+ * over a status icon link.
+ */
+.headerDynamic a.icon {
+  cursor: hand;
+}
+
+/*
+ * We need to set the font size and line height to 0 to get IE to
+ * shrink the LI vertically.
+ *
+ * IE also puts some extra space between the top of the nav rule and
+ * the bottom of the preceding menu item.  Set the top margin to get
+ * rid of this.
+ */
+div.mainNav .navRule {
+  font-size: 0px;
+  line-height: 0px;
+  margin-top: -1px;
+}
+
+/*
+ * zoom is a proprietary attribute that has the side-effect of "adding
+ * layout" on MSIE.  Without it the hover behavior is only triggered
+ * when the mouse is over the link text.
+ *
+ * http://www.webmasterworld.com/css/3377720.htm
+ * http://msdn2.microsoft.com/en-us/library/bb250481.aspx
+ * http://www.satzansatz.de/cssd/onhavinglayout.html
+ */
+div.mainNav .navlink_1,
+div.mainNav .navlink_2 {
+  zoom: 1;
+}
+
+/*
+ * This triggers the menu item hover behavior when the mouse is placed
+ * anywhere over the button.  Otherwise it only occurs when it rolls
+ * over the text.
+ */
+div.submenuPanel .navlink_0 {
+  background-image: url(/images/bgfix.gif);
+}
+
+a#onlineHelpLink {
+  position: relative;
+  top: -1px;
+}
+
+.ajaxEntryTable {
+  /*
+   * IE7 Peek-a-boo bug fix. See bug 57436.
+   * This is another incarnation of the Peek-a-boo bug. Strangely, the
+   * suggested "min-width: 0;" fix for IE7 has no effect on this with
+   * IE7. Instead the IE6 fix seems to work for this.
+   */
+  position: relative;
+}
+
+/*
+ * The "position: relative" fix above breaks a bunch of stuff all over
+ * the UI.  Here are fixes for the fix:
+ */
+#mobileEntitiesTable_main,              /* bug 67147 */
+table.containsAET .ajaxEntryTable,        /* bug 66503 */
+form.graphControlForm + .ajaxEntryTable,  /* bug 71061 */
+form.graphControlForm  .ajaxEntryTable,  /* bug 80767 */
+#rbmUsersTable_main                       /* bug 71125 */
+{
+  position: static;
+}
+
+.ajaxEntryTable_menuBar ul {
+  height: 100%;
+}
+.ajaxEntryTable_table td a img {
+  vertical-align: text-bottom;
+}
+
+.ajaxEntryTable_table img.editCloseIcon {
+  width: 10px;
+  height: 10px;
+  padding-left: 4px;
+  vertical-align: middle;
+}
+
+select.combo {
+  width: 148px;
+}
+input.combo {
+  left: 3px;
+  padding: 0px 0px 0px 1px;
+  top: 3px;
+}
+
+/*
+ * Checkboxes have some extra padding on IE that we can't seem to get
+ * rid of.  Modify the button position here to compensate.
+ */
+#groupsTable_table .ajaxEntryTable_reorderCheckboxWrapper button { top: 4px; }
+
+/*
+ * A few styles to deal with scrollbars on the SSL CRL mgmt page
+ */
+.CDPTab, .CDPManualTab {
+    padding-bottom: 10px;
+    overflow-y: hidden;
+}
+.CDP_edit, .CDPManual_edit {
+    padding-bottom: 15px;
+    overflow-y: hidden;    
+}
+.treeNav {
+    display: block;
+    float: left;
+}
+.CDP_edit_CDPs li {
+    display: block;
+}
+.CDP_edit_details {
+    margin-top: 15px;
+}

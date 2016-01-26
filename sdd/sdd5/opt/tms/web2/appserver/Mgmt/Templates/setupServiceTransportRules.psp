@@ -1,0 +1,546 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Lit Min Lee
+##
+## setupServiceSCPS.psp
+## The SCPS Configuration.
+###
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils: NodeEntry, FormUtils: NodeEntryAlarm, ajaxentrytable, PagePresentation:Pagelet,copy" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceGeneral',
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupPortLabels',
+        'reportConnections',
+        'reportConnectionHistory',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+#transportRulesTable_main { width: 100%; }
+
+table tbody.padded tr:first-child td {
+  padding-top: 1em;
+}
+
+.tcpOptimizer {
+  width: 500px !important;
+}
+
+table tbody tr td.centered,
+table thead tr th.centered {
+  text-align: center;
+}
+
+#ratePacingDiv {
+  color: #0000B0;
+  background-color: white;
+  border: 1px solid black;
+  padding: 6px 10px;
+  margin: 11px 0 0 109px;
+  width: 400px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'lanSendSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/lan/socket_send_buf_size',
+            type='uint32',
+            validate=('intInRange', '[4096, 4294967295]'),
+            widgetClass='medium',
+            label='LAN Send Buffer Size',
+            units='bytes'),
+        'lanReceiveSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/lan/socket_recv_buf_size',
+            type='uint32',
+            validate=('intInRange', '[4096, 4294967295]'),
+            widgetClass='medium',
+            label='LAN Receive Buffer Size',
+            units='bytes'),
+        'wanSendSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/wan/default/socket_send_buf_size',
+            type='uint32',
+            validate=('intInRange', '[16384, 4294967295]'),
+            widgetClass='medium',
+            label='WAN Default Send Buffer Size',
+            units='bytes'),
+        'wanReceiveSize': NodeEntry(
+            path='/rbt/sport/blade/general/config/wan/default/socket_recv_buf_size',
+            type='uint32',
+            validate=('intInRange', '[16384, 4294967295]'),
+            widgetClass='medium',
+            label='WAN Default Receive Buffer Size',
+            units='bytes'),
+        'enableSEITable': FormUtils.NodeEntry(
+            path='/rbt/sport/vegas/config/sat_opt/scps/sei/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Single-Ended Connection Rules Table'),
+        'enableLegacyComp': FormUtils.NodeEntry(
+            path='/rbt/sport/vegas/config/sat_opt/scps/legacy_comp/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SkipWare Legacy Compression'),
+        'enableGlobalRateCapping': FormUtils.NodeEntry(
+            path='/rbt/sport/vegas/config/rate_cap_enabled',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Rate Pacing'),
+        'tcpOptimization': NodeEntryAlarm(
+            readPath='/rbt/sport/vegas/state/cong_ctrl/mode',
+            path='/rbt/sport/vegas/config/cong_ctrl/mode',
+            type='uint8',
+            widget='radio',
+            label={ '2': 'Auto-Detect',
+                    '1': 'Standard (RFC-Compliant)',
+                    '3': 'HighSpeed',
+                    '4': 'Bandwidth Estimation',
+                    '6': 'SkipWare Per-Connection',
+                    '7': 'SkipWare Error-Tolerant',
+                    '5': 'RTT Invariant'})
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    # Port Label doesn't have a link for policy pages.
+    policyName, pathPrefix, cmcMode = self.retargetCmcPolicyNodes()
+    if (cmcMode):
+        portLabelText = 'Port or Port Label'
+    else:
+        portLabelText = 'Port or <a href="/mgmt/gui?p=setupPortLabels">Port Label</a>'
+
+    addOptions=[('1', 'Standard (RFC-Compliant)'),
+                ('3', 'HighSpeed'),
+                ('4', 'Bandwidth Estimation')]
+
+    mgmt = self.session().value('mgmt')
+    scpsLicensed = Nodes.present(mgmt, pathPrefix + '/rbt/sport/vegas/state/scps/licensed') == 'true' or cmcMode
+    if scpsLicensed:
+        addOptions.append(('6', 'SkipWare Per-Connection'))
+        addOptions.append(('7', 'SkipWare Error-Tolerant'))
+
+    editOptions=copy.deepcopy(addOptions)
+    editOptions.append(('5', 'RTT Invariant'))
+
+    return {
+        'transport_idx': FormUtils.NodeEntry(
+            name='idx',
+            widget='select',
+            label='Position'),
+        'transport_src/network': FormUtils.NodeEntry(
+            name='src/network',
+            widgetClass='ipv6subnet',
+            value='All-IP',
+            label='Source Subnet',
+            validate='mappedSubnet'),
+        'transport_dst/network': FormUtils.NodeEntry(
+            name='dst/network',
+            widgetClass='ipv6subnet',
+            value='All-IP',
+            label='Destination Subnet',
+            validate='mappedSubnet'),
+        'transport_dst/port_label': FormUtils.NodeEntry(
+            name='dst/port_label',
+            widgetClass='portOrLabel',
+            value='all',
+            label=portLabelText,
+            validate='portPortLabel'),
+        'transport_vlan': FormUtils.NodeEntry(
+            name='vlan',
+            value='all',
+            label='VLAN Tag ID',
+            validate='vlan'),
+        'transport_scps/allow_only_scps_peering': FormUtils.NodeEntry(
+            name='scps/allow_only_scps_peering',
+            type='bool',
+            widget='checkboxLeft',
+            disabled='true',
+            label='TCP Proxy'),
+        'transport_rate_cap_enabled': FormUtils.NodeEntry(
+            name='rate_cap_enabled',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Rate Pacing'),
+        'editTransport_cong_ctrl_algo': FormUtils.NodeEntry(
+            name='cong_ctrl_algo',
+            selectOptions=editOptions,
+            value=scpsLicensed and '6' or '1',
+            label='Congestion Control Algorithm'),
+        'addTransport_cong_ctrl_algo': FormUtils.NodeEntry(
+            name='cong_ctrl_algo',
+            selectOptions=addOptions,
+            value='6',
+            label='Congestion Control Algorithm'),
+        'transport_scps/allow_scps': FormUtils.NodeEntry(
+            name='scps/allow_scps',
+            widget='checkboxLeft',
+            value='true',
+            label='SCPS Discover'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, cmcMode = self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+scpsLicensed = Nodes.present(mgmt, pathPrefix + '/rbt/sport/vegas/state/scps/licensed') == 'true' or cmcMode
+congestionCtrl = Nodes.present(mgmt, pathPrefix + '/rbt/sport/vegas/config/cong_ctrl/mode')
+
+dialogEntries = self.dialogEntries()
+addTransport = 'addTransport_'
+editTransport = 'editTransport_'
+
+ruleIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/transport/config/rule')
+ruleIndices.sort(FormUtils.alphanumericCompare)
+ruleIndices.append(ruleIndices and str(1 + int(ruleIndices[-1])) or '1')
+dialogEntries['transport_idx'].selectOptions = [('1', 'Start')] + ruleIndices + [(ruleIndices[-1], 'End')]
+dialogEntries['transport_idx'].value = ruleIndices[-1]
+
+# Handle dynamic table columns.
+headerSpec=['', 'Rule', 'Source', 'Destination', 'VLAN', ('Traffic', 'centered')]
+rowSpec="""[AjaxEntryTable.tdReorderCheckbox('id',
+                                 'moveFromTransportRule_',
+                                 'moveToTransportRule_',
+                                 ['default']),
+  AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+  AjaxEntryTable.tdAttr('src-network'),
+  AjaxEntryTable.tdAttr('dst-pretty'),
+  AjaxEntryTable.tdAttr('vlan-pretty'),
+  AjaxEntryTable.tdAttr('traffic-status-pretty', 'centered'),
+"""
+if scpsLicensed: {
+    headerSpec.extend([('SCPS Discover', 'centered')])
+    rowSpec += "AjaxEntryTable.tdAttr('scps-discovery-pretty', 'centered'),"
+}
+headerSpec.extend([('TCP Proxy', 'centered'),
+                   ('Congestion Control Algorithm', 'centered'),
+                   ('Rate Pacing', 'centered')])
+rowSpec += """AjaxEntryTable.tdAttr('allow-proxy-pretty', 'centered'),
+              AjaxEntryTable.tdAttr('cong_ctrl_algo-pretty', 'centered'),
+              AjaxEntryTable.tdAttr('rate_cap_enabled-pretty', 'centered')]"""
+headerSpec=tuple(headerSpec)
+
+transportRulesTable = ajaxentrytable.AjaxEntryTable('transportRules',
+    titleText='Single-Ended Connection Rules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=transportRules'),
+    headerSpec=headerSpec,
+    rowSpec=rowSpec,
+    emptyMessage='No current Transport rules.',
+    removeName='removeRules',
+    removeButtonText='Remove Selected Rules',
+    moveName='moveRules',
+    moveButtonText='Move Selected Rules...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add New Rule',
+    addButtonName='addTransportRule',
+    editButtonName='editTransportRule')
+
+# Creates an 'ADD' or 'EDIT' div block.
+def makeDiv(id, transport, transportIdx, tbodyClass): {
+    dialogEntries['transport_scps/allow_only_scps_peering'].action = 'updateTrafficStatus("%s")' % transport
+    dialogEntries['transport_scps/allow_scps'].action = 'updateTrafficStatus("%s")' % transport
+    if scpsLicensed: {
+        scpsFlags = dialogEntries['transport_scps/allow_scps'].html(self, namePrefix=transport)
+        notice = '''<p>For "passthrough" (no optimization) uncheck both "SCPS Discover"
+                    and "TCP Proxy."</p>'''
+    }
+    else: {
+        scpsFlags = ''
+        notice = ''
+    }
+
+    return '''
+  <div class="midLevel" id="%(id)s">
+    <input type="hidden" name="%(transport)sindex" />
+    <table>
+      %(transport_idx)s
+      <tbody class="%(tbodyClass)s">
+        %(transport_src/network)s
+        %(transport_dst/network)s
+        %(transport_vlan)s
+      </tbody>
+    </table>
+    <fieldset>
+      <legend>Traffic</legend>
+      %(notice)s
+      <div class="nodeEntry">
+        <label class="labelPaddedRight">Status:</label><label id="%(transport)sTrafficStatus">n/a</label>
+      </div>
+      %(scpsFlags)s
+      %(transport_scps/allow_only_scps_peering)s
+      <div id="%(transport)sTcpProxyNoteDiv">
+        <strong>Note:</strong> "TCP Proxy" optimization is in effect only if "SCPS Discover" cannot be negotiated.
+      </div>
+      <fieldset id="%(transport)sTcpOptimizeDiv" class="tcpOptimizer">
+        <legend>TCP Optimization</legend>
+        %(transport_cong_ctrl_algo)s
+        <div>
+          %(transport_rate_cap_enabled)s
+        </div>
+      </fieldset>
+    </fieldset>
+  </div>
+''' % {
+       'id':                id,
+       'transport_idx':     transportIdx,
+       'tbodyClass':        tbodyClass,
+       'scpsFlags':         scpsFlags,
+       'transport':         transport,
+       'notice':            notice,
+       'transport_src/network':
+                            dialogEntries['transport_src/network'].html(self, namePrefix=transport),
+       'transport_dst/network':
+                            dialogEntries['transport_dst/network'].html(self, namePrefix=transport,
+                                            more=[dialogEntries['transport_dst/port_label']]),
+       'transport_vlan':    dialogEntries['transport_vlan'].html(self, namePrefix=transport),
+       'transport_scps/allow_scps':
+                            dialogEntries['transport_scps/allow_scps'].html(self,
+                                            namePrefix=transport),
+       'transport_cong_ctrl_algo':
+                            dialogEntries[transport + 'cong_ctrl_algo'].html(self, namePrefix=transport,
+                                            format='block'),
+       'transport_scps/allow_only_scps_peering':
+                            dialogEntries['transport_scps/allow_only_scps_peering'].html(self,
+                                            namePrefix=transport),
+       'transport_rate_cap_enabled':
+                            dialogEntries['transport_rate_cap_enabled'].html(self, namePrefix=transport),
+    }
+}
+
+transportRulesTable.addDivContent = makeDiv('addRuleDiv', addTransport, '<tbody>%s</tbody>' \
+                                            % dialogEntries['transport_idx'].html(self,
+                                            namePrefix=addTransport), 'padded')
+transportRulesTable.editDivContent = makeDiv('editRuleDiv', editTransport, '', '')
+
+self.beginPagelet()
+
+if scpsLicensed: {
+    nodeEntries['enableSEITable'].enableDiv='enableLegacyCompDiv'
+    nodeEntries['enableSEITable'].tooltip = '''Enable optimization for single-ended SCPS connections
+                                as indicated in the rules table below. This does not affect the
+                                optimization of SCPS connections between Steelheads.'''
+    nodeEntries['tcpOptimization'].tooltip = {
+                '2': '''For inner connections, "Auto-Detect" will attempt to use the peer's mode if known,
+                    SkipWare when negotiated, or default to Standard TCP for all other cases. For single-ended
+                    connections, "Auto-Detect" will attempt to use SkipWare when possible or Standard
+                    TCP otherwise.''' }
+} else: {
+    nodeEntries['tcpOptimization'].tooltip = {
+                '2': 'For inner and single connections, "Auto-Detect" will default to Standard TCP.' }
+    nodeEntries['tcpOptimization'].label['6'] = 'SkipWare Per-Connection (SCPS License Required)'
+    nodeEntries['tcpOptimization'].label['7'] = 'SkipWare Error-Tolerant (SCPS License Required)'
+}
+
+# Determine if any rules have 'rate pacing' enabled.
+
+showRatePacingDiv = Nodes.present(mgmt, '/rbt/sport/vegas/config/rate_cap_enabled') == 'true'
+if not showRatePacingDiv: {
+    rules = Nodes.getTreeifiedSubtree(mgmt, '/rbt/sport/transport/config/rule')
+    for r in rules: {
+        rule = rules[r]
+        if 'scps' in rule: {
+            # Remember that 'allow_only_scps_peering' is an inverted flag.
+            allowProxy = rule['scps'].get('allow_only_scps_peering', 'true') == 'false'
+            scpsDiscovery = scpsLicensed and rule['scps'].get('allow_scps', 'true') == 'true'
+            if allowProxy or scpsDiscovery: {
+                if rule['rate_cap_enabled'] == 'true': {
+                    showRatePacingDiv = True
+                    break
+                }
+            }
+        }
+    }
+}
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="transportOptimizationForm">
+  <fieldset>
+    <legend>TCP Optimization</legend>
+    <fieldset class="tcpOptimizer">
+      <legend>Congestion Control Algorithm</legend>
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='2') %>
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='1') %>
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='3') %>
+      <%= nodeEntries['tcpOptimization'].html(self, format='block', value='4') %>
+      <div id="SCPSOptimizations">
+        <%= nodeEntries['tcpOptimization'].html(self, format='block', value='6') %>
+        <%= nodeEntries['tcpOptimization'].html(self, format='block', value='7') %>
+      </div>
+<%
+if congestionCtrl == '5': {  # hidden unless selected
+    self.write('<div id="hiddenOptimizations">')
+    self.write(nodeEntries['tcpOptimization'].html(self, format='block', value='5' ))
+    self.write('</div>')
+}
+%>
+    </fieldset>
+    <%= nodeEntries['enableGlobalRateCapping'].html(self) %>
+  </fieldset>
+  <fieldset>
+    <legend>Buffer Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['lanSendSize'].html(self) %>
+        <%= nodeEntries['lanReceiveSize'].html(self) %>
+        <%= nodeEntries['wanSendSize'].html(self) %>
+        <%= nodeEntries['wanReceiveSize'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Single-Ended Connections</legend>
+    <div>
+      <%= nodeEntries['enableSEITable'].html(self) %>
+<%
+if scpsLicensed: {
+%>
+      <div id="enableLegacyCompDiv" class="midLevel indent">
+        <%= nodeEntries['enableLegacyComp'].html(self) %>
+      </div>
+<%
+}
+%>
+    </div>
+  </fieldset>
+  <div class="midLevel">
+    <input type="hidden" name="_action_" value="setupServiceTransportRules" />
+    <%= FormUtils.formSubmitButtons(self, ({'name': 'apply', 'value': 'Apply'})) %>
+  </div>
+</form>
+
+<%
+if showRatePacingDiv: {
+%>
+<div id="ratePacingDiv">
+  Rate pacing applies only to MX-TCP traffic as classified by QoS.
+</div>
+<%
+}
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="transportRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceTransportRules" />
+    <%= transportRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<%
+if not scpsLicensed: {
+    self.addOnload('disableScpsControls()')
+}
+self.addOnload('disableHiddenOptimizations()')
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+function disableHiddenOptimizations() {
+    enableElements('hiddenOptimizations', false);
+}
+
+function disableScpsControls() {
+    enableElements('SCPSOptimizations', false);
+}
+
+// Transport Rules Table Scripts
+function rttOptionIndex(options) {
+    for (var i = 0; i < options.length; ++i) {
+        if (options[i].value == '5') {
+            return i;
+        }
+    }
+    return -1;
+}
+
+transportRulesTable.addEntry = function(editName) {
+    updateTrafficStatus("<%=addTransport%>");
+}
+
+<%
+if not scpsLicensed: {
+%>
+transportRulesTable.updateHook = function() {
+
+    var form = document.getElementById('transportRulesForm');
+    form['addTransport_scps/allow_only_scps_peering'].checked = true;
+
+    if (transportRulesTable.editMode == 'edit') {
+        updateTrafficStatus("<%=editTransport%>");
+    }
+}
+<% } %>
+
+transportRulesTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = document.getElementById('transportRulesForm');
+
+    setFormValue(form, 'editTransport_index', editName);
+    setFormValue(form, 'editTransport_src/network', el.getAttribute('src-network'));
+    setFormValue(form, 'editTransport_dst/network', el.getAttribute('dst-network'));
+    setFormValue(form, 'editTransport_dst/port_label', el.getAttribute('dst-portlabel'));
+    setFormValue(form, 'editTransport_vlan', el.getAttribute('vlan'));
+    setFormValue(form, 'editTransport_scps/allow_scps', (el.getAttribute('scps-discovery') == 'true'));
+    setFormValue(form, 'editTransport_cong_ctrl_algo', (el.getAttribute('cong_ctrl_algo')));
+    setFormValue(form, 'editTransport_rate_cap_enabled', (el.getAttribute('rate_cap_enabled') == 'true'));
+    setFormValue(form, 'editTransport_scps/allow_only_scps_peering', (el.getAttribute('allow-proxy') == 'true'));
+
+    // RTT Invariant is a hidden option for the congestion control algorithm selector.
+    // We only want to show this in the drop down if it is already selected for this value
+    // (by setting it through the hidden command in the cli). Otherwise, remove the option.
+    var options = form.elements.editTransport_cong_ctrl_algo.options;
+    var rttSelected = el.getAttribute('cong_ctrl_algo') == '5';
+
+    var rttIndex = rttOptionIndex(options);
+    if (rttSelected) {
+        if (rttIndex == -1) {
+            options[options.length] = new Option('RTT Invariant','5');
+            options.selectedIndex = options.length - 1;
+        }
+    }
+    else {
+        if (rttIndex != -1) {
+            options.remove(rttIndex);
+        }
+    }
+    updateTrafficStatus("<%=editTransport%>");
+    return true;
+}
+
+// Update the status indicator which tells the user if optimization is on or not.
+function updateTrafficStatus(mode) {
+    var form = document.getElementById('transportRulesForm');
+    var allowProxy = form[mode + 'scps/allow_only_scps_peering'].checked;
+    var scpsDiscovery = form[mode + 'scps/allow_scps'];
+    scpsDiscovery = scpsDiscovery ? scpsDiscovery.checked : false;
+
+    if (allowProxy || scpsDiscovery) {
+        setElementText(mode + 'TrafficStatus', 'Optimized');
+        enableElements(mode + 'TcpOptimizeDiv', true);
+    }
+    else {
+        setElementText(mode + 'TrafficStatus', 'Passthrough');
+        enableElements(mode + 'TcpOptimizeDiv', false);
+    }
+
+    // Let the user know that allowProxy is secondary to scpsDiscovery when both are selected.
+    enableElements(mode + 'TcpProxyNoteDiv', (allowProxy && scpsDiscovery) || 'hide');
+}
+
+// ]]>
+</script>

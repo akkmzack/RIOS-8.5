@@ -1,0 +1,12 @@
+#!/bin/bash
+
+flag_file="/var/etc/disable_console_timeout"
+
+if [ -f "$flag_file" ]
+then
+    timeout_args=""
+else
+    timeout_args="-t 60"
+fi
+
+exec /sbin/agetty $timeout_args "$@"

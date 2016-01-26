@@ -1,0 +1,87 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+## Author: Michael Demmer (adapted code from Don Tillman)
+##
+## sanboot.psp
+## This is the template for the san boot mappings
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, OSUtils, interfacewidget, ajaxentrytable, PagePresentation:Pagelet, wsm" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#mappingTable_main { width: 50%; }
+'''
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'mac': NodeEntry(
+            name='mac',
+            type='string',
+            label='Client MAC address'),
+        'lunid': NodeEntry(
+            name='lunid',
+            type='uint32',
+            label='LUN Identifier')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+self.beginPagelet() 
+%>
+<div class="midLevel">
+<%
+
+addMapping = 'addMapping_'
+
+mappingTable = ajaxentrytable.AjaxEntryTable('mapping',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sanbootMappings'),
+    titleText='SAN Boot mappings',
+    emptyMessage='No current mappings.',
+    addButtonText='Add a New Mapping',
+    addButtonName='addMapping',
+    removeName='removeMappings',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedMapping_')
+
+    mappingTable.headerSpec = ('', 'Client MAC Address', 'LUN Identifier')
+    mappingTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedMapping_'),
+ AjaxEntryTable.tdAttr('mac'),
+ AjaxEntryTable.tdAttr('lunid')]"""
+
+mappingTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['mac'].html(self, namePrefix=addMapping),
+       dialogEntries['lunid'].html(self, namePrefix=addMapping))
+%>
+
+<a name="MainMappingTable" id="MainMappingTable"></a>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupSanbootMappings" />
+    <%= mappingTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupSanbootMappings" />
+    <input type="submit" value="Regenerate All Mappings"/>
+  </div>
+</form>
+
+<% self.endPagelet() %>

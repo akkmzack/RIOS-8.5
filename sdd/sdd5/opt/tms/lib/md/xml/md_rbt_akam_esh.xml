@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2011 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: akam_esh                                                -->
+<!--   Module Root: /rbt/akam                                               -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_akam_esh.c       -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/akam/config/myconfig</name>                          -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_akam_esh">
+
+<config>
+        <name>/rbt/akam/config/enable</name>
+        <description>Akamai SaaS Acceleration Service enabled</description>
+        <value type="bool">false</value>
+</config>
+
+<config>
+        <name>/rbt/akam/config/server</name>
+        <description>Akamai Cloud Service registration Server</description>
+        <value type="string">cloudportal.riverbed.com</value>
+</config>
+
+<config>
+        <name>/rbt/akam/config/port</name>
+        <description>Akamai Cloud Service registration port</description>
+        <value type="uint16">443</value>
+</config>
+
+<config>
+        <name>/rbt/akam/config/use_https</name>
+        <description>Akamai Cloud Service registration should use HTTPS</description>
+        <value type="bool">true</value>
+</config>
+
+<config>
+        <name>/rbt/akam/config/esh_url</name>
+        <description>Akamai Cloud Service main URL</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/ecode</name>
+        <description>Akamai Cloud Service entitlement code</description>
+        <value type="string">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/cust_esh_id</name>
+        <description>Unique (for this customer) ID for the SH</description>
+        <value type="string">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/akam_cust_id</name>
+        <description>Akamai Customer SRIP network ID</description>
+        <value type="string">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/srip_hostname_template</name>
+        <description>Akamai SureRoute Hostname Template</description>
+        <value type="string">a432.srip1.akasrip.net.00000000.%originip%.%cpcode%.3.cn.akasripcn.net</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<!-- SaaS Platform configuration data                                       -->
+<!-- This configuration data is indexed by App ID. In otherwords, SaaS data -->
+<!-- with the same App ID is for the same platform, regardless of the name. -->
+
+<config-wildcard>
+         <name>/rbt/akam/config/saas/state/app_id/*</name>
+         <description>Saas platform App ID local state</description>
+         <value type="string"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config>
+        <name>/rbt/akam/config/saas/state/app_id/*/enable</name>
+        <description>List of enable states by app_id</description>
+        <value type="bool">true</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config-wildcard>
+         <name>/rbt/akam/config/saas/app_id/*</name>
+         <description>Saas platform App ID</description>
+         <value type="string"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/name</name>
+        <description>Saas platform name</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/description</name>
+        <description>Saas platform description</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/cpcode</name>
+        <description>Akamai CP code for Saas service for this platform</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config-wildcard>
+         <name>/rbt/akam/config/saas/app_id/*/ip/*</name>
+         <description>Index of SaaS platform IP addresses</description>
+         <value type="string"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config-wildcard>
+         <name>/rbt/akam/config/saas/app_id/*/ip/*/addr/*</name>
+         <description>IP address for this index</description>
+         <value type="ipv4addr"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/ip/*/addr/*/start_port</name>
+        <description>Start port for this IP address</description>
+        <value type="uint16">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/ip/*/addr/*/end_port</name>
+        <description>End port for this IP address</description>
+        <value type="uint16">65535</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/saas/app_id/*/ip/*/addr/*/masklen</name>
+        <description>Mask length for this App ID IP address</description>
+        <value type="uint8">32</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config-wildcard>
+        <name>/rbt/akam/config/saas/cpcode/*</name>
+        <description>CPcode</description>
+        <value type="string"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config>
+        <name>/rbt/akam/config/saas/cpcode/*/app_id</name>
+        <description>App ID for a given CPcode</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config-wildcard>
+        <name>/rbt/akam/config/cert/*</name>
+        <description>List of Akamai Cloud Service SSL certificates</description>
+        <value type="uint32"/>
+        <db-policy>localdb</db-policy>
+</config-wildcard>
+
+<config>
+        <name>/rbt/akam/config/cert/*/name</name>
+        <description>Certificate name</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/cert/*/body</name>
+        <description>Certificate body</description>
+        <value type="string"></value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/refresh_period</name>
+        <description>Current refresh period in seconds</description>
+        <value type="duration_sec">300</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/last_update_time</name>
+        <description>Time of last update attempt</description>
+        <value type="uint32">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/last_update_msg</name>
+        <description>Text describing result of last update attempt</description>
+        <value type="string">Akamai Cloud Service is not initialized.</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/last_successful_contact</name>
+        <description>Time of last successful update</description>
+        <value type="uint32">0</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/server/cert/verify</name>
+        <description>Verify certificate presented by Portal</description>
+        <value type="bool">true</value>
+</config>
+
+<config>
+        <name>/rbt/akam/config/track_users/refresh_period</name>
+        <description>Current refresh period in seconds</description>
+        <value type="duration_sec">86400</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<action>
+        <name>/rbt/akam/action/track_users/upload_sca_users</name>
+        <description>List of the outlook users</description>
+        <action-func>mrae_handle_post_outlook_users_event</action-func>
+        <parameter type="string">list</parameter>
+</action>
+
+<config>
+        <name>/rbt/akam/config/track_users/state</name>
+        <description>SCA user tracking active/disabled</description>
+        <value type="bool">true</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<config>
+        <name>/rbt/akam/config/track_users/hash_sca_users</name>
+        <description>Send hash of SCA Users</description>
+        <value type="bool">true</value>
+        <db-policy>localdb</db-policy>
+</config>
+
+<event>
+        <name>/rbt/akam/track_users/event/get_sca_users</name>
+        <description>Event to get sca users</description>
+        <parameter>hash_users</parameter>
+</event>
+
+</node-list>

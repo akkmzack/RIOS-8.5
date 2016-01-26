@@ -1,0 +1,83 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticSnapshots
+## This is the template to display a table of snapshots.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/rbm_fake/debug/download/snapshot',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<psp:method name="css">
+    return '''
+#snapshotsTable_main { 
+        width:835px; 
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+snapshotsTable = ajaxentrytable.AjaxEntryTable('snapshots',
+  url='/mgmt/xmldata?p=snapshotFiles&errorRedirect=%s' %
+      HTTPUtils._makeQuerystringDestParameter(self.request()),
+  titleText='Process Dumps',
+  headerSpec=('',
+              'Download Link',
+              ('Timestamp', 'table_diagnosticfile_time'),
+              ('Size', 'table_diagnosticfile_size'),
+              ('MD5 Sum', 'table_diagnosticfile_md5sum')),
+  emptyMessage='No process dumps.',
+  removeName='removeFiles',
+  removeButtonText='Remove Selected',
+  removePrefix='ck_')
+
+snapshotsTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.td([AjaxEntryTable.a('href',
+                                     'click to download the file',
+                                     [AjaxEntryTable.attrText('name')])]),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('timestring')],
+                   'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('md5sum')],
+                    'table_diagnosticfile_md5sum')]"""
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="snapshotsForm">
+  <div>
+    <input type="hidden" name="_action_" value="removeDiagnosticFile" />
+    <input type="hidden" name="dir" value="snapshots" />
+    <%= snapshotsTable.html(self) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>

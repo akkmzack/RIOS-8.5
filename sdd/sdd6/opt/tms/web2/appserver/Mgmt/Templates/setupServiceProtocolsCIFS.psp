@@ -1,0 +1,209 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsCIFS.psp
+## This is the template for the server protocol settings, for NSF.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupPrepop', 'setupServiceProtocolsSMB2') %>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableLatency': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/latency_optimization',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Latency Optimization'),
+        'disableWrite': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/write_through',
+            type='bool',
+            widget='checkboxLeft',
+            label='Disable Write Optimization'),
+        'optConns':  NodeEntry(
+            path='/rbt/sport/blade/cifs/config/opt_enable_security_sig',
+            type='bool',
+            widget='checkboxLeft',
+            label='Optimize Connections with Security Signatures' + \
+                ' (that do not <b>require</b> signing)'),
+        'enableThrottling': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/dyn_write_throttling_in_use',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Dynamic Write Throttling'),
+        'applock': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/applock/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Applock Optimization'),
+
+        'printEnable': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/spoolss/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Print Optimization'),
+
+        'enableOverlap': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/oopen/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Overlapping Open Optimization'),
+        'optExtMode': NodeEntry(
+            path='/rbt/sport/blade/cifs/config/oopen/setting',
+            name='optExtMode',
+            type='uint32',
+            widget='radio',
+            label={'0':'Optimize only the following extensions',
+                   '1':'Optimize all except the following extensions'}),
+        'smbEnable': NodeEntry(
+            path='/rbt/sport/smbsigning/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SMB Signing',
+            enableDiv='smbSigningDiv'),
+        'smbMode': NodeEntry(
+            path='/rbt/sport/smbsigning/config/mode_type',
+            widget='radio',
+            label={'transparent': 'NTLM Transparent Mode',
+                   'delegation':  'NTLM Delegation Mode'},
+            tooltip={'transparent': 'Transparent Mode (default) provides SMB signed packets with transparent authentication.',
+                     'delegation': 'Delegation Mode re-signs SMB signed packets using Kerberos delegation architecture. This mode is only required if you enabled SMB signing in a prior RiOS release OR if you are optimizing SMB traffic for Windows 7 and newer SMB client versions.'}),
+        'kerbAuthSupportEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/smbsigning/config/native_krb',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Optimize signed-SMB connections that use Kerberos authentication.',
+            label='Enable Kerberos Authentication Support')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'oopenAllows': NodeEntry(
+            name='oopenAllows',
+            widgetClass='wide',
+            validate='validateExtensionListCIFS',
+            inputOptional=True),
+        'oopenDenys': NodeEntry(
+            name='oopenDenys',
+            widgetClass='wide',
+            validate='validateExtensionListCIFS',
+            inputOptional=True),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+oexts = Nodes.getMgmtSetEntries(mgmt,
+                                pathPrefix + '/rbt/sport/blade/cifs/config/oopen/extension')
+oopenAllows = [e for e in oexts if ('1' == oexts[e].get('setting'))]
+oopenAllows.sort()
+dialogEntries['oopenAllows'].value = ','.join(oopenAllows)
+oopenDenys = [e for e in oexts if ('0'== oexts[e].get('setting'))]
+oopenDenys.sort()
+dialogEntries['oopenDenys'].value = ','.join(oopenDenys)
+
+if pathPrefix: {
+    windowsDomainLink = 'Windows Domain'
+    windowsDomainAuthLink = 'Windows Domain Authentication'
+}
+else: {
+    windowsDomainLink = '<a href="/mgmt/gui?p=setupServiceDomain">Windows Domain</a>'
+    windowsDomainAuthLink = '<a href="/mgmt/gui?p=setupWinDomAuth">Windows Domain Authentication</a>'
+}
+%>
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Verify that the extension list has valid comma separated extensions.
+// A valid extension has no more than 255 characters  doesn't contain
+// the space character.
+function validateExtensionListCIFS(val) {
+
+    var extensions = val.split(',');
+
+    for (var i = 0; i < extensions.length; i++) {
+        extension=extensions[i];
+        if(!extension.match(/^[^\s]{1,255}$/)) {
+            throw 'A comma-separated list of extensions is required.';
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="cifsForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsCIFS" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableLatency'].html(self) %>
+      <%= nodeEntries['disableWrite'].html(self) %>
+      <%= nodeEntries['optConns'].html(self) %>
+      <%= nodeEntries['enableThrottling'].html(self) %>
+      <%= nodeEntries['applock'].html(self) %>
+      <%= nodeEntries['printEnable'].html(self) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Overlapping Open Optimization (Advanced)</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableOverlap'].html(self) %>
+      <div class="indent">
+        <%= nodeEntries['optExtMode'].html(self, value='0',
+            hint='(comma separated)') %>
+        <div id='oopenAllowsDiv' class="indent">
+          <%= dialogEntries['oopenAllows'].html(self, format='block') %>
+        </div>
+        <%= nodeEntries['optExtMode'].html(self, value='1',
+            hint='(comma separated)') %>
+        <div id='oopenDenysDiv' class="indent">
+          <%= dialogEntries['oopenDenys'].html(self, format='block') %>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>SMB Signing</legend>
+    <div class="midLevel">
+      <%= nodeEntries['smbEnable'].html(self) %>
+    </div>
+
+    <div class="midLevel">
+      <div id='smbSigningDiv' class="indent">
+        <%= nodeEntries['smbMode'].html(self, value='transparent') %>
+        <%= nodeEntries['smbMode'].html(self, value='delegation') %>
+        <%= nodeEntries['kerbAuthSupportEnable'].html(self) %>
+        <p>
+          Note: The server-side appliance must be joined to the 
+          <%= windowsDomainLink %> in order to use this feature. 
+          Additionally, NTLM Delegation Mode and Kerberos 
+          Authentication require configuration of 
+          <%= windowsDomainAuthLink %> on the server-side appliance.
+        </p>
+      </div>
+    </div>
+  </fieldset>
+
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

@@ -1,0 +1,476 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Warren Gee
+##
+## setupHostLabels.psp
+##
+## Host Labels Template
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils:NodeEntry, FormUtils, ajaxentrytable, PagePresentation:Pagelet, Nodes" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupHostSettings',
+        'setupAdvNet_qosClasses',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+.textareaHostLabels {
+  width: 450px;
+  height: 100px;
+}
+.resolveIndent {
+  margin-left: 10px;
+  color: #909090;
+}
+.timestampStyle {
+  font-style: italic;
+}
+.summaryNumber {
+  text-align: right;
+  margin-right: 10px;
+  padding-right: 10px;
+}
+.errorMsg {
+  color: #ff0000;
+  font-style: italic;
+  margin-left: 10px;
+}
+.highLight {
+  color: #505050;
+  font-style: italic;
+  margin-left: 10px;
+}
+/* Try to prevent the label column from wrapping. */
+.tableHostLabel { width: 120px; }
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning
+    return  [
+                '/rules/labels/host/config/label/*',
+                '/rules/labels/host/config/refresh_time',
+                '/rules/labels/host/state',
+                '/rules/labels/host/action/refresh_hostname_cache',
+            ]
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'showHostnameIPs': NodeEntry(
+            name='showHostnameIPs',
+            label='Show resolved IPs for the hostnames in the table below',
+            type='bool',
+            action='updateHostnameIPs()',
+            widget='checkboxLeft'),
+        'addHostLabel_name': NodeEntry(
+            name='addHostLabel_name',
+            label='Name',
+            validate='validHostname'),
+        'addHostLabel_entries': NodeEntry(
+            name='addHostLabel_entries',
+            label='Hostnames/Subnets',
+            widget='textarea',
+            widgetClass='textareaHostLabels',
+            hint='Entries can be separated with commas, spaces, or newlines.',
+            validate='validHostnamesOrSubnets'),
+        'editHostLabel_entries': NodeEntry(
+            name='editHostLabel_entries',
+            label='Hostnames/Subnets',
+            widget='textarea',
+            widgetClass='textareaHostLabels',
+            hint='Entries can be separated with commas, spaces, or newlines.',
+            validate='validHostnamesOrSubnets')
+    }
+</psp:method>
+
+<%
+dialogEntries = self.dialogEntries()
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+# Different host label row spec for CMC policy and SH. CMC policy page does not show state information
+if policyType: {
+    # cmc policy page
+    hostLabelRowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedHostLabel_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdLines('hostnames'),
+ AjaxEntryTable.tdLines('subnets')]"""
+
+    hostLabelUrl = '/mgmt/xmldata?p=hostLabelsCMC'
+} else: {
+    # SH
+    hostLabelRowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedHostLabel_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.td([showHostnames()]),
+ AjaxEntryTable.td([showSubnets()])]"""
+
+ hostLabelUrl = '/mgmt/xmldata?p=hostLabels'
+}
+
+# Host Label Table:
+hostLabelTable = ajaxentrytable.AjaxEntryTable('hostLabel',
+    url=self.urlForCmcEdit(hostLabelUrl),
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'),
+                ('Label', 'tableHostLabel'),
+                'Hostnames',
+                'Subnets'),
+    rowSpec=hostLabelRowSpec,
+    emptyMessage='No host labels.',
+    removePrefix='selectedHostLabel_',
+    addButtonText='Add a New Host Label',
+    removeName='removeHostLabel',
+    removeButtonText='Remove Selected')
+
+hostLabelTable.addDivContent='''
+<input type="hidden" name="addHostLabel_hostnameList" />
+<input type="hidden" name="addHostLabel_subnetList" />
+<div class="midLevel">
+  <table>
+    %(addHostLabel_name)s
+    %(addHostLabel_entries)s
+  </table>
+  %(addHostLabel)s
+</div>
+''' %   {
+            'addHostLabel_name': dialogEntries['addHostLabel_name'].html(self),
+            'addHostLabel_entries': dialogEntries['addHostLabel_entries'].html(self),
+            'addHostLabel': FormUtils.formSubmitButtons(self, {'value': 'Add New Host Label',
+                                        'name': 'addHostLabel',
+                                        'onclick': 'return splitEntries("addHostLabel")'})
+        }
+
+hostLabelTable.editDivContent='''
+<input type="hidden" name="editHostLabel_name" />
+<input type="hidden" name="editHostLabel_hostnameList" />
+<input type="hidden" name="editHostLabel_subnetList" />
+<div class="midLevel">
+  <table>
+    %(editHostLabel_entries)s
+  </table>
+</div>
+<div class="submitButton">
+  %(submitButton)s
+</div>
+''' %   {
+            'editHostLabel_entries': dialogEntries['editHostLabel_entries'].html(self),
+            'submitButton': FormUtils.formSubmitButtons(self,
+                                        {'value': 'Apply',
+                                        'name': 'editHostLabel',
+                                        'onclick': 'return splitEntries("editHostLabel")'})
+        }
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="hostLabelForm" class="liveStatusAttachPoint">
+  <div>
+    <input type="hidden" name="_action_" value="setupHostLabels" />
+  </div>
+<% if not policyType: { # not applicable for policy page on CMC %>
+  <fieldset>
+    <legend>Summary of Hostname Resolution</legend>
+    <div class="midLevel">
+      <table>
+        <tr>
+          <td class="summaryNumber"><span id="hostnamesUnique"></span></td>
+          <td>Unique Hostnames</td>
+        </tr>
+        <tr>
+          <td class="summaryNumber"><span id="hostnamesPending"></span></td>
+          <td>Checking DNS</td>
+        </tr>
+        <tr>
+          <td class="summaryNumber"><span id="hostnamesUnresolved"></span></td>
+          <td>Unresolvable</td>
+        </tr>
+      </table>
+    </div>
+    Hostnames are automatically resolved once every <span id="refreshTime">24 hours</span>.
+    <div id="manualResolveActionPoint" class="midLevel">
+      <%= FormUtils.formSubmitButtons(self, {'value': 'Resolve Hostnames',
+                                            'name': 'manualResolve',
+                                            'onclick': 'return doManualResolve()'}) %>
+    </div>
+  </fieldset>
+  <div class="topLevel">
+    <%= dialogEntries['showHostnameIPs'].html(self) %>
+  </div>
+<% } %>
+  <%= hostLabelTable.html(self) %>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Custom cell renderer for 'Hostnames' column
+
+function showHostnames() {
+
+    return function(entryTable, parent, element) {
+        var hostnameList = element.getElementsByTagName("host");
+        var now = new Date().getTime();
+        for (var i = 0; i < hostnameList.length; i++) {
+            var hostname            = hostnameList[i].getAttribute("name");
+            var resolutionStatus    = hostnameList[i].getAttribute("status");
+            var timestamp           = hostnameList[i].getAttribute("timestamp");
+
+            // Show the hostname
+
+            var hostDiv = document.createElement("div");
+            hostDiv.appendChild(document.createTextNode(hostname));
+            parent.appendChild(hostDiv);
+
+            // Show the hostname's resolved IPs, if any
+
+            var ipAddrList = hostnameList[i].getElementsByTagName("ipAddr");
+            for (var j = 0; j < ipAddrList.length; j++) {
+                var ipAddr = ipAddrList[j].getAttribute("name");
+
+                ipAddrDiv = document.createElement("div");
+                setElementClass(ipAddrDiv, "resolveIndent resolvedInfo");
+                ipAddrDiv.appendChild(document.createTextNode(ipAddr));
+                parent.appendChild(ipAddrDiv);
+            }
+
+            // Show the resolution status of the hostname
+
+            var resDiv = document.createElement("div");
+            var resClass = "resolveIndent timestampStyle";
+            timestamp = new Date(timestamp).getTime();
+            switch (resolutionStatus) {
+                case 'Resolved':
+                    resClass += " resolvedInfo";
+                    var ago = englishTimeInterval((now - timestamp) / 1000, "", "ago", true);
+                    resDiv.appendChild(document.createTextNode("Resolved: " + ago));
+                    break;
+                case 'Never resolved':
+                    resDiv.appendChild(document.createTextNode("Unresolvable"));
+                    resClass = "errorMsg";
+                    break;
+                case 'New':
+                    resDiv.appendChild(document.createTextNode("Checking DNS ..."));
+                    resClass = "highLight";
+                    break;
+                case 'Stale':
+                    var ago = englishTimeInterval((now - timestamp) / 1000, "", "ago", true);
+                    resDiv.appendChild(document.createTextNode("Resolved: " + ago));
+                    resDiv.appendChild(document.createElement("br"));
+                    var noteSpan = document.createElement("span");
+                    var staleNotice = " (Note: This hostname was resolved successfully at " +
+                                      "least once in the past but the last attempt failed)";
+                    noteSpan.appendChild(document.createTextNode(staleNotice));
+                    setElementClass(noteSpan, "resolveIndent errorMsg");
+                    resDiv.appendChild(noteSpan);
+                    break;
+            }
+            setElementClass(resDiv, resClass);
+            parent.appendChild(resDiv);
+        }
+    }
+}
+
+// Custom cell renderer for 'Subnets' column
+
+function showSubnets() {
+    return function(entryTable, parent, element) {
+        var subnetList = element.getElementsByTagName("subnet");
+        for (var i = 0; i < subnetList.length; i++) {
+            var subnet = subnetList[i].getAttribute("name");
+            parent.appendChild(document.createTextNode(subnet));
+            parent.appendChild(document.createElement("br"));
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+hostLabelTable.editEntry = function(editName) {
+    var form = document.getElementById('hostLabelForm');
+    var el = this.getEntryElement('name', editName);
+    form.editHostLabel_name.value = editName;
+
+    // Concatenate hostnames and subnets into one
+    // newline-separated list for the textarea
+
+    var text = '';
+    <% if policyType: { %>
+        // policy page on CMC
+        var hostnameList = el.getAttribute('hostnames').split(';');
+        for (var i = 0; i < hostnameList.length; i++) {
+            text += (text == '') ? '' : '\n';
+            text += hostnameList[i];
+        }
+        var subnetList = el.getAttribute('subnets').split(';');
+        for (var i = 0; i < subnetList.length; i++) {
+            text += (text == '') ? '' : '\n';
+            text += subnetList[i];
+        }
+    <% } else: {%>
+        // SH page
+        var hostnameList = el.getElementsByTagName('host');
+        for (var i = 0; i < hostnameList.length; i++) {
+            text += (text == '') ? '' : '\n';
+            text += hostnameList.item(i).getAttribute('name');
+        }
+        var subnetList = el.getElementsByTagName('subnet');
+        for (var i = 0; i < subnetList.length; i++) {
+            text += (text == '') ? '' : '\n';
+            text += subnetList.item(i).getAttribute('name');
+        }
+    <% } %>
+    form.editHostLabel_entries.value = text;
+}
+
+// Fills out the summary info at the top of the page
+
+hostLabelTable.postPopulateTableHook = function() {
+    var hostnameList = hostLabelTable.docElement;
+
+    // First, we update the refresh interval. Only our QA team
+    // can change the interval. There's no CLI command, hidden
+    // or otherwise.
+
+    var refreshTime = hostnameList.getAttribute("refreshTime");
+    refreshTime = englishTimeInterval(refreshTime);
+    if (refreshTime == "1 day") {
+        refreshTime = "day";
+    }
+    setElementText('refreshTime', refreshTime);
+
+    // Next, we do a body count of the hostnames
+
+    var uniqueHostnames = [];
+    var pendings        = 0;
+    var unresolves      = 0;
+    for (var child = hostnameList.firstChild; child; child = child.nextSibling) {
+        for (var innerChild = child.firstChild; innerChild; innerChild = innerChild.nextSibling) {
+            if (innerChild.nodeName == "host") {
+                var hostname = innerChild.getAttribute('name');
+                if (!arrayContains(uniqueHostnames, hostname)) {
+                    uniqueHostnames.push(hostname);
+
+                    var resolutionStatus = innerChild.getAttribute('status');
+                    var timestamp = innerChild.getAttribute('timestamp');
+
+                    if (resolutionStatus == 'New') {
+                        pendings++;
+                    }
+                    else if (resolutionStatus == 'Never resolved') {
+                        unresolves++;
+                    }
+                }
+            }
+        }
+    }
+    setElementText('hostnamesUnique', uniqueHostnames.length.toString());
+    setElementText('hostnamesPending', pendings.toString());
+    setElementText('hostnamesUnresolved', unresolves.toString());
+
+    updateHostnameIPs();
+}
+
+// The contents of the addDiv/editDiv textareas are split into
+// two lists, one for hostnames and the other for subnets, which
+// are passed to the backend
+
+function splitEntries(widgetPrefix) {
+    var textareaData    = Y.one('textarea[name=' + widgetPrefix + '_entries]').get('value').toLowerCase();
+    var entryList       = textareaData.trim().split(/[\s,]+/);
+    var hostnameList    = [];
+    var subnetList      = [];
+
+    for (var i = 0; i < entryList.length; i++) {
+        var entry = entryList[i];
+        if (entry.length) {
+            try {
+                RBT.Validator.Syntax.ipv4prefix(entry);
+                subnetList.push(entry);
+            } catch(e) {
+                hostnameList.push(entry);
+            }
+        }
+    }
+    var form = document.getElementById('hostLabelForm');
+    form[widgetPrefix + '_hostnameList'].value = hostnameList;
+    form[widgetPrefix + '_subnetList'].value = subnetList;
+    return true;
+}
+
+function validHostname(hostname) {
+    hostname = hostname.trim();
+    RBT.Validator.Syntax.name(hostname);
+
+    // See if the given hostname is alreay in use
+
+    var hostnameList = hostLabelTable.docElement;
+    for (var child = hostnameList.firstChild; child; child = child.nextSibling) {
+        if (hostname == child.getAttribute('name')) {
+            throw "'" + hostname + "' already exists";
+        }
+    }
+}
+
+function validHostnamesOrSubnets(textareaData) {
+    entryList = textareaData.trim().split(/[\s,]+/);
+    for (var i = 0; i < entryList.length; i++) {
+        var entry = entryList[i];
+        if (entry.length) {
+            try {
+                RBT.Validator.Syntax.hostname(entry);
+            } catch(e) {
+                try {
+                    RBT.Validator.Syntax.ipv4prefix(entry);
+                } catch(e) {
+                    throw "'" + entry + "' is not a valid hostname or subnet.";
+                }
+            }
+        }
+    }
+}
+
+// not applicable for policy page on CMC
+<% if not policyType: { %>
+var manualResolveLiveStatus;
+
+Y.on('domready', function() {
+    manualResolveLiveStatus = new LiveStatus({
+        attachPoint: 'div#manualResolveActionPoint'
+    }).render();
+});
+<% } %>
+
+function doManualResolve() {
+    setTimeout(function() { manualResolveLiveStatus.show('Resolving hostnames.'); }, 0);
+    return true;
+}
+
+// Show the hostname resolved IPs, or not
+
+function updateHostnameIPs() {
+    var form = document.getElementById('hostLabelForm');
+    var divShowStatus = form['showHostnameIPs'].checked ? true : 'hide';
+    var divElements = Y.all('div.resolvedInfo');
+
+    divElements.each(function(divEl) {
+        enableElements(divEl, divShowStatus);
+    });
+}
+
+// ]]>
+</script>

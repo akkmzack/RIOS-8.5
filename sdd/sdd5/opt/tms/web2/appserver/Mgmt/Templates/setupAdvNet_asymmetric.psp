@@ -1,0 +1,92 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_asymmetric.psp
+##
+## Advanced Networking, Asymmetric Routing
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdvNet_forwarding',) %>
+
+<psp:method name="nodeEntries" params="interface='primary'">
+    return {
+        'routingDetection': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/ar_detection',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Asymmetric Routing Detection'),
+        'passthru': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/ar_caching',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Asymmetric Routing Pass-Through')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Asymmetric Routing Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['routingDetection'].html(self) %>
+      <%= nodeEntries['passthru'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+
+<%
+
+
+if not policyType: {
+
+# Asymm table, nonCMC
+
+asymmTable = ajaxentrytable.AjaxEntryTable('asymm',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=asymmetricRouting'),
+    titleText='Asymmetric Routing Table',
+    headerSpec=('',
+                ('IP1',     '', "sortAttrib('ip1')"),
+                ('IP2',     '', "sortAttrib('ip2')"),
+                ('Reason',  '', "sortAttrib('reason')"),
+                ('Timeout', '', "sortAttrib('timeout')")),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('ip-pair', 'selectedRoute_'),
+ AjaxEntryTable.tdAttr('ip1'),
+ AjaxEntryTable.tdAttr('ip2'),
+ AjaxEntryTable.tdAttr('reason'),
+ AjaxEntryTable.tdAttr('timeout')]""",
+    emptyMessage='No current routes.',
+    removeName='removeAsymmetricRoutes',
+    removeButtonText='Remove Selected')
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupAsymmetricRouting" />
+  </div>
+  <%= asymmTable.html(self, 'topLevel') %>
+</form>
+
+<%
+} # asymmTable, nonCMC
+%>
+
+<% self.endPagelet() %>

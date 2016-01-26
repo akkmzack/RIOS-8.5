@@ -1,0 +1,921 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Andrew Hao
+##
+## diagnosticHealthCheck.psp
+## This is the template for the troubleshooting (health check) page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="OSUtils, FormUtils, Nodes, PagePresentation:Pagelet, ajaxentrytable, cgi, RVBDUtils:isCMC, RVBDUtils:isSH, RVBDUtils:cmcAppBytesToVersion" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#troubleshootingWrapper { margin: 0.5em 0; }
+#troubleshootingWrapper div.batchRunButtons { margin-bottom: 0.5em; }
+
+table.troubleshooting input { margin: 0; }
+table.troubleshooting input.text { font-size: 1.2em; }
+
+table.troubleshooting { width: 720px; }
+
+table.troubleshooting th {
+  text-align: left;
+  font-weight: bold;
+}
+
+table.troubleshooting th,
+table.troubleshooting td {
+  border-bottom: 2px solid #CCC;
+  border-left: 1px solid #D5D7DC;
+  border-right: 1px solid #D5D7DC;
+  border-top: 2px solid #536281;
+  padding: 3px 8px;
+}
+
+table.troubleshooting tr.even th,
+table.troubleshooting tr.even td {
+  background-color: #EFF2F7;
+  padding: 3px 8px;
+}
+
+table.troubleshooting td.desc {
+  vertical-align: top;
+  padding: 3px 8px;
+}
+table.troubleshooting td.testResults {
+  width: 100px;
+}
+table.troubleshooting td.timestamp {
+  color:#888;
+  width: 75px;
+}
+table.troubleshooting h3.testName {
+  font-size: 1.2em;
+  margin: 0.3em 0;
+}
+table.troubleshooting h3.testName a {
+}
+
+table.troubleshooting .description {
+    margin: 5px 0;
+}
+
+table.troubleshooting td.inProgressStatusMessage {
+  font-style: italic;
+  color: #999;
+  text-align: center;
+}
+
+table.troubleshooting .passed {
+  color: #3A3;
+}
+
+table.troubleshooting .failed {
+  color: #A33;
+}
+table.troubleshooting .running {
+  color: #333;
+  font-style: italic;
+}
+table.troubleshooting .pending {
+  color: #BBB;
+  font-style: italic;
+}
+table.troubleshooting .undetermined {
+  color: #EA681D;
+}
+table.troubleshooting .testResults .result {
+  padding: 2px 0 2px 20px;
+  font-size: 1.1em;
+  color: #555 !important;
+  font-weight: bold;
+}
+
+table.troubleshooting .testResults a.results {
+  padding-left: 14px;
+  background-image: url(/images/aet_edit_open.png);
+  background-position: center left;
+  background-repeat: no-repeat;
+}
+table.troubleshooting .testResults a.results.expanded {
+  background-image: url(/images/aet_edit_close.png);
+}
+
+/*
+ * Various icons for various states
+ */
+table.troubleshooting .testResults .result {
+  background: url(/images/icon_test_sprite.png) no-repeat;
+}
+/* Grey spinner icon */
+table.troubleshooting .testResults .result.running {
+  background: url(/images/icon_test_running.gif) no-repeat center left;
+}
+/* Green check icon */
+table.troubleshooting .testResults .result.passed {
+  background-position: 0px -30px; /* 32px offset, +2px for vertical alignment */
+}
+/* Red X icon */
+table.troubleshooting .testResults .result.failed {
+  background-position: 0px 2px; /* +2px for vertical alignment */
+}
+/* Clock icon */
+table.troubleshooting .testResults .result.pending {
+  background-position: 0px -126px; /* 128px offset, +2 for vertical alignment */
+}
+/* Ready state: show no icon. */
+table.troubleshooting .testResults .result.notrun {
+  background-image: none;
+}
+/* Yellow triangle "!" icon */
+table.troubleshooting .testResults .result.undetermined,
+table.troubleshooting .testResults .result.error,
+table.troubleshooting .testResults .result.warning {
+  background-position: 0px -94px; /* 96px offset, +2 for vertical alignment */
+}
+
+table.troubleshooting .testResults .subresults {
+  padding-left: 20px; /* to match .result padding */
+}
+
+/* HTML: <span class="value">3</span> [tests] passed */
+table.troubleshooting .testResults .subresults .value {
+  font-weight: bold;
+}
+
+/* Full data table view */
+table.troubleshooting .testWrapper {
+  border-bottom: 2px solid #536281;
+  height: 0; /* Will animate to 100% */
+  overflow: hidden;
+}
+
+table.troubleshooting .testWrapperInner {
+  background-color: #DFE2E7;
+  padding: 10px;
+  overflow: hidden;
+  text-align: center;
+}
+
+table.troubleshooting tr.test td.checkbox,
+table.troubleshooting th.checkbox {
+  width: 15px;
+  text-align: center;
+  vertical-align: top;
+  padding: 5px 3px 3px 3px;
+}
+
+table.troubleshooting td.testOutput {
+  text-align: center;
+  padding: 0 0 2em 0;
+  border: 0;
+  margin: 0;
+}
+
+/* handle styles. default to inactive */
+table.troubleshooting td.testOutput div.detailsHandle {
+  margin: 0 auto;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.7em;
+  padding: 2px 0 2px 1.2em;
+  width: 15em;
+  font-size: 0.75em;
+  color: #333;
+  border-right: 1px solid #CCC;
+  border-bottom: 1px solid #CCC;
+  border-left: 1px solid #CCC;
+  background: #DFE2E7 url(/images/aet_edit_open.png) 4px 2px no-repeat;
+  text-align: center;
+  opacity: 1;
+  cursor: pointer;
+}
+
+table.troubleshooting td.testOutput div.detailsHandle.dimmed {
+  cursor: default;
+  opacity: 0.5;
+}
+
+table.troubleshooting td.testOutput div.detailsHandle.expanded {
+  background: #DFE2E7 url(/images/aet_edit_close.png) 4px 2px no-repeat;
+}
+
+/* Nested AET is thinner (padding) */
+table.troubleshooting .ajaxEntryTable {
+  width: 700px;
+}
+
+/*
+ * Parameterized tests have a different layout.
+ *  ---+------------------------------+---
+ *     | td.desc                      |
+ *     |+----------+-----------------+|
+ * ... || div.info | div.paramFields || ...
+ *     |+----------+-----------------+|
+ *     |                              |
+ *  ---+------------------------------+---
+ */
+
+tr.param div.info {
+    width: 170px;
+    float: left;
+}
+
+tr.param div.paramFields {
+    width: 270px;
+    padding: 0.5em;
+    float:left;
+    overflow: auto;
+}
+
+/*
+ * Param tests have stacked labels like so:
+ * <Label>:
+ * [<Field>____]
+ */
+tr.param div.paramFields label {
+  display: block;
+  font-weight: bold;
+}
+
+/*
+ * Fields and buttons in these split-level fields are positioned by
+ * floating left and pushing down from the top.
+ */
+tr.param div.paramFields .nodeEntry,
+tr.param div.paramFields .submitButtons {
+  float: left;
+  margin-right: 0.3em;
+}
+
+/*
+ * Give the submit button some extra top spacing, because they
+ * do not have a label.
+ * TODO: Should probably find some better way to do this, because
+ * different browsers render this differently and make the buttons
+ * look out of line with the form fields.
+ */
+tr.param div.paramFields .submitButtons {
+  clear: none;
+  margin: 0;
+  padding: 0;
+}
+tr.param div.paramFields .submitButtons input {
+  margin-top: 1.8em;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    mgmt = self.session().value('mgmt')
+    if isCMC():
+        return ['/cmc/actions/remote/nettest']
+    elif isSH():
+        return ['/rbt/nettest/action/exec_test']
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    # When viewing on CMC, we need to additionally check whether we have
+    # permissions to view for appliances and groups.
+    isReadableForPage = super(self.__class__, self).pageIsReadable()
+    mgmt = self.session().value('mgmt')
+    if isCMC():
+        isReadableForApp = self.cmcPageIsReadableForAppliances()
+        return isReadableForPage and isReadableForApp
+    elif isSH():
+        return isReadableForPage
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'duplexInterface': FormUtils.NodeEntry(
+            name='interface',
+            widget='select',
+            label='Interface'),
+        'duplexIP': FormUtils.NodeEntry(
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='IP Address',
+            name='address',
+            validate='ipv4addr'),
+        'peerReachIP': FormUtils.NodeEntry(
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='IP Address',
+            name='address',
+            validate='ipv4addr'),
+        'ipPortReachIP': FormUtils.NodeEntry(
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='IP Address',
+            name='address',
+            validate='ipv4addr'),
+        'ipPortReachPort': FormUtils.NodeEntry(
+            type='port',
+            widgetClass='port',
+            label='Port',
+            name='port',
+            validate='port',
+            inputOptional=True),
+        'ipPortReachInterface': FormUtils.NodeEntry(
+            name='interface',
+            widget='select',
+            label='Interface')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+app = ''
+app_prod = ''
+app_sn = ''
+statePrefix = ''
+maybeApp = ''
+
+if isCMC(): {
+    fields = self.request().fields()
+    app, app_prod, app_sn = Nodes.parseApplianceParam(fields.get('appliance'))
+    statePrefix = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+    maybeApp = '&appliance=' + app
+}
+
+self.beginPagelet()
+
+# if this is a CMC, display the appliance selector
+if isCMC(): {
+    import cmc
+%>
+
+<form method="get"
+      id="chooseApplianceForm"
+      action="<%= self.thisPageletRequest() %>">
+  <div class="topLevel">
+  <fieldset>
+    <legend>Appliance</legend>
+    <div class="midLevel">
+      <span class="labelPaddedRight">Select Appliance:</span>
+      <%= cmc.appSelectHtml('appliance', mgmt=mgmt, value=app) %>
+      <input type="hidden" name="p" value="diagnosticHealthCheck" />
+    </div>
+  </fieldset>
+  </div>
+</form>
+<br />
+<script type="text/javascript">
+<!--
+nonConfigForms.push('chooseApplianceForm');
+<%= cmc.appSelectJavascript('appliance',
+                            includeNone=True,
+                            products=['sh'],
+                            connectedOnly=True,
+                            minVersion=6.0,
+                            action='$("chooseApplianceForm").submit()') %>
+-->
+</script>
+
+<%
+    # Handle error cases for CMC appliances.
+    errMsg = ''
+    if not app: {
+        errMsg = 'Please select an appliance.'
+    } else: {
+        # Only connected appliances can show this page.
+        isConnected = ('true' == Nodes.present(mgmt, statePrefix + '/is_connected'))
+        prettyName = Nodes.present(mgmt, statePrefix + '/display_address')
+
+        # Only SH 6.0+ can show this page.
+        byte = Nodes.present(mgmt, statePrefix + '/version_num')
+        major, minor, micro, eng = cmcAppBytesToVersion(byte)
+        isValidVersion = (major >= 6)
+
+        # If we're on the CMC and the device isn't RiOS 6+.
+        if not isValidVersion: {
+                errMsg = '''
+                  Appliance <strong>%s</strong> is running an older RiOS
+                  software release that does not support this feature. The
+                  appliance must be running RiOS 6.0 or greater to view this
+                  page.
+                ''' % prettyName
+        }
+        # If we're on a CMC and the device is not connected
+        elif not isConnected: {
+                errMsg = '''
+                  Appliance <strong>%s</strong> is not connected. Health check
+                  information is not available for disconnected appliances.
+                ''' % prettyName
+        }
+    }
+    # Bail if we've got an error.
+    if errMsg: {
+        self.writeln('<p class="textContainer">%s</p>' % errMsg)
+        self.endPagelet()
+        return
+    }
+}
+%>
+
+<%
+# Initialize test tables
+gatewayTestTable = ajaxentrytable.AjaxEntryTable('gatewayTest',
+    url='/mgmt/xmldata?p=netTestDetails&id=0%s' % maybeApp,
+    headerSpec=[('Interface', '', "sortAttrib('attrib_0')"),
+                ('Address', '', "sortAttrib('attrib_1')"),
+                ('Packet Loss', '', "sortAttrib('attrib_2')"),
+                ('Result', '', "sortAttrib('result')")],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('attrib_0'),
+ AjaxEntryTable.tdAttr('attrib_1'),
+ AjaxEntryTable.tdAttr('attrib_2'),
+ AjaxEntryTable.tdAttr('result')]""",
+    emptyMessage='No test results.',
+    updateInterval=5)
+
+cableSwapTestTable = ajaxentrytable.AjaxEntryTable('cableSwapTest',
+    url='/mgmt/xmldata?p=netTestDetails&id=1%s' % maybeApp,
+    headerSpec=[('Interface', '', "sortAttrib('attrib_0')"),
+                ('Percent WAN', '', "sortAttrib('attrib_1')"),
+                ('Result', '', "sortAttrib('result')")],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('attrib_0'),
+ AjaxEntryTable.tdAttr('attrib_1'),
+ AjaxEntryTable.tdAttr('result')]""",
+    emptyMessage='No test results.',
+    updateInterval=5)
+
+duplexTestTable = ajaxentrytable.AjaxEntryTable('duplexTest',
+    url='/mgmt/xmldata?p=netTestDetails&id=2%s' % maybeApp,
+    headerSpec=[('Interface', '', "sortAttrib('attrib_0')"),
+                ('Number of Errors', '', "sortAttrib('attrib_1')"),
+                ('Result', '', "sortAttrib('result')")],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('attrib_0'),
+ AjaxEntryTable.tdAttr('attrib_1'),
+ AjaxEntryTable.tdAttr('result')]""",
+    emptyMessage='No test results.',
+    updateInterval=5)
+
+peerReachTestTable = ajaxentrytable.AjaxEntryTable('peerReachTest',
+    url='/mgmt/xmldata?p=netTestDetails&id=3%s' % maybeApp,
+    headerSpec=[('Address', '', "sortAttrib('attrib_0')"),
+                ('Interface', '', "sortAttrib('attrib_1')"),
+                ('Result', '', "sortAttrib('result')")],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('attrib_0'),
+ AjaxEntryTable.tdAttr('attrib_1'),
+ AjaxEntryTable.tdAttr('result')]""",
+    emptyMessage='No test results.',
+    updateInterval=5)
+
+ipPortReachTestTable = ajaxentrytable.AjaxEntryTable('ipPortReachTest',
+    url='/mgmt/xmldata?p=netTestDetails&id=4%s' % maybeApp,
+    headerSpec=[('Interface', '', "sortAttrib('attrib_0')"),
+                ('Address', '', "sortAttrib('attrib_1')"),
+                ('Protocol', '', "sortAttrib('attrib_2')"),
+                ('Result', '', "sortAttrib('result')")],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('attrib_0'),
+ AjaxEntryTable.tdAttr('attrib_1'),
+ AjaxEntryTable.tdAttr('attrib_2'),
+ AjaxEntryTable.tdAttr('result')]""",
+    emptyMessage='No test results.',
+    updateInterval=5)
+
+# Render HTML
+#
+# For "Duplex Test" we get a list of interfaces to display from a set of backend nodes.
+# The interfaces we want to display is the intersection of that list plus the list of
+# interfaces available for this box.
+
+backend = Nodes.getMgmtLocalChildrenNames(mgmt, statePrefix + '/rbt/nettest/more_state/duplex_interfaces')
+box = Nodes.getMgmtLocalChildrenNames(mgmt, statePrefix + '/net/interface/state')
+intersection = [iface for iface in box if iface in backend]
+
+dialogEntries['duplexInterface'].selectOptions = FormUtils.sortInterfacesByNumber(intersection)
+
+# IP-Port Reachability test interface options:
+dialogEntries['ipPortReachInterface'].selectOptions = \
+    FormUtils.sortInterfacesByNumber(
+        Nodes.getMgmtLocalChildrenNames(mgmt,
+            statePrefix + '/rbt/nettest/more_state/source_interfaces'))
+ipPortReachIfaceHtml = '<div class="ipPortReachIfaces">%s</div>' % \
+                           dialogEntries['ipPortReachInterface'].html(self,
+                                                                      format='inline')
+
+# Build an array of tests and their associated attributes so we can mechanically generate them below:
+tests = {0: {'name': 'Gateway Test',
+             'description': 'Pings each configured gateway.',
+             'tableHtml': gatewayTestTable.html(self),
+             'isDefaultEnabled': True},
+         1: {'name': 'Cable Swap Test',
+             'description': '''Tests if LAN and WAN ports are correctly facing their respective networks.<br />For accurate results, please ensure that traffic is running through the appliance and that your <a href="#" onclick="return popupHelp('diagnosticHealthCheck', 600, 700);">topology is supported</a> for this test.''',
+             'tableHtml': cableSwapTestTable.html(self),
+             'isDefaultEnabled': False},
+         2: {'name': 'Duplex Test',
+             'description': 'Tests a given interface for correct duplex settings.',
+             'tableHtml': duplexTestTable.html(self),
+             'isDefaultEnabled': False,
+             'paramHtml': dialogEntries['duplexInterface'].html(self, format='block') + \
+                          dialogEntries['duplexIP'].html(self, format='block') + \
+                          FormUtils.formSubmitButtons(self, {
+                              'name': 'run',
+                              'value': 'Run',
+                              'onclick': "collectFormFieldsAndSendNetTestAction('2', 'run'); return false;",
+                              'filter': 'duplexAdjustor'})},
+         3: {'name': 'Peer Reachability Test',
+             'description': 'Sends a test probe to a specified peer.',
+             'tableHtml': peerReachTestTable.html(self),
+             'isDefaultEnabled': False,
+             'paramHtml': dialogEntries['peerReachIP'].html(self, format='block') + \
+                          FormUtils.formSubmitButtons(self, {
+                              'name': 'run',
+                              'value': 'Run',
+                              'onclick': "collectFormFieldsAndSendNetTestAction('3', 'run'); return false;",
+                              'filter': 'peerReachAdjustor'})},
+         4: {'name': 'IP-Port Reachability Test',
+             'description': 'Tests if a specified IP address and optional port are connected.',
+             'tableHtml': ipPortReachTestTable.html(self),
+             'isDefaultEnabled': False,
+             'paramHtml': ipPortReachIfaceHtml + \
+                          dialogEntries['ipPortReachIP'].html(self, format='block') + \
+                          dialogEntries['ipPortReachPort'].html(self, format='block') + \
+                          FormUtils.formSubmitButtons(self, {
+                              'name': 'run',
+                              'value': 'Run',
+                              'onclick': "collectFormFieldsAndSendNetTestAction('4', 'run'); return false;",
+                              'filter': 'ipPortReachAdjustor'})}}
+
+rowHtmls = []
+
+# Specify test ordering
+# For now, it's simply by incrementing id.
+testsWithOrder = (0, 1, 2, 3, 4)
+
+for id in testsWithOrder: {
+    test = tests.get(id)
+
+    # Build the param HTML first, if it exists
+    paramHtml = ''
+    if 'paramHtml' in test: {
+        paramHtml = '''
+          <div class="paramFields">
+            <form id="test_%(testId)s_form"
+                  action="%(pageletRequest)s">
+              %(paramHtml)s
+            </form>
+          </div>
+    ''' % {'testId': id,
+           'pageletRequest': self.thisPageletRequest(),
+           'paramHtml': test.get('paramHtml')}
+    }
+
+    # Build row HTML, which may include param HTML if necessary.
+    rowHtml = '''
+    <tbody>
+      <tr class="even test %(paramTestClass)s" id="test_%(testId)s">
+        <td class="checkbox">
+          <input type="checkbox"
+                 id="test_%(testId)s_checkbox"
+                 name="selectedTest"
+                 value="%(testId)s"
+                 %(checkedIfDefaultEnabled)s />
+        </td>
+        <td class="desc">
+          <div class="info">
+            <h3 class="testName"><label for="test_%(testId)s_checkbox">%(testName)s</label></h3>
+            <p class="description">%(testDescription)s</p>
+          </div>
+          %(paramHtml)s
+        </td>
+        <td class="timestamp"></td>
+        <td class="testResults">
+          <div class="result pending">Initializing...</div>
+          <div class="subresults">
+            <div class="passed hidden"><span class="value">0</span> passed</div>
+            <div class="undetermined hidden"><span class="value">0</span> undetermined</div>
+            <div class="failed hidden"><span class="value">0</span> failed</div>
+            <div class="error hidden"><span class="value">0</span> errored</div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="4" class="testOutput">
+          <div class="testWrapper">
+            <div class="testWrapperInner">%(tableHtml)s</div>
+          </div>
+          <div class="detailsHandle dimmed">View Test Output</div>
+        </td>
+      </tr>
+    </tbody>
+    ''' % {'testId': id,
+           'testName': test.get('name', ''),
+           'testDescription': test.get('description', ''),
+           'checkedIfDefaultEnabled': test.get('isDefaultEnabled') and 'checked="checked"' or '',
+           'paramTestClass': 'paramHtml' in test and 'param' or '',
+           'paramHtml': paramHtml and paramHtml or '',
+           'tableHtml': test.get('tableHtml', '')}
+
+    rowHtmls.append(rowHtml)
+} # end rowHtml 'for' loop
+%>
+
+<!-- begin test tables -->
+<div class="topLevel" id="troubleshootingWrapper">
+  <div class="batchRunButtons">
+    <input type="button" id="runSelected" value="Run Selected" onclick="collectTestsAndSendAction('run');" />
+  </div>
+
+  <table class="troubleshooting containsAET">
+    <thead>
+      <tr class="odd">
+        <th class="checkbox"><input type="checkbox" name="selectAll" value="selectAll" id="selectAllCb" onclick="toggleAllTestCheckboxes(this)" /></th>
+        <th class="desc">Test</th>
+        <th class="timestamp">Last Run</th>
+        <th class="testResults">Status</th>
+      </tr>
+    </thead>
+
+    <%= ''.join(rowHtmls) %>
+
+  </table>
+</div>
+<!-- end test tables -->
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+<%
+# WHEN ADDING NEW TESTS, MUST UPDATE testTableList AND paramTestList!
+%>
+// A global list of all the test tables on this page. This is useful when
+// we want to directly access the tables to modify their behavior in some way.
+// This list acts as a map from test IDs to table objects.
+testTableList = [gatewayTestTable,
+                 cableSwapTestTable,
+                 duplexTestTable,
+                 peerReachTestTable,
+                 ipPortReachTestTable];
+
+// A global list of IDs of tests that have parameter fields.
+paramTestList = ['2', '3', '4'];
+
+/**
+ * Collect the form values for the specified test and package it with a
+ * a nettest action call.
+ * @param {String | Integer} testId - Test ID number '0' to '4'
+ * @param action - 'run' - Run test
+ */
+var collectFormFieldsAndSendNetTestAction = function(testId, action) {
+    var parentTr = $('test_' + testId, true);
+    var form = parentTr.one('form');
+    var args = collectFormFields(form);
+
+    sendNetTestAction(action, testId, args);
+    return false;
+}
+
+/**
+ * Sets the status message of a test to be a given string.
+ * @param {String | Integer} testId - Test ID number ['0'|'1'...]
+ * @param {String} statusMsg - Status message to be displayed in test result div
+ * @param {String} className - Name of class to add to result div.
+ */
+var setTestStatusMessage = function(testId, statusMsg, className) {
+    var testRow = $('test_' + testId, true);
+    var statusDiv = testRow.one('div.result');
+    setElementText(statusDiv, statusMsg);
+    statusDiv.set('className', 'result ' + className);
+}
+
+/**
+ * Clears the 'x passed y undetermined z failed' subresult section.
+ * @param {String | Integer} testId - Test ID number ['0'|'1'...]
+ */
+var clearSubresults = function(testId) {
+    var testRow = $('test_' + testId, true);
+    var subresults = testRow.all('.subresults > div').addClass('hidden');
+}
+
+/**
+ * Compiles a list of selected tests and sends them off to sendNetTestAction.
+ * @param action - Legal values: 'run'
+ */
+var collectTestsAndSendAction = function(action) {
+    var allCheckboxes = Y.all('td.checkbox input[type=checkbox]');
+
+    allCheckboxes.each(function(testCheckbox) {
+        if (!testCheckbox.get('disabled') && testCheckbox.get('checked')) {
+            // If parameterized test, collect field values before running.
+            if (arrayContains(paramTestList, testCheckbox.get('value')))
+                collectFormFieldsAndSendNetTestAction(testCheckbox.get('value'), action);
+            // Otherwise, we just go ahead and kick it off
+            else
+                sendNetTestAction('run', testCheckbox.get('value'), null);
+        }
+    });
+}
+
+/**
+ * Sends out a remote call to run/stop a test.
+ * @param action - Legal values 'run'
+ * @param testId - Stringified int '0' to '4'
+ *                  denoting selected test.
+ * @param optional - dict of optional args.
+ */
+var sendNetTestAction = function(action, testId, optionalArgs) {
+    var testTable = testTableList[parseInt(testId, 10)];
+    // Invoked when the backend returns with a success status, indicating
+    // the action has been kicked off.
+    var onCmpltFn = function() {
+        var msg = ('stop' == action) ? 'Stopping...' : 'Running...';
+        setTestStatusMessage(testId, msg, 'running');
+        testTable.enablePolling(true);
+    }
+    // Called when an error is returned from the backend. Usually occurs
+    // because invalid arguments are given, or something broke badly
+    // back there (say that five times fast).
+    var onErrFn = function(errorMsg) {
+        errorMsg = errorMsg ? 'Test error: ' + errorMsg : 'Test error';
+        setTestStatusMessage(testId, errorMsg, 'warning');
+        testTable.enablePolling(false);
+    }
+    var args = {'id': testId,
+                'action': action};
+
+    // Roll in the extra args.
+    for (var key in optionalArgs) {
+        args[key] = optionalArgs[key];
+    }
+
+<% if isCMC(): { %>
+    // Roll up appliance selector value into argument array.
+    var app =
+        document.forms['chooseApplianceForm'].elements['appliance'].value;
+    if (app != '') {
+        args['appliance'] = app;
+    }
+<% } %>
+
+    performRemoteCall('netTestAction', args, onCmpltFn, onErrFn);
+    setTestStatusMessage(testId, 'Running...', 'running');
+    clearSubresults(testId);
+
+    return true;
+}
+
+/**
+ * Toggles all checkboxes according to the master checkbox in the header.
+ * @param {HTMLElement | Y.Node} elt - Master checkbox DOM element
+ */
+var toggleAllTestCheckboxes = function(elt) {
+    var elt = Y.one(elt);
+    var allCheckboxes = Y.all('td.checkbox input[type=checkbox]')
+    allCheckboxes.each(function(cb) {
+        // Ignore if disabled, else change check.
+        if (!cb.get('disabled'))
+            cb.set('checked', elt.get('checked'))
+    });
+}
+
+/**
+ * Expands the test output wrapper div
+ * @param {Event} event - onclick event for the "View Test Output" expand handle.
+ */
+var toggleSlidePanel = function(event) {
+
+    var detailsHandle = this; // YUI3 node
+
+    // Find the true height of the table inside
+    var parentTr = detailsHandle.ancestor('tr');
+    var wrapperDiv = parentTr.one('div.testWrapper');
+    var testDetailsTable = wrapperDiv.one('div.testWrapperInner');
+    var defaultHeight = "0";
+
+    // If we are already expanded, then contract
+    var anim;
+    if (detailsHandle.hasClass('expanded')) {
+        anim = new Y.Anim({node: wrapperDiv,
+                           to: {height: defaultHeight},
+                           duration: 0.5,
+                           easing: Y.Easing.easeOutStrong});
+        anim.run();
+        detailsHandle.removeClass('expanded');
+        detailsHandle.setContent('View Test Output');
+    }
+
+    // Else we are contracted, so we expand.
+    else {
+        anim = new Y.Anim({node: wrapperDiv,
+                           to: {height: testDetailsTable.get('region').height},
+                           duration: 0.5,
+                           easing: Y.Easing.easeOutStrong});
+        anim.run();
+        detailsHandle.addClass('expanded');
+        detailsHandle.setContent('Hide Test Output');
+    }
+}
+
+// Overload AET handleResponse code to update test status on first incoming call.
+var handleResponseTextForTests = function(request) {
+    AjaxEntryTable.prototype.handleResponseText.call(this, request);
+    var data = request.responseXML.documentElement.firstChild;
+    var tableElt = $(this.tableId, true); // YUI node
+    var parentTr = tableElt.ancestor('tr');
+    var hasRun = data.getAttribute('has_run') == 'true';
+    var testId = data.getAttribute('id');
+    var testTr = $('test_' + testId, true); // YUI node
+
+    var subResultContainer = testTr.one('div.subresults');
+    var resultContainer = testTr.one('div.result');
+    var detailsHandle = parentTr.one('div.detailsHandle');
+
+    var statusList = ['error', 'passed', 'undetermined', 'failed'];
+
+    // Update each 'n <error|passed|undetermined|failed>' status container and reveal
+    for (var i = 0; i < statusList.length; i++) {
+        var status = statusList[i];
+        var statusContainerElt = subResultContainer.one('div.' + status);
+        var numTestsWithStatus = parseInt(data.getAttribute('num_' + status), 10);
+        if (numTestsWithStatus > 0) {
+            var valueElt = statusContainerElt.one('span.value');
+            setElementText(valueElt, numTestsWithStatus);
+            statusContainerElt.removeClass('hidden');
+        } else {
+            statusContainerElt.addClass('hidden');
+        }
+    }
+    // Display the run state field only after test has run.
+    var runState = data.getAttribute('run_state');
+    var runStateDisplay = (hasRun) ? runState : '';
+
+    // Standardize display of CSS classnames: "Not Run" -> "notrun"
+    var runStateClass = runState.toLowerCase().replace(/\s/g, '');
+
+    setElementText(resultContainer, runStateDisplay);
+
+    // We have a CSS class styling for each run state.
+    resultContainer.set('className', 'result ' + runStateClass);
+
+    // Update the last-run time field
+    var dateContainer = testTr.one('td.timestamp');
+    var lastRunTime = data.getAttribute('last_run');
+    setElementText(dateContainer, lastRunTime);
+
+    // Add an onclick listener to this detailsHandle.
+    if (hasRun) {
+        // Add listener iff one does not exist.
+        if (!Y.Event.getListeners(detailsHandle, 'click')) {
+            detailsHandle.on('click', toggleSlidePanel, detailsHandle);
+        }
+        detailsHandle.removeClass('dimmed');
+    }
+
+    // Now that we received the test result, disable diffing updates.
+    this.enablePolling(false);
+}
+
+// Modify behavior of AET tables on load:
+// - Attach new handleResponseText methods to each table.
+// - Disable polling (initially).
+var attachAETModifications = function() {
+    for (var i = 0; i < testTableList.length; i++) {
+        testTableList[i].handleResponseText = handleResponseTextForTests;
+        testTableList[i].enablePolling(false);
+    }
+}
+
+/*
+ * Modify validators and their form behaviors onload.
+ *
+ * These particular adjustors disable "run" buttons,
+ * and test checkboxes when validation fails.
+ *
+ * A new adjustor must be added for each new parameterized
+ * test.
+ */
+var duplexAdjustor = function(buttonEl, isValid) {
+    var duplexCheckbox = $('test_2_checkbox');
+    enableElements(duplexCheckbox, isValid);
+    return isValid;
+};
+var peerReachAdjustor = function(buttonEl, isValid) {
+    var peerReachCheckbox = $('test_3_checkbox');
+    enableElements(peerReachCheckbox, isValid);
+    return isValid;
+};
+var ipPortReachAdjustor = function(buttonEl, isValid) {
+    var ipPortReachCheckbox = $('test_4_checkbox');
+    enableElements(ipPortReachCheckbox, isValid);
+    return isValid;
+};
+
+onloadScript = onloadScript + 'attachAETModifications(); '
+
+// -->
+</script>

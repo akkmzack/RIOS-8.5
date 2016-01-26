@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2009 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_cpu_util                                            -->
+<!--   Module Root: /rbt/sport/cpu_util                                     -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_cpuutil.cc   -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/cpu_util/config/myconfig</name>                -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_cpu_util">
+   <config>
+      <name>/rbt/sport/cpu_util/config/profiling/enable</name>
+      <description>Enable memory allocation heap tracking</description>
+      <value type="bool">false</value>
+   </config>
+
+   <!-- Technically, this wildcard is not needed since users will not be    -->
+   <!-- be able to add any new band other than the ones provided below.     -->
+   <!-- This was added so that we are able to check for invalid bands       -->
+   <!-- passed to the CLI command by way of the module's commit_check       -->
+   <!-- function. Otherwise we would have to use a CLI callback to do the   -->
+   <!-- validation, or create separate CLI commands for each of the bands.  -->
+   <!-- Note: DO NOT use this method (i.e copy/paste this code) if you wish -->
+   <!-- to add initial values for a wildcard. You should use the C-style    -->
+   <!-- node registrations in this instance.                                -->
+   <config-wildcard>
+      <name>/rbt/sport/cpu_util/config/band/*</name>
+      <description>CPU utilization bands</description>
+      <value type="string"/>
+      <value-choices>
+         <choice>low_medium</choice>
+         <choice>medium</choice>
+         <choice>low_severe</choice>
+         <choice>severe</choice>
+         <choice/>
+      </value-choices>
+   </config-wildcard>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/cumulative_process</name>
+      <description>Cumulative process threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/main_thread</name>
+      <description>Main thread threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/worker_set_percent</name>
+      <description>Worker thread percentage threshold for band </description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/worker_cutoff</name>
+      <description>Worker thread cutoff threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/io_set_percent</name>
+      <description>IO thread percentage threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/io_cutoff</name>
+      <description>IO thread cutoff threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/block_set_percent</name>
+      <description>Blocking thread percentage threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/*/block_cutoff</name>
+      <description>Blocking thread cutoff threshold for band</description>
+      <value type="uint32">0</value>
+   </config>
+
+   <!-- Please see the comment regarding the wildcard registration of       -->
+   <!-- /rbt/sport/cpu_util/config/band/*                                   -->
+   <!-- This should not be used to replace the method of adding initial     -->
+   <!-- values for a wildcard found in C-style node registrations           -->
+
+   <!-- Low Medium Band -->
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium</name>
+      <description>Low-medium band</description>
+      <value type="string">low_medium</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/cumulative_process</name>
+      <description>
+         Cumulative process threshold for low-medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/main_thread</name>
+      <description>
+         Main thread threshold for low-medium band
+      </description>
+      <value type="uint32">40</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/worker_set_percent</name>
+      <description>
+         Worker thread percentage threshold for low-medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/worker_cutoff</name>
+      <description>
+         Worker thread cutoff threshold for low-medium band
+      </description>
+      <value type="uint32">30</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/io_set_percent</name>
+      <description>
+         IO thread percentage threshold for low-medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/io_cutoff</name>
+      <description>
+         IO thread cutoff threshold for low-medium band
+      </description>
+      <value type="uint32">30</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/block_set_percent</name>
+      <description>
+         Blocking thread percentage threshold for low-medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_medium/block_cutoff</name>
+      <description>
+         Blocking thread cutoff threshold for low-medium band
+      </description>
+      <value type="uint32">30</value>
+   </config>
+
+   <!-- Medium Band -->
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium</name>
+      <description>Medium band</description>
+      <value type="string">medium</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/cumulative_process</name>
+      <description>
+         Cumulative process threshold for medium band
+      </description>
+      <value type="uint32">60</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/main_thread</name>
+      <description>
+         Main thread threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/worker_set_percent</name>
+      <description>
+         Worker thread percentage threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/worker_cutoff</name>
+      <description>
+         Worker thread cutoff threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/io_set_percent</name>
+      <description>
+         IO thread percentage threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/io_cutoff</name>
+      <description>
+         IO thread cutoff threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/block_set_percent</name>
+      <description>
+         Blocking thread percentage threshold for medium band
+      </description>
+      <value type="uint32">50</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/medium/block_cutoff</name>
+      <description>
+         Blocking thread cutoff threshold for medium band
+      </description>
+      <value type="uint32">45</value>
+   </config>
+
+   <!-- Low Severe Band -->
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe</name>
+      <description>Low-severe band</description>
+      <value type="string">low_severe</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/cumulative_process</name>
+      <description>
+         Cumulative process threshold for low-severe band
+      </description>
+      <value type="uint32">80</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/main_thread</name>
+      <description>
+         Main thread threshold for low-severe band
+      </description>
+      <value type="uint32">70</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/worker_set_percent</name>
+      <description>
+         Worker thread percentage threshold for low-severe band
+      </description>
+      <value type="uint32">60</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/worker_cutoff</name>
+      <description>
+         Worker thread cutoff threshold for low-severe band
+      </description>
+      <value type="uint32">70</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/io_set_percent</name>
+      <description>
+         IO thread percentage threshold for low-severe band
+      </description>
+      <value type="uint32">60</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/io_cutoff</name>
+      <description>
+         IO thread cutoff threshold for low-severe band
+      </description>
+      <value type="uint32">70</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/block_set_percent</name>
+      <description>
+         Blocking thread percentage threshold for low-severe band
+      </description>
+      <value type="uint32">60</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/low_severe/block_cutoff</name>
+      <description>
+         Blocking thread cutoff threshold for low-severe band
+      </description>
+      <value type="uint32">55</value>
+   </config>
+
+   <!-- Severe Band -->
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe</name>
+      <description>Severe band</description>
+      <value type="string">severe</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/cumulative_process</name>
+      <description>
+         Cumulative process threshold for severe band
+      </description>
+      <value type="uint32">90</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/main_thread</name>
+      <description>
+         Main thread threshold for severe band
+      </description>
+      <value type="uint32">80</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/worker_set_percent</name>
+      <description>
+         Worker thread percentage threshold for severe band
+      </description>
+      <value type="uint32">75</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/worker_cutoff</name>
+      <description>
+         Worker thread cutoff threshold for severe band
+      </description>
+      <value type="uint32">80</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/io_set_percent</name>
+      <description>
+         IO thread percentage threshold for severe band
+      </description>
+      <value type="uint32">75</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/io_cutoff</name>
+      <description>
+         IO thread cutoff threshold for severe band
+      </description>
+      <value type="uint32">80</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/block_set_percent</name>
+      <description>
+         Blocking thread percentage threshold for severe band
+      </description>
+      <value type="uint32">75</value>
+   </config>
+
+   <config>
+      <name>/rbt/sport/cpu_util/config/band/severe/block_cutoff</name>
+      <description>
+         Blocking thread cutoff threshold for severe band
+      </description>
+      <value type="uint32">70</value>
+   </config>
+
+</node-list>

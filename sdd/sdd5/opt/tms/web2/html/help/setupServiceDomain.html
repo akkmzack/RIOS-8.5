@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Joining a Windows Domain or Workgroup</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#715600">Chapter 6	Configuring Network Integration Features</a> : Joining a Windows Domain or Workgroup</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="715600">Joining a Windows Domain or Workgroup</a></div>
+      <div class="Body"><a name="715606">A server-side Steelhead appliance can join a Windows domain or workgroup in the Configure &gt; </a>Networking &gt; Windows Domain page. This page provides a central place for a Steelhead appliance to join a Windows domain or workgroup.</div>
+      <div class="Body"><a name="351727">The Steelhead appliance can join a single Windows domain to use these features: </a></div>
+      <li class="Bullet"><a name="281729">SMB signing trust for CIFS optimizations. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsSMB2.html#251677', '');" title="Optimizing SMB2/3">Configuring SMB Signing</a></span>.</li>
+      <li class="Bullet"><a name="281733">MAPI 2007 encrypted traffic optimization authentication. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization">Configuring MAPI Optimization</a></span>.</li>
+      <li class="Bullet"><a name="348110">MAPI Exchange as a hosted service using Active Directory integrated mode for Windows 2003 and </a>2008 or later.</li>
+      <li class="Bullet"><a name="835818">PFS. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupPFS_settings.html#282886', '');" title="Configuring PFS">Configuring PFS</a></span>.</li>
+      <li class="Bullet"><a name="727356">RSP Print package. For details, see the </a><span class="book_title">RSP User&#8217;s Guide</span>.</li>
+      <div class="Body"><a name="763462">RiOS v8.5 includes an automatic way to join the domain and deploy the server-side Steelhead appliance in </a>Active Directory integrated mode for Windows 2003 and 2008. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupDAAC.html#640640', '');" title="Configuring Domain Authentication Automatically">Configuring Domain Authentication Automatically</a></span>.</div>
+      <div class="Heading2"><a name="763467">Domain and Local Workgroup Settings</a></div>
+      <div class="Body"><a name="763468">You can choose between two user authentication modes: domain or local workgroup. Creating a local </a>workgroup eliminates the need to join a Windows domain and simplifies the configuration process, but a workgroup does <span style="font-style: italic">not</span> support SMB signing, MAPI 2007 encrypted traffic optimization authentication, or MAPI Exchange as a hosted service.</div>
+      <div class="Body"><a name="772947">You can join a Steelhead appliance to a domain in Active Directory 2008 integrated mode without </a>administrator privileges. For details, see the Riverbed Knowledge Base article <span style="font-style: italic">How to Join Steelhead to </span><span style="font-style: italic">Domain in Active Directory Integrated Mode without Administrator privileges</span>.<br /><a href="https://supportkb.riverbed.com/support/index?page=content&amp;id=S18097&amp;actp" target="external_window">https://supportkb.riverbed.com/support/index?page=content&amp;id=S18097&amp;actp</a></div>
+      <div class="Heading3"><a name="281751">Domain</a> Mode</div>
+      <div class="Body"><a name="281755">In Domain mode, you configure the Steelhead appliance to join a Windows domain (typically, the domain </a>of your company). When you configure the Steelhead appliance to join a Windows domain, you do not have to manage local accounts in the branch office, as you do in Local Workgroup mode.</div>
+      <div class="Body"><a name="281760">Domain mode allows a domain controller (DC) to authenticate users accessing its file shares. The DC can </a>be located at the remote site or over the WAN at the main data center. The Steelhead appliance must be configured as a Member Server or Active Directory integrated in the Windows 2000 or later Active Directory Services (ADS) domain. Domain users are allowed use the Kerberos delegation trust facility and/or NTLM environments for MAPI 2007 encryption or SMB signing based on the access permission settings provided for each user.</div>
+      <div class="Body"><a name="281767">Data volumes at the data center are configured explicitly on the proxy-file server and are served locally by </a>the Steelhead appliance. As part of the configuration, the data volume and ACLs from the origin-file server are copied to the Steelhead appliance. RiOS allocates a portion of the Steelhead appliance data store for users to access as a network file system.</div>
+      <div class="Body"><a name="347785">In RiOS v7.0 and later, the support for one-way trusts is further enhanced to include Windows 7 clients </a>without requiring a registry change on the Windows 7 client. You must join the server-side Steelhead appliance to the domain using the Active Directory integrated (Windows 2003/2008) mode. This allows the Steelhead appliance to use authentication within the Active Directory environment on the Exchange servers that provide Microsoft Exchange online services. The domain that the server-side Steelhead appliance joins must be either the same as the client user or any domain that trusts the domain of the client user. </div>
+      <div class="Body"><a name="281780">Before enabling domain mode make sure that you:</a></div>
+      <li class="Bullet"><a name="281781">configure the DNS server correctly. The configured DNS server must be the same DNS server to which </a>all the Windows client computers point. To use SMB signing, the server-side Steelhead appliance must be in DNS. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupHostSettings.html#187665', '');" title="Modifying General Host Settings">To specify DNS settings</a></span>.</li>
+      <li class="Bullet"><a name="281788">have a fully qualified domain name. This domain name must be the domain name for which all the </a>Windows desktop computers are configured.</li>
+      <div class="Heading4"><a name="835857">Using PFS in Domain Mode</a></div>
+      <div class="Body"><a name="835858">PFS does not support local user and group accounts. These accounts reside only on the host where they are </a>created. During an initial copy from the origin file server to the PFS Steelhead appliance, if PFS encounters a file or folder with permissions for both domain and local accounts, the Steelhead appliance preserves only the domain account permissions. If your DC is across the WAN, in the event of a WAN outage, you cannot perform user authentication. To prevent this, you either need a local DC (perhaps running in RSP), or you can switch to Local Workgroup mode, which requires you to configure local usernames and passwords or use shares that are open to everyone. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDomain.html#281826', '');" title="Joining a Windows Domain or Workgroup">Local  Workgroup Mode</a></span>.</div>
+      <div class="Body"><a name="835871">Regarding the user account required to join the Steelhead appliance to the domain: </a></div>
+      <li class="Bullet"><a name="835872">This account does </a><span style="font-style: italic">not</span> need to be a domain admin account. Any account that has sufficient privileges to join a machine to Active Directory works (that is; if you have created a non-domain Admin account that has permission to add machine accounts, and it works for regular Windows computers).</li>
+      <li class="Bullet"><a name="835876">Regardless of what account is entered, RiOS does </a><span style="font-style: italic">not</span> store the account information on the Steelhead appliance. RiOS uses it for a one-time attempt to join the domain. </li>
+      <li class="Bullet"><a name="835883">If you ever need to rejoin the computer (for example, if the account was deleted from the Active </a>Directory), you need to re-enter your credentials.</li>
+      <div class="Body"><a name="835884">For details about how the ACLS are propagated from the origin-file server to a PFS share, refer to the </a>Riverbed Support site at https://support.riverbed.com.</div>
+      <div class="Heading3"><a name="281826">Local </a>	Workgroup Mode</div>
+      <div class="Body"><a name="281827">In Local Workgroup mode, you define a workgroup and add individual users that have access to the </a>Steelhead appliance. The Steelhead appliance does not join a Windows domain. </div>
+      <div class="Body"><a name="281837">Use Local Workgroup mode in environments where you do not want the Steelhead appliance to be a part </a>of a Windows domain. Creating a workgroup eliminates the need to join a Windows domain and simplifies the configuration process.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="281839">If you use Local Workgroup mode you must manage the accounts and permissions for the branch office on the </a>Steelhead appliance. The Local Workgroup account permissions might not match the permissions on the origin-file server.</div>
+      <div class="HeadingProcedure"><a name="281843">To configure a Windows domain in Local Workgroup mode</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="281844">Select Configure &gt; Networking &gt; Windows Domain to display the Windows Domain page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="317025">Under Domain/Local Workgroup Settings, select </a><span class="Bold" style="font-weight: normal">Local Workgroup Settings,</span> click <span style="font-weight: bold">Select</span>, and then click <span style="font-weight: bold">OK</span> when a dialog asks if you really want to change the setting or reminds you to leave the domain before changing the setting.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="317026">Complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="838014">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="838016">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838018">Workgroup Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838020">Specify a local workgroup name. If you configure in local workgroup mode, the </a>Steelhead appliance does not need to join a domain. Local workgroup accounts are used by clients when they connect to the Steelhead appliance.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="838027">PFS must be enabled and </a><span class="Bold" style="font-weight: normal">Local Workgroup Settings </span>must be selected before you can set the <span class="Bold" style="font-weight: normal">workgroup name</span>. After you have set a <span class="Bold" style="font-weight: normal">workgroup name</span>, click <span class="Bold">Join</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838029">Add a New User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838031">Displays the controls to add a new user to the local workgroup.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838033">User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838035">Specify the login to create a local workgroup account so that users can connect </a>to the Steelhead appliance. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838040">Password/Password Confirm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838042">Specify and confirm the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838044">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838046">Adds users to the local workgroup.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838048">Remove Selected</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838050">Removes the selected names. </a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281895">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281896">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="281897">To configure a Windows domain in Domain mode</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="281898">Select Configure &gt; Networking &gt; Windows Domain to display the Windows Domain page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281899">Under Domain/Local Workgroup Settings, click </a><span class="Bold">Domain Settings</span>, click <span style="font-weight: bold">Select</span>, and then click <span style="font-weight: bold">OK</span> when a dialog asks if you really want to change the setting.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281900">Complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.67392pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 141.03936pt">
+            <div class="CellHeading"><a name="838326">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 327.63456pt">
+            <div class="CellHeading"><a name="838328">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838330">Active Directory Domain </a>Name/Realm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838335">Specify</a><span class="Bold"> </span>the domain in which to make the Steelhead appliance a member. Typically, this is your company domain name. RiOS supports Windows 2000 or later domains. </div>
+            <div class="CellBody"><a name="838342">RiOS does not support nondomain accounts other than administrator accounts. </a>If you create <span class="Bold" style="font-weight: normal">Local</span> mode shares on a nonadministrator account, your security permissions for the share are not preserved on the origin-file server.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838344">Primary DNS IP Address</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838346">By default, this field displays the primary DNS IP set in the DNS Settings page. </a>To modify this entry, click the IP address.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838348">Join Account Type</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838353">Specifies which account type the server-side Steelhead appliance uses to join the </a>domain controller. </div>
+            <div class="CellBody"><a name="838354">You can optimize the traffic to and from hosted Exchange servers. You must </a>configure the server-side Steelhead appliance in the Active Directory integrated mode for Windows 2003 or Windows 2008. This allows the Steelhead appliance to use authentication on the Exchange servers that provide Microsoft Exchange online services. The domain that the server-side Steelhead appliance joins must be either the same as the client user or any domain that trusts the domain of the client user. </div>
+            <div class="CellBody"><a name="838367">Be aware that when you integrate the server-side Steelhead appliance in the </a>Active Directory, it does not provide any Windows domain controller functionality to any other machines in the domain and does not advertise itself as a domain controller or register any SRV records (service records). In addition, the Steelhead appliance does not perform any replication nor hold any Active Directory objects. The server-side Steelhead appliance has just enough privileges so that it can have a legitimate conversation with the domain controller and then use transparent mode for NTLM authentication. </div>
+            <div class="CellBody"><a name="838371">The Active Directory integration provides a way to optimize NTLM </a>authentication from Windows 7/2008 R2 and newer clients when using transparent mode. This scenario is only successful for servers and clients that can make use of NTLM authentication. The server-side Steelhead appliance joins a domain with DC privileges and then uses NTLM pass-through authentication to perform the authentication. Using transparent mode simplifies the configuration.</div>
+            <div class="CellBody"><a name="838375">Select one of these options from the drop</a>&#8209;down list:</div>
+            <li class="CellBullet"><span class="Bold"><a name="838379">Workstation</a></span> - Joins the server-side Steelhead appliance to the domain with workstation privilege. You can join the domain to this account type using any ordinary user account that has the permission to join a machine to the domain. This is the default setting.</li>
+            <li class="CellBullet"><span class="Bold"><a name="838380">Active Directory integrated (Windows 2003) </a></span>- Configures the server-side Steelhead appliance to integrate with the Active Directory domain. If the account for the server-side Steelhead was not already present, it is created in organizational unit (OU) domain controllers. If the account existed previously as a domain computer then its location does not change. You can move the account to a different OU later. </li>
+            <div class="CellIndent1"><a name="838387">When you select Active Directory integrated (Windows 2003), you must </a>specify one or more domain controller name(s), separated by commas. </div>
+            <div class="CellIndent1"><a name="838388">You must have Administrator privileges to join the domain with active </a>directory integration. </div>
+            <div class="CellIndent1"><a name="838389">Active Directory integration does not support cross-domain authentication </a>where the user is from a domain trusted by the domain to which the server-side Steelhead appliance is joined.</div>
+            <li class="CellBullet"><span class="Bold"><a name="838393">Active Directory integrated (Windows 2008 and later)</a></span> - Configures the server-side Steelhead appliance to integrate with the Active Directory domain. This option supports Windows 2008 DCs and higher and supports authentication across domains. </li>
+            <div class="CellIndent1"><a name="838397">You must explicitly specify the Windows 2008 DCs as a comma-separated list </a>in the Domain Controller Names field. The list should contain either the name or IP address of the Windows 2008 DCs. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838399">&nbsp;</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellIndent1"><a name="838401">You must have Administrator privileges. Additionally, if the user account is </a>in a domain that is different from the domain to which the join is being performed, specify the user account in the format domain\\username. Do not specify the user account in the format username@realmname. In this case, domain is the short domain name of the domain to which the user belongs.</div>
+            <div class="CellBody"><a name="838405">Even though the Steelhead appliance is integrated with Active Directory, it does </a>not provide any Windows domain controller functionality to any other machines in the domain. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838407">Domain Login</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838409">Specify the login name, which must have domain join privileges. </a></div>
+            <div class="CellBody"><a name="838410">Domain administrator credentials are not strictly required, except when you join </a>the domain as an Active Directory integration.</div>
+            <div class="CellBody"><a name="838414">RiOS deletes domain administrator credentials after the join.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838416">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838418">Specify the password. This control is case-sensitive.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838420">Domain Controller Name(s)</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838422">Specify the hosts that provide user login service in the domain, separated by </a>commas. (Typically, with Windows 2000 Active Directory Service domains, given a domain name, the system automatically retrieves the DC name.)</div>
+            <div class="CellBody"><a name="838423">The domain controller name is required when joining the domain as an Active </a>Directory integration.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="838427">Riverbed recommends specifying the domain controller name in high </a>latency situations, because it reduces the time to join the domain significantly.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838429">Short Domain Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838431">Specify the short domain (NetBIOS) name if it does not match the first portion of </a>the Active Directory domain name. Case matters; NBTTECH is not the same as nbttech.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838433">Join/Leave</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838435">Joins the domain or leaves the domain.</a></div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="838436">If you are in domain mode and have joined a domain, you cannot </a>change to local workgroup mode until you leave the domain.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838438">Rejoin</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838440">Rejoins the domain.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838442">Cancel</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838444">Cancels any current domain action that is in progress, such as joining or leaving </a>a domain.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281963">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="281964">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="281965">When you have successfully joined the domain, the status updates to </a><span style="font-weight: bold">In a Domain</span>. </div>
+      <div class="Indent1"><a name="347962">The next step is to enable protocol optimization for CIFS (SMB) or encrypted MAPI. See </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'optimization.06.15.html#330324', '');" title="Configuring CIFS Optimization">Configuring CIFS Optimization</a></span> and <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization">Configuring MAPI Optimization</a></span>.</div>
+      <div class="Heading3"><a name="281967">Troubleshooting a Domain Join Failure</a></div>
+      <div class="Body"><a name="281971">This section describes common problems that can occur when joining a Windows domain. </a></div>
+      <div class="Body"><a name="348023">RiOS v8.5 features a domain health tool to identify, diagnose, and report possible problems with a Steelhead </a>appliance within a Windows domain environment. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'diagnosticDomainCheck.html#892817', '');" title="Checking Domain Health">Checking Domain Health</a></span>.</div>
+      <div class="Heading4"><a name="281972">System Time Mismatch</a></div>
+      <div class="Body"><a name="281973">The number one cause of failing to join a domain is a significant difference in the system time on the </a>Windows domain controller and the Steelhead appliance. When the time on the domain controller and the Steelhead appliance do not match, this error message appears:</div>
+      <div class="Body"><a name="281980">&#8220;lt-kinit: krb5_get_init_creds: Clock skew too great&#8221; </a></div>
+      <div class="Body"><a name="281987">Riverbed recommends using NTP time synchronization to synchronize the client and server clocks. It is </a>critical that the Steelhead appliance time is the same as on the Active Directory controller. Sometimes an NTP server is down or inaccessible, in which case there can be a time difference. You can also disable NTP if it is not being used and manually set the time. You must also verify that the time zone is correct. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupDateTime.html#1060003', '');" title="Configuring the Date and Time">Configuring the Date and Time</a></span>.</div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="281994"> Select the primary DNS IP address to view the Configure &gt; Networking &gt; Host Settings page.</a></div>
+      <div class="Heading4"><a name="281995">Invalid Domain Controller IP </a></div>
+      <div class="Body"><a name="281996">A domain join can fail when the DNS server returns an invalid IP address for the Domain Controller. When </a>a DNS misconfiguration occurs during an attempt to join a domain, these error messages appear: </div>
+      <div class="Body"><a name="281997">&#8220;Failed to join domain: failed to find DC for domain &lt;domain name&gt;&#8221; </a></div>
+      <div class="Body"><a name="281998">&#8220;Failed to join domain: No Logon Servers&#8221; </a></div>
+      <div class="Body"><a name="281999">Additionally, the Domain Join alarm triggers and messages similar to these appear in the logs:</a></div>
+      <div class="CodeIndent1"><a name="282000">Oct 13 14:47:06 bravo-sh81 rcud[10014]: [rcud/main/.ERR] - {- -} Lookup for bravo-sh81.GEN-</a>VCS78DOM.COM Failed </div>
+      <div class="CodeIndent1"><a name="282001">Oct 13 14:47:06 bravo-sh81 rcud[10014]: [rcud/main/.ERR] - {- -} Failed to join domain: failed </a>to find DC for domain GEN-VCS78DOM.COM </div>
+      <div class="Body"><a name="282002">When you encounter this error, choose Configure &gt; Networking &gt; Host Settings and verify that the DNS </a>settings are correct. </div>
+      <div class="Heading4"><a name="282003">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsSMB2.html#251677', '');" title="Optimizing SMB2/3" name="282007">Configuring SMB Signing</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization" name="282011">Configuring MAPI Optimization</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupHostSettings.html#203918', '');" title="Modifying General Host Settings" name="282015">Modifying General Host Settings</a></span></li>
+      <div class="Pbreak_H1"><a name="415850">&nbsp;</a></div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

@@ -1,0 +1,269 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Al Sweigart, Kyle Getz
+##
+## SnapMirror Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, Nodes" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsSnapMirror',) %>
+
+<psp:method name="nodeEntries">
+    return {
+        'filerAndVolume': FormUtils.NodeEntry(
+            name='filerAndVolume',
+            label='Filer (Volume)',
+            widget='select',
+            selectOptions=self.createVolumeSelectOptions(),
+            userPath='sh/web/reports/snapmirror/filer_and_volume',
+            userConfigAutoSave=True,
+            action='paramChanged()',
+            enableKeyNav=False),
+        'trafficType': FormUtils.NodeEntry(
+            name='trafficType',
+            label='Traffic Type',
+            widget='select',
+            selectOptions=('LAN', 'WAN'),
+            userPath='sh/web/reports/snapmirror/traffic_type',
+            userConfigAutoSave=True,
+            action='paramChanged()',
+            enableKeyNav=False)
+    }
+</psp:method>
+
+<psp:method name="createVolumeSelectOptions">
+    mgmt = self.session().value('mgmt')
+    snapmirrorDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/sport/snapmirror/config/filer')
+    filers = snapmirrorDetails.keys()
+    filers.sort(FormUtils.alphanumericCompare)
+    selectOptions = [('All:All', 'All (All)')]
+
+    for filer in filers:
+        selectOptions.append(('%s:All' % filer, '%s (All)' % filer))
+        try:
+            volumes = snapmirrorDetails[filer]['volume'].keys()
+            volumes.sort(FormUtils.alphanumericCompare)
+        except:
+            # Entering this block means we encountered a filer with no volumes.
+            volumes = []
+
+        for volume in volumes:
+            volume = volume.replace('\/', '/')
+            value = '%s:%s' % (filer, volume)
+            label = '%s (%s)' % (filer, volume)
+            selectOptions.append((value, label))
+
+    return selectOptions
+</psp:method>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/snapmirror',
+            '/rbt/sport/snapmirror/config/filer']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['filerAndVolume'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['trafficType'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        options: assembleChartOptions(),
+        topPaneHeightPercent: 80,
+        dataFormatterFn: dataFormatter,
+        customControlDiv: Y.one('div#reportControls'),
+        statsFn: snapmirrorStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['WAN Throughput', 'LAN Throughput', 'Data Reduction'],
+        optionsModifierFn: modifyOptions
+    });
+});
+
+function selectedFiler() {
+    return Y.one('select[name="filerAndVolume"]').get('value').split(':')[0];
+}
+
+function selectedVolume() {
+    return Y.one('select[name="filerAndVolume"]').get('value').split(':')[1];
+}
+
+function selectedTrafficType() {
+    return Y.one('select[name="trafficType"]').get('value');
+}
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    var dataUrl = '<%= Reports2.constructDataUrl("reportSnapMirror") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'filer', selectedFiler());
+    dataUrl = addQueryStringParameter(dataUrl, 'volume', selectedVolume());
+    dataUrl = addQueryStringParameter(dataUrl, 'trafficType', selectedTrafficType());
+    return dataUrl;
+}
+
+function assembleChartOptions() {
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+    highstockOptions.yAxis[0].title.text = 'Throughput (bps)';
+    highstockOptions.yAxis[2].title.text = 'Data Reduction (%)';
+
+    // Clamp the data reduction percentage graph.  Set the max to 101
+    // to keep from chopping off the peaks.
+    highstockOptions.yAxis[2].max = 101;
+    highstockOptions.yAxis[2].tickInterval = 100;
+    highstockOptions.yAxis[2].endOnTick = false;
+
+    // Make the navigator shadow the first series (Peak Throughput).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.type = 'area';
+
+    highstockOptions.lazyLoading = true; // graph updates each time navigator is changed
+
+    return highstockOptions;
+}
+
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl(),
+        options: assembleChartOptions()
+    });
+}
+
+// A callback function that supplies the summary stats displayed in the legend.
+function snapmirrorStats(allSeriesData) {
+    var allStats = [];
+
+    for (var i = 0; i < allSeriesData.length; i++) {
+        if (i == 0) {
+            // The peak throughput data series (which is always the first
+            // series) should show the maximum throughput.
+            var max = RBT.Reports2.max(allSeriesData[0]);
+            var maxText = 'Peak: ' + RBT.Reports2.scale(max, 1, 'si', 'bps');
+            allStats.push([maxText]);
+        } else if (i % 3 != 0) {
+            // All the average throughput data series (the indices not divisible
+            // by 3) should show the total amount of data transferred.
+            var total = RBT.Reports2.integrate(allSeriesData[i]) / 8;
+            var totalText = 'Total: ' + RBT.Reports2.scale(total, 1, 'si', 'B');
+            allStats.push([totalText]);
+        } else {
+            // All the data reduction data series (the indices divisible by 3)
+            // should show the average and peak data reduction.
+            var totalLAN = RBT.Reports2.integrate(allSeriesData[i - 2]) / 8;
+            var totalWAN = RBT.Reports2.integrate(allSeriesData[i - 1]) / 8;
+            var dataRemoved = totalLAN - totalWAN;
+            var overallReduction = (dataRemoved > 0) ? (dataRemoved / totalLAN * 100) : 0;
+            var overallReductionText = 'Average: ' + dataFormatter(overallReduction, 'Data Reduction');
+            var max = RBT.Reports2.max(allSeriesData[i]);
+            var maxText = 'Peak: ' + RBT.Reports2.roundWithPadding(max, 1) + '%';
+            allStats.push([overallReductionText, maxText]);
+        }
+    }
+
+    return allStats;
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    if (seriesName.indexOf('Throughput') > 0) {
+        return RBT.Reports2.scale(value, 1, 'si', 'bps');
+    } else {
+        return RBT.Reports2.roundWithPadding(value, 1) + '%';
+    }
+}
+
+function modifyOptions(options, response) {
+    var peakColor = RBT.Reports2.GRAY_DARK;
+    var trafficType = selectedTrafficType();
+
+    // Determine if the chart is in stacked mode or not since that majorly
+    // affects which options to use.
+    if (selectedFiler() == 'All' || selectedVolume() != 'All') {
+        options.series = [
+            { name: 'Peak ' + trafficType + ' Throughput',
+              color: peakColor,
+              type: 'area',
+              dataGrouping: {approximation: 'high'} },
+            { name: 'Average LAN Throughput',
+              type: 'area',
+              color: RBT.Reports2.PURPLE,
+              visible: (trafficType == 'LAN') },
+            { name: 'Average WAN Throughput',
+              type: 'area',
+              color: RBT.Reports2.PURPLE,
+              visible: (trafficType == 'WAN') },
+            { name: 'Data Reduction',
+              color: RBT.Reports2.GREEN,
+              type: 'area',
+              dataGrouping: {approximation: 'high'},
+              yAxis: 2 }
+        ];
+    } else {
+        var colors = options.colors;
+        options.series = [];
+
+        for (var i = 0; i < response.length; i++) {
+            var nextColor = colors[Math.floor((i - 1) / 3) % colors.length];
+
+            if (response[i].name.indexOf('Peak') == 0) {
+                options.series.push({
+                    name: response[i].name,
+                    color: peakColor,
+                    type: 'area',
+                    dataGrouping: {approximation: 'high'}
+                });
+            } else if (response[i].name.indexOf('LAN Throughput') > 0) {
+                options.series.push({
+                    name: response[i].name,
+                    color: nextColor,
+                    type: 'area',
+                    stacking: 'normal',
+                    fillOpacity: 1.0,
+                    visible: (trafficType == 'LAN')
+                });
+            } else if (response[i].name.indexOf('WAN Throughput') > 0) {
+                options.series.push({
+                    name: response[i].name,
+                    color: nextColor,
+                    type: 'area',
+                    stacking: 'normal',
+                    fillOpacity: 1.0,
+                    visible: (trafficType == 'WAN')
+                });
+            } else if (response[i].name.indexOf('Data Reduction') > 0) {
+                options.series.push({
+                    name: response[i].name,
+                    color: nextColor,
+                    dataGrouping: {approximation: 'high'},
+                    yAxis: 2
+                });
+            }
+        }
+    }
+
+    options.navigator.series.color = options.series[0].color;
+    options.navigator.series.lineColor = options.series[0].color;
+    options.tooltip.backgroundColor = 'rgba(200, 200, 200, 0.6)';
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

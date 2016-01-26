@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: passwd                                                  -->
+<!--   Module Root: /auth/passwd/user                                       -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_passwd.c                   -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/auth/passwd/user/config/myconfig</name>                  -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="passwd">
+    <config>
+        <name>/auth/passwd/user/*/last_change</name>
+        <description>Days since Jan 1, 1970 that password was last changed</description>
+        <value type="uint32">10000</value>
+    </config>
+
+    <config>
+        <name>/auth/passwd/user/*/never_lock</name>
+        <description>Whether this user can be locked</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/auth/passwd/user/*/expire</name>
+        <description>Make this user account expire or not</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/auth/passwd/user/*/never_expire</name>
+        <description>Whether this user account can be expire</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/auth/passwd/user/*/pwd_history</name>
+        <description>Password history</description>
+        <value type="string">""</value>
+    </config>
+
+    <state>
+        <name>/auth/passwd/user/*/state/change_in_days</name>
+        <description>Days before user can update password</description>
+        <value type="int32"/>
+        <get-func>md_passwd_get_change_password_days</get-func>
+        <role-primitive>none</role-primitive>
+     </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/expire_in_days</name>
+        <description>Days before password expiration</description>
+        <value type="int32"/>
+        <get-func>md_passwd_get_expire_days</get-func>
+     </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/lock_in_days</name>
+        <description>Days before password locked</description>
+        <value type="int32"/>
+        <get-func>md_passwd_get_lock_days</get-func>
+    </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/old_passwd_reqd</name>
+        <description>Old password required on password change</description>
+        <value type="bool"/>
+        <get-func>md_passwd_get_old_passwd_reqd</get-func>
+        <role-primitive>none</role-primitive>
+    </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/login_failure/count</name>
+        <description>Number of failed login attempts</description>
+        <value type="int32"/>
+        <get-func>md_passwd_get_login_failures</get-func>
+     </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/login_failure/date</name>
+        <description>Date of last failed login attempt</description>
+        <value type="datetime_sec"/>
+        <get-func>md_passwd_get_login_failures</get-func>
+     </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/login_failure/source</name>
+        <description>Source of last failed login attempt</description>
+        <value type="string"/>
+        <get-func>md_passwd_get_login_failures</get-func>
+     </state>
+
+    <state>
+        <name>/auth/passwd/user/*/state/login_failure/lock</name>
+        <description>Is user locked due to too many failed login attempts</description>
+        <value type="bool"/>
+        <get-func>md_passwd_get_login_failures</get-func>
+     </state>
+
+
+    <action>
+        <name>/auth/passwd/user/action/set_passwd</name>
+        <description>Set the plain text password for this user</description>
+        <action-func>md_passwd_set_plain_password</action-func>
+        <parameter type="string">username</parameter>
+        <parameter type="string">password</parameter>
+        <parameter type="string">old_password</parameter>
+        <role-primitive>none</role-primitive>
+    </action>
+
+    <action>
+        <name>/auth/passwd/user/action/reset_login_failure</name>
+        <description>Reset the user's login failure count</description>
+        <action-func>md_passwd_reset_login_failures</action-func>
+        <parameter type="string">username</parameter>
+    </action>
+    
+</node-list>

@@ -1,0 +1,60 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/auto_lz_pct']
+</psp:method>
+
+<% self.hasHelp = True %>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Percentage (%)';
+    highstockOptions.yAxis[0].max = 100;
+    highstockOptions.colors = [RBT.Reports2.BLUE,
+                               RBT.Reports2.RED,
+                               RBT.Reports2.GREEN,
+                               RBT.Reports2.ORANGE];
+
+    // Make the navigator shadow the first series (Compression due to Disk Pressure).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.lineColor = highstockOptions.colors[0];
+    highstockOptions.navigator.yAxis.max = 100;
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportDataStoreCompression") %>',
+        options: highstockOptions,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        dataFormatterFn: dataFormatter
+    });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    return RBT.Reports2.roundWithPadding(value, 1) + '%';
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

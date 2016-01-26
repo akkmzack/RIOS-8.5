@@ -1,0 +1,430 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# Manage RSP3 backup files from this page.
+# Author: Andrew Hao, Kyle Getz
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, time, rsp3, cgi" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupRSP3Slots', 'setupAdministrationJobs') %>
+
+<psp:method name="css">
+    return '''
+span.diskSpace {
+  margin-right: 10px
+}
+#recurOptions #recurInterval .units {
+  margin: 0 15px 0 4px;
+  padding: 0;
+}
+#manageBackupsTable_main {
+  width: 850px;
+}
+th.fileSize, td.fileSize {
+  text-align: right;
+}
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning.
+    return ['/rbt/rsp3/config/rbm',
+            '/file/delete',
+            '/file/move']
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'backupSlot': FormUtils.NodeEntry(
+            name='backupSlot',
+            label='Source Slot',
+            widget='select',
+            tooltip='Only slots containing local VMs can be backed up.'),
+        'backupDestination': FormUtils.NodeEntry(
+            name='backupDestination',
+            widget='radio',
+            label={'local': 'Local VSP Backup Library',
+                   'remote': '<span class="popupTitle" title="%s">Remote URL</span>:' % cgi.escape(
+                            '''<p>One of the following:</p>
+                            <p> 
+                              <ul>
+                                <li>ftp://user:password@host/relative/path/to/file</li>
+                                <li>ftp://user:password@host//absolute/path/to/file</li>
+                                <li>scp://user:password@host/absolute/path/to/file</li>
+                              </ul>
+                            </p>''', True)},
+            labelClass='labelPaddedBoth',
+            enableDiv={'remote': 'remoteBackup'},
+            value='local'),
+        'backupDestinationUrl': FormUtils.NodeEntry(
+            name='backupDestinationUrl',
+            label='',
+            widgetClass='wide3',
+            validate='destinationUrl'),
+        'backupCompressEnable': FormUtils.NodeEntry(
+            name='backupCompressEnable',
+            label='Compress Backup',
+            value='true',
+            widget='checkboxLeft',
+            tooltip='Compression is usually recommended to reduce the size of the backup.  However, if a remote backup connection is optimized with Steelheads, disabling compression will improve the transfer rate by allowing SDR to reduce the amount of data sent over the WAN.'),
+        'backupScheduleEnable': FormUtils.NodeEntry(
+            name='backupScheduleEnable',
+            label='Schedule for Later',
+            widget='checkboxLeft',
+            enableDiv='scheduleOptions'),
+        'backupScheduleDate': FormUtils.NodeEntry(
+            name='backupScheduleDate',
+            label='Date',
+            value=time.strftime('%Y/%m/%d'),
+            validate='date',
+            widgetClass='date'),
+        'backupScheduleTime': FormUtils.NodeEntry(
+            name='backupScheduleTime',
+            label='Time',
+            labelClass='labelPaddedBoth',
+            validate='time',
+            value=time.strftime('%H:%M:%S'),
+            widgetClass='time'),
+        'backupRecurringEnable': FormUtils.NodeEntry(
+            name='backupRecurringEnable',
+            label='Enable Recurring Backups',
+            labelClass='labelPaddedLeft',
+            widget='checkboxLeft',
+            enableDiv='recurInterval'),
+        'backupRecurringDays': FormUtils.NodeEntry(
+            name='backupRecurringDays',
+            label='Repeat Every',
+            units='days',
+            value='0',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='xsmall'),
+        'backupRecurringHours': FormUtils.NodeEntry(
+            name='backupRecurringHours',
+            units='hours',
+            value='0',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='xsmall'),
+        'backupRecurringMinutes': FormUtils.NodeEntry(
+            name='backupRecurringMinutes',
+            units='minutes',
+            value='0',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='xsmall'),
+        'backupRecurringMaxFilesEnable': FormUtils.NodeEntry(
+            name='backupRecurringMaxFilesEnable',
+            label='Enable Rotation',
+            labelClass='labelPaddedLeft',
+            widget='checkboxLeft',
+            enableDiv='recurMaxFiles',
+            tooltip='Once the maximum number of backups has been reached, each new backup will replace the oldest one.'),
+        'backupRecurringMaxFiles': FormUtils.NodeEntry(
+            name='backupRecurringMaxFiles',
+            label='Backup Count',
+            validate=('intInRange', '[1, 4294967295]'),
+            widgetClass='small'),
+        'backupUploadName': FormUtils.NodeEntry(
+            name='backupUploadName',
+            label='Name',
+            widgetClass='wide2',
+            inputOptional=True,
+            validate="restrictedPathElement"),
+        'backupUploadSource': FormUtils.NodeEntry(
+            name='backupUploadSource',
+            widget='radio',
+            value='url',
+            label={'url': 'From URL: ',
+                   'file': 'From Local File: '},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>https://host/path/to/file</li>
+                        <li>ftp://user:password@host/relative/path/to/file</li>
+                        <li>ftp://user:password@host//absolute/path/to/file</li>
+                        <li>scp://user:password@host/absolute/path/to/file</li>
+                      </ul>
+                    </p>''',
+                'file': '''
+                    Files greater than 2GB in size cannot be uploaded via the
+                    browser. Instead, the <code>scp</code> utility can be used to
+                    copy files directly into the <code>%s</code> directory.
+                    ''' % rsp3.rsp_backupdir,
+            },
+            labelClass='labelPaddedBoth',
+            enableDiv={'url': 'remoteUrl',
+                       'file': 'localFile'}),
+        'backupUploadUrl': FormUtils.NodeEntry(
+            name='backupUploadUrl',
+            widgetClass='wide4',
+            validate='url'),
+        'backupUploadFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('rspTmpBackupDirectory',
+                                               'rspBackupFile'),
+            widget='file',
+            validate='nonempty'),
+        'backupNewFileName': FormUtils.NodeEntry(
+            name='backupNewFileName',
+            validate='restrictedPathElement',
+            label='Name',
+            widgetClass='wide3')
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+# Backup fetch meter
+backupMeter = FormUtils.Meter(self, 'rspBackupFetch',
+                              buttonName='uploadBackup',
+                              buttonText='Import',
+                              formId='manageBackupsForm',
+                              pollUrl='/mgmt/xmldata?p=rsp3BackupFetchStatus',
+                              unloadWarningMsg='There is a file transfer in progress.')
+
+slotPath = pathPrefix + '/rbt/rsp3/state/slot'
+slots = Nodes.getMgmtLocalChildrenNames(mgmt, slotPath)
+slots.sort(FormUtils.alphanumericCompare)
+
+# Build the select options for the list of slots.  Empty slots and remote VMs
+# cannot be backed up.
+selectOptions = []
+backupableSlots = 0
+defaultSlot = None
+for slot in slots: {
+    installed = Nodes.present(mgmt, '/rbt/rsp3/state/slot/%s/installed' % slot) == 'true'
+    datastore = Nodes.present(mgmt, '/rbt/rsp3/state/slot/%s/datastore' % slot)
+    remote = Nodes.present(mgmt, '/rbt/rsp3/state/datastore/%s/remote' % datastore) == 'true'
+
+    if not installed: {
+        selectOptions.append((slot, '%s (empty)' % slot, False))
+    } elif remote: {
+        selectOptions.append((slot, '%s (remote)' % slot, False))
+    } else: {
+        selectOptions.append((slot, slot, True))
+        backupableSlots += 1
+        if not defaultSlot: {
+            defaultSlot = slot
+        }
+    }
+}
+
+# Show the create backup form only if at least one slot can be backed up.
+if backupableSlots: {
+    dialogEntries['backupSlot'].selectOptions = selectOptions
+    dialogEntries['backupSlot'].value = defaultSlot
+
+    createBackupHtml = '''
+%s
+%s
+<div id="backupDestination" class="midLevel">
+  <h3>Save backup to:</h3>
+  %s
+  %s <span id="remoteBackup">%s</span>
+</div>
+<div id="scheduleLater" class="midLevel">
+  %s
+  <div id="scheduleOptions" class="indent">
+    %s %s
+    <div id="recurOptions">
+      %s
+      <div id="recurInterval" class="indent">
+        %s %s %s
+        <div id="recurMaxFilesEnable">
+          %s
+          <div id="recurMaxFiles" class="indent">
+            %s
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+%s
+''' % (dialogEntries['backupSlot'].html(self, format='block'),
+       dialogEntries['backupCompressEnable'].html(self),
+       dialogEntries['backupDestination'].html(self, value='local', format='block'),
+       dialogEntries['backupDestination'].html(self, value='remote', format='inline'),
+       dialogEntries['backupDestinationUrl'].html(self, format='inline'),
+       dialogEntries['backupScheduleEnable'].html(self, format='block'),
+       dialogEntries['backupScheduleDate'].html(self, format='inline'),
+       dialogEntries['backupScheduleTime'].html(self, format='inline'),
+       dialogEntries['backupRecurringEnable'].html(self),
+       dialogEntries['backupRecurringDays'].html(self, format='inline'),
+       dialogEntries['backupRecurringHours'].html(self, format='inline'),
+       dialogEntries['backupRecurringMinutes'].html(self, format='inline'),
+       dialogEntries['backupRecurringMaxFilesEnable'].html(self),
+       dialogEntries['backupRecurringMaxFiles'].html(self, format='block'),
+       FormUtils.formSubmitButtons(self, {'name': 'createBackup',
+                                          'value': 'Create',
+                                          'onclick': 'return submitCreateBackupForm(this)'}))
+} else: {
+    createBackupHtml = '''
+<p>There are no slots that can be backed up. Only slots containing local VMs can be backed up.</p>
+'''
+}
+
+manageBackupsTable = ajaxentrytable.AjaxEntryTable('manageBackups',
+    titleText='VSP Backups',
+    url='/mgmt/xmldata?p=rsp3Backups',
+    headerSpec=('',
+                ('Filename', '', 'sortAttrib("name")'),
+                'Link',
+                ('Slot', '', 'sortAttrib("slot")'),
+                ('Timestamp', '', 'sortAttrib("date")'),
+                ('File Size', 'fileSize', 'sortAttrib("size_raw")')),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedBackup_'),
+ AjaxEntryTable.td([backupEditOrError()]),
+ AjaxEntryTable.tdLink('link_href', 'link_name'),
+ AjaxEntryTable.tdAttr('slot'),
+ AjaxEntryTable.tdAttr('date'),
+ AjaxEntryTable.tdAttr('size_on_disk', 'fileSize')]
+""",
+    emptyMessage='No VSP backups.',
+    addButtonText='Import Backup',
+    removeName='removeBackup',
+    removeButtonText='Remove Selected Backups')
+
+manageBackupsTable.addDivContent = '''
+    <div class="midLevel">
+      %s
+    </div>
+    <div class="midLevel">
+      %s
+      <div id="remoteUrl" class="indent">
+        %s
+      </div>
+      %s
+      <div id="localFile" class="indent">
+        %s
+      </div>
+    </div>
+    %s
+''' % (dialogEntries['backupUploadName'].html(self, format='block'),
+       dialogEntries['backupUploadSource'].html(self, value='url', format='block'),
+       dialogEntries['backupUploadUrl'].html(self, format='block'),
+       dialogEntries['backupUploadSource'].html(self, value='file', format='block'),
+       dialogEntries['backupUploadFile'].html(self, format='block'),
+       backupMeter.buttonHtml())
+
+manageBackupsTable.editDivContent = '''
+    <input type="hidden" name="editBackupName" />
+    <div class="midLevel">
+      <fieldset>
+        <legend>Rename VSP Backup</legend>
+        <p>
+          %s %s
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Restore VSP Backup</legend>
+        <p>
+          Restore this backup into a VSP slot on the
+          <a id="editBackupLink">VSP Slots</a> page.
+        </p>
+      </fieldset>
+    </div>
+''' % (dialogEntries['backupNewFileName'].html(self, format='inline'),
+       FormUtils.renderButton(self, {'name': 'renameBackup',
+                               'value': 'Rename'}))
+
+# Disk space info.
+diskTotal = int(Nodes.present(mgmt, '/rbt/rsp3/state/datastore/local/capacity'))
+diskFree = int(Nodes.present(mgmt, '/rbt/rsp3/state/datastore/local/free_space'))
+diskUsed = diskTotal - diskFree
+%>
+
+<div class="rsp3Info">
+  <span class="diskSpace">Local datastore:</span>
+  <span><%= rsp3.stringifyUsedFreeTotal(diskUsed, diskFree, diskTotal) %></span>
+</div>
+
+<form id="createBackupsForm" method="post" action="<%= self.thisPageletRequest() %>" class="liveStatusAttachPoint">
+  <div>
+    <input type="hidden" name="_action_" value="setupRsp3Backups" />
+    <fieldset>
+      <legend>Create VSP Backup</legend>
+      <%= createBackupHtml %>
+    </fieldset>
+  </div>
+</form>
+
+<form id="manageBackupsForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupRsp3Backups" />
+    <%= manageBackupsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// An AET callback that determines if a row in the backups table should contain
+// a link (to open the row) or just text (for an invalid/corrupt backup file).
+function backupEditOrError() {
+    var validBackupEdit = AjaxEntryTable.edit('name', 'name');
+
+    return function(entryTable, parent, element) {
+        if (element.getAttribute('valid') == 'false') {
+            var fileName = element.getAttribute('name');
+            var tooltip = 'This file is invalid or corrupt.';
+            AjaxEntryTable.populateInvalidEntryTd(parent, fileName, tooltip);
+        } else {
+            validBackupEdit(entryTable, parent, element);
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var liveStatus = null;
+
+Y.on('domready', function() {
+    liveStatus = new LiveStatus({attachPoint: '#createBackupsForm'}).render();
+});
+
+manageBackupsTable.editEntry = function(editName) {
+    var form = $('manageBackupsForm');
+    setFormValue(form, 'editBackupName', editName);
+    setFormValue(form, 'backupNewFileName', editName);
+
+    // Set the href of the link to the RSP Slots page.
+    var rspBackup = this.getEntryElement('name', editName);
+    var slot = rspBackup.getAttribute('slot');
+    var link = addQueryStringParameter('/mgmt/gui?p=setupRSP3Slots', 'openEditSlot', slot);
+    link = addQueryStringParameter(link, 'openEditTab', 'operations');
+    $('editBackupLink').href = link;
+}
+
+function submitCreateBackupForm(element) {
+    setTimeout('showLiveStatus()', 0);
+    return submitPrep(element);
+}
+
+function showLiveStatus() {
+    if ($("createBackupsForm").backupScheduleEnable.checked == false) {
+        liveStatus.show('Creating slot backup.');
+    }
+}
+
+// ]]>
+</script>

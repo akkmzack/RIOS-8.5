@@ -1,0 +1,102 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## reportNetworkStats.psp
+## This is the template for the EVA Network Stats report page.
+##
+%>
+
+<%@page imports="Nodes, RVBDUtils, ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:EVANetworkStatsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="EVANetworkStatsPagelet" %>
+<%@page indentType="braces" %>
+
+
+<psp:method name="css">
+    return '''
+table.reportParameters select {
+    margin-right: 20px;
+}
+'''
+</psp:method>
+
+
+<%
+reportOpts = {
+    'controlFormId': 'evaNetworkStatsForm',
+    'reportSpecs': {
+        'evaNetworkStats': {
+            'tableName': 'evaNetworkStatsTable',
+            'gfxId': 'evaNetworkStats',
+            'gfxDisplayId': 'evaNetworkStatsGraphImg'
+        }
+    },
+    'onApplianceChange': '$("evaNetworkStatsForm").submit()'
+}
+evaNetworkStatsTable = ajaxentrytable.AjaxEntryTable(
+    'evaNetworkStats',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+
+# only for EVA or Steelhead EX
+if not RVBDUtils.isCMC(): {
+    import eva
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('veRefreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<div id="evaNetworkStatsGraphDiv" class="graphDiv">
+  <img id="evaNetworkStatsGraphImg" src="" class="graphImg"
+    alt="Network I/O Data" />
+</div>
+<%= evaNetworkStatsTable.html(self, cssClass="midLevel") %>
+
+<form id="evaNetworkStatsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+            <%= reportOpts.get('groupCol', '') %>
+            <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+<%
+self.endPagelet()
+%>

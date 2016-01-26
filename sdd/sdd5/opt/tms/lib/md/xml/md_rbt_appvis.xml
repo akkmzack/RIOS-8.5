@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_appvis                                              -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_appvis.cc    -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/config/myconfig</name>                                   -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_appvis">
+
+    <config>
+      <name>/rbt/app_vis/config/enable</name>
+        <description>Application Visibility Enabled</description>
+        <value type="bool">false</value>
+	<role-primitive permissions="read-write">/role_primitive/system_setup/advanced_networking/netflow</role-primitive>
+    </config>
+    <config>
+        <name>/rbt/app_vis/config/hist_days_300</name>
+        <description>Guaranteed history for 5-minute samples</description>
+        <value type="uint32">30</value>
+    </config>
+    <config>
+        <name>/rbt/app_vis/config/hist_days_3600</name>
+        <description>Guaranteed history for 1-hour samples</description>
+        <value type="uint32">30</value>
+    </config>
+    <config>
+        <name>/rbt/app_vis/config/hist_days_86400</name>
+        <description>Guaranteed history for 1-day samples</description>
+        <value type="uint32">30</value>
+    </config>
+    <config>
+        <name>/rbt/app_vis/config/collectord/port</name>
+        <description>The port collectord listens on for Netflow packets</description>
+        <value type="uint16">43210</value>
+    </config>
+
+    <action>
+        <name>/rbt/app_vis/action/purge</name>
+        <description>Purge the Application Visibility stats database</description>
+        <action-func>md_rbt_appvis_purge_action</action-func>
+    </action>
+
+    <event>
+        <name>/rbt/app_vis/event/enabled</name>
+        <description>Application Visibility has been enabled</description>
+    </event>
+    <event>
+        <name>/rbt/app_vis/event/disabled</name>
+        <description>Application Visibility has been disabled</description>
+    </event>
+    <event>
+        <name>/rbt/app_vis/event/collectord/config</name>
+        <description>Notification sent to collectord holding config.</description>
+    </event>
+    <event>
+        <name>/rbt/app_vis/event/collectord/connected</name>
+        <description>Notification sent to mgmtd when collectord is connected.</description>
+    </event>
+
+
+</node-list>

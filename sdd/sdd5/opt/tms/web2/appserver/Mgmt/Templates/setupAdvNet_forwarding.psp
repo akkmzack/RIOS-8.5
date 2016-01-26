@@ -1,0 +1,198 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_forwarding.psp
+##
+## Advanced Networking Connection Forwarding
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceGeneral', 'setupAdvNet_asymmetric', 'reportNeighbors') %>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableForwarding': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Connection Forwarding',
+            enableDiv='enableForwarding'),
+        'port': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/port',
+            type='uint16',
+            validate='port',
+            widgetClass='small',
+            label='Port'),
+        'keepAliveInterval': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/keepalive_intvl',
+            type='uint32',
+            validate=('intInRange', '[0, 32767]'),
+            widgetClass='small',
+            label='Keep-Alive Interval'),
+        'keepAliveCount': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/keepalive_cnt',
+            type='uint32',
+            validate=('intInRange', '[0, 127]'),
+            widgetClass='small',
+            label='Keep-Alive Count'),
+        'inpathAllowFail': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/allow_failure',
+            type='bool',
+            widget='checkbox',
+            label='In-Path Neighbor Failure',
+            units='Allow'),
+        'inpathMultipleInterface': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/neighbor/use_cluster_proto',
+            type='bool',
+            widget='checkbox',
+            label='Multiple Interface Support',
+            units='Enable')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'name': FormUtils.NodeEntry(
+            name='name',
+            validate='hostname',
+            label='Hostname'),
+        'ip': FormUtils.NodeEntry(
+            name='ip',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='In-Path IP Address'),
+        'ips': FormUtils.NodeEntry(
+            name='ips',
+            validate='ipv4addr_list',
+            inputOptional=True,
+            widgetClass='wide2',
+            label='Additional IP Addresses',
+            hint='(optional: comma-separated list)'),
+        'port': FormUtils.NodeEntry(
+            name='port',
+            validate='port',
+            value='7850',
+            widgetClass='port',
+            label='Port')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+addNeighbor = 'addNeighbor_'
+editNeighbor = 'editNeighbor_'
+%>
+
+<% self.beginPagelet() %>
+
+<p>
+  Connection forwarding allows appliances in a network configuration
+  with multiple paths from the server to be In-Path.
+</p>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="forwardingForm">
+  <fieldset>
+    <legend>Connection Forwarding Settings</legend>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <div class="midLevel">
+      <%= nodeEntries['enableForwarding'].html(self) %>
+      <div id="enableForwarding" class="indent">
+        <table>
+          <%= nodeEntries['port'].html(self) %>
+          <%= nodeEntries['keepAliveInterval'].html(self) %>
+          <%= nodeEntries['keepAliveCount'].html(self) %>
+          <%= nodeEntries['inpathAllowFail'].html(self) %>
+<% if 'hp_procurve' != Nodes.present(mgmt, '/rbt/model_capability/mfg_type'): { %>
+          <%= nodeEntries['inpathMultipleInterface'].html(self) %>
+<% } %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+
+# Neighbors table
+neighborsTable = ajaxentrytable.AjaxEntryTable('neighbors',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=neighbors'),
+    titleText='Neighbor Table',
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'), 'Neighbor Name', 'In-Path IP Address', 'Port'),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedNeighbor_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('ip'),
+ AjaxEntryTable.tdAttr('port')]""",
+    emptyMessage='No current neighbors.',
+    addButtonText='Add a New Neighbor',
+    addButtonName='addNeighbor',
+    removeName='removeNeighbors',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedNeighbor_',
+    editDivTitle='Editing Neighbor <b><span id="editNeighbor_name"></span></b>',
+    editButtonName='editNeighbor')
+
+neighborsTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+  ''' % (dialogEntries['name'].html(self, namePrefix=addNeighbor),
+         dialogEntries['ip'].html(self, namePrefix=addNeighbor,
+                                  more=[dialogEntries['port']]),
+         dialogEntries['ips'].html(self, namePrefix=addNeighbor))
+
+neighborsTable.editDivContent = '''
+  <input type="hidden" name="editNeighbor_name" />
+  <table>
+    %s
+    %s
+  </table>
+  ''' % (dialogEntries['ip'].html(self, namePrefix=editNeighbor,
+                                  more=[dialogEntries['port']]),
+         dialogEntries['ips'].html(self, namePrefix=editNeighbor))
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="neighbors">
+  <div>
+    <input type="hidden" name="_action_" value="setupConnectionForwarding" />
+    <%= neighborsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+neighborsTable.editEntry = function(editName) {
+    var form = document.getElementById('neighbors');
+    var el = this.getEntryElement('name', editName);
+    setElementText('editNeighbor_name', editName);
+    form.editNeighbor_name.value = editName;
+    form.editNeighbor_ip.value = el.getAttribute('ip');
+    form.editNeighbor_port.value = el.getAttribute('port');
+    form.editNeighbor_ips.value = getChildAttribute(el,
+                                                    'additional-address',
+                                                    'ip');
+}
+
+// -->
+</script>
+

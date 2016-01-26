@@ -1,0 +1,98 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsHTTP',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/http_requests']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Rate (requests/sec or hits/sec)';
+    highstockOptions.series = [
+        { name: 'Request Rate',
+          color: RBT.Reports2.GRAY_DARK,
+          type: 'area' },
+        { name: 'Object Prefetch Table Hit Rate',
+          color: RBT.Reports2.GREEN,
+          type: 'area',
+          fillOpacity: 1.0,
+          stacking: 'normal' },
+        { name: 'URL Learning Hit Rate',
+          color: RBT.Reports2.BLUE,
+          type: 'area',
+          fillOpacity: 1.0,
+          stacking: 'normal' },
+        { name: 'Parse and Prefetch Hit Rate',
+          color: RBT.Reports2.ORANGE,
+          type: 'area',
+          fillOpacity: 1.0,
+          stacking: 'normal' }
+    ];
+
+    // Make the navigator shadow the first series (Request Rate).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    // Create the chart!
+    var chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportHTTPStatistics") %>',
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        statsFn: httpStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    var suffix = (seriesName == 'Request Rate') ? ' requests/sec' : ' hits/sec';
+    return RBT.Reports2.addThousandsSeparators(RBT.Reports2.roundWithPadding(value, 1)) + suffix;
+}
+
+// A callback function that supplies the summary stats displayed in the legend.
+function httpStats(allSeriesData) {
+    var allStats = [];
+
+    // Calculate the total number of requests.
+    var totalRequests = Math.round(RBT.Reports2.integrate(allSeriesData[0]));
+    var totalRequestsText = 'Total: ' + RBT.Reports2.addThousandsSeparators(totalRequests) + ' requests';
+    allStats.push([totalRequestsText]);
+
+    // Calculate the total number of hits for the three different hits series.
+    for (var i = 1; i < 4; i++) {
+        var totalHits = Math.round(RBT.Reports2.integrate(allSeriesData[i]));
+        var totalHitsText = 'Total: ' + RBT.Reports2.addThousandsSeparators(totalHits) + ' hits';
+        allStats.push([totalHitsText]);
+    }
+
+    return allStats;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

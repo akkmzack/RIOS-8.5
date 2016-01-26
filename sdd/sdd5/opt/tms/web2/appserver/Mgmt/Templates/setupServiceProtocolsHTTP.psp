@@ -1,0 +1,674 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsHTTP.psp
+
+## HTTP Settings
+##
+## HTML Tags Prefetch Table
+##
+## Server Subnet Settings Table
+##
+## Authentication Settings Table
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, RVBDUtils, Nodes, RbtUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportHTTPStatisticsCombined',) %>
+
+<psp:method name="css">
+    return '''
+.subnetHdr {
+    width: 200px;
+}
+.configRow {
+    white-space: nowrap;
+}
+#subnetTable_main {
+    width: 100%;
+}
+#filterDiv {
+    width: 640px;
+    margin: 20px 0 4px;
+}
+.configDiv, .autoConfigDiv {
+    float: left;
+    width: 175px;
+    padding: 5px 20px 10px;
+    margin-bottom: 4px;
+}
+.autoConfigDiv {
+    padding-left: 0;
+}
+.deleteRuleNotice {
+    clear: both;
+}
+.defaultRule {
+    font-style: italic;
+}
+'''
+</psp:method>
+
+<psp:file>
+subnetOptionsBasic = (
+    (
+        'strip_compress',
+        'Strip Compression',
+        '<p>Remove compression headers to increase the performance of the Steelhead\'s data reduction algorithms.</p>'
+    ),
+    (
+        'insert_cookie',
+        'Insert Cookie',
+        '<p>For HTTP applications that do not use cookies, insert one so that the Steelhead can track requests from the same client.</p>'
+    ),
+    (
+        'insert_keep_alive',
+        'Insert Keep-Alive',
+        '<p>Use the same TCP connection for multiple HTTP requests instead of opening a new one for every request.</p>'
+    )
+)
+subnetBasicNames = [name for name, label, tooltip in subnetOptionsBasic]
+subnetOptionsPrefetch = (
+    (
+        'url_learning',
+        'URL Learning',
+        '<p>Analyze the pattern of URL accesses and prefetch pages that are likely to be requested by the user.</p>'
+    ),
+    (
+        'parse_and_prefetch',
+        'Parse and Prefetch',
+        '<p>Parse the HTML and prefetch objects specified by the prefetch file extensions.  Subsequent requests for these objects will be satisfied from the client-side Steelhead.</p>'
+    ),
+    (
+        'cache',
+        'Object Prefetch Table',
+        '<p>Maintain a lookup table of prefetched objects so that they can be retrieved from the Steelhead Data Store more efficiently.</p>'
+    )
+)
+subnetPrefetchNames = [name for name, label, tooltip in subnetOptionsPrefetch]
+subnetOptionsAuth = (
+    (
+        'ntlm_auth_srv',
+        'Reuse Auth',
+        '<p>Allow new connections to reuse credentials from a previously-authorized connection to the same server.</p>'
+    ),
+    (
+        'force_negotiate_ntlm',
+        'Force NTLM',
+        '<p>In the case of negotiated NTLM/Kerberos authentication, force the use of NTLM.  Although Kerberos provides stronger security, it is less efficient over the WAN because the client must contact the Domain Controller to answer the server authentication challenge. Consider also selecting Reuse NTLM Auth and Strip Auth Header.</p>'
+    ),
+    (
+        'strip_auth_header',
+        'Strip Auth Header',
+        '<p>Strip all credentials from the request on an already-authenticated connection.  This works around Internet Explorer behavior where connections are reauthorized even though they had previously already been authorized.</p><p><em>Warning: Enabling Strip Auth Header if the server employs per-object NTLM authentication may cause authentication failure.</em></p>'
+    ),
+    (
+        'auth_cache',
+        'Gratuitous 401',
+        '<p>Prevent a WAN round trip by issuing the first 401 containing the realm choices from the client-side Steelhead.</p><p><em>Warning: Enabling Gratuitous 401 if the server employs per-connection Kerberos authentication may cause additional delay.</em></p>'
+    )
+)
+subnetAuthNames = [name for name, label, tooltip in subnetOptionsAuth]
+
+subnetOptionsSharePoint = (
+    (
+        'FPSE',
+        'FPSE',
+        '<p>Microsoft FrontPage Server Extensions protocol optimizations.</p>',
+    ),
+    (
+        'WebDAV',
+        'WebDAV',
+        '<p>Microsoft WebDAV protocol optimizations.</p>'
+    )
+)
+subnetSharePointNames = [name for name, label, tooltip in subnetOptionsSharePoint]
+
+</psp:file>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableHttp': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/enabled',
+            type='bool',
+            widget='checkboxLeft',
+            enableDiv='httpSettings',
+            label='Enable HTTP Optimization'),
+        'cacheTimeMin': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/cache/min_time',
+            type='uint32',
+            widgetClass='small',
+            label='Minimum Object Prefetch Table Time',
+            units='seconds'),
+        'cacheTimeMax': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/cache/max_time',
+            type='uint32',
+            widgetClass='small',
+            label='Maximum Object Prefetch Table Time',
+            units='seconds'),
+        'enableStreamSplitting': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/stream_splitting/live_stream_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable HTTP Stream Splitting'),
+        'cacheMode': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/cache/cache_objects/mode',
+            widget='radio',
+            type='string',
+            tooltip={'all': 'Determine whether to store an object based on its Cache-Control headers.'},
+            enableDiv={'use-list': 'optList'},
+            label={ 'all': 'Store All Allowable Objects',
+                    'use-list': '''<span class="popupTitle" title="Only store
+                        objects with specific extensions, subject to
+                        Cache-Control headers.">Store Objects With The Following
+                        Extensions</span>:''',
+                    'none': 'Disable The Object Prefetch Table'}),
+        'kerbAuthSupportEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/native_krb/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Kerberos Authentication Support'),
+        'enableAutoConfig': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/http/config/auto_config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            enableDiv='autoConfigDefaultDiv',
+            label='Enable Per-Host Auto Configuration'),
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+    cacheExts = Nodes.getWordList(
+        mgmt, pathPrefix + '/rbt/sport/blade/http/config/cache/ext')
+
+    prefetchExts = Nodes.getWordList(
+        mgmt, pathPrefix + '/rbt/sport/blade/http/config/prefetch/ext')
+
+    transactionLimit = Nodes.present(mgmt,
+            '/rbt/sport/blade/http/config/auto_config/transaction_threshold')
+
+    dialogEntries = {
+        'addPrefetchTag_name': FormUtils.NodeEntry(
+            name='addPrefetchTag_name',
+            label='Tag Name',
+            validate='nonempty'),
+        'addPrefetchTag_attribute': FormUtils.NodeEntry(
+            name='addPrefetchTag_attribute',
+            label='Attribute',
+            validate='nonempty'),
+        'addSubnetHostname': FormUtils.NodeEntry(
+            name='addSubnetHostname',
+            widgetClass='ipv6subnet',
+            validate='subnethost',
+            label='''Server Subnet or <span title="The host or domain name in
+                the URL that the user is requesting."
+                class="popupTitle">Hostname</span>'''),
+        'cacheExts': FormUtils.NodeEntry(
+            name='cacheExtensions',
+            widgetClass='wide2',
+            value=cacheExts,
+            validate='validateExtensionList',
+            inputOptional=True),
+        'prefetchExts': FormUtils.NodeEntry(
+            name='prefetchExtensions',
+            widgetClass='wide2',
+            label='Extensions to Prefetch',
+            value=prefetchExts,
+            tooltip='''Extension list for the per-hostname/subnet "URL Learning"
+                and "Parse and Prefetch" optimizations.''',
+            validate='validateExtensionList',
+            inputOptional=True),
+        'addServer_ip': FormUtils.NodeEntry(
+            name='addServer_ip',
+            validate='ipv4addr',
+            label='Server IP Address'),
+        'addServer_auth': FormUtils.NodeEntry(
+            name='addServer_auth',
+            widget='checkbox',
+            label='NTLM Authentication',
+            units='Reuse'),
+        'filterStatic': FormUtils.NodeEntry(
+            userPath='sh/web/http/static_filter',
+            userConfigAutoSave=True,
+            name='filterStatic',
+            widget='checkboxLeft',
+            label='Static',
+            action='filterAction()'),
+        'filterAuto': FormUtils.NodeEntry(
+            userPath='sh/web/http/auto_filter',
+            userConfigAutoSave=True,
+            name='filterAuto',
+            widget='checkboxLeft',
+            label='Auto',
+            tooltip='''Auto hostnames have completed the evaluation period and
+                    are configured with their optimal HTTP settings.''',
+            action='filterAction()'),
+        'filterEval': FormUtils.NodeEntry(
+            userPath='sh/web/http/eval_filter',
+            userConfigAutoSave=True,
+            name='filterEval',
+            widget='checkboxLeft',
+            label='Auto (eval)',
+            tooltip='''Eval hostnames are in an evaluation period that lasts
+                    for %s transactions.''' % transactionLimit,
+            action='filterAction()'),
+    }
+
+    # server subnet options
+    for name, label, tooltip in \
+        subnetOptionsBasic + subnetOptionsPrefetch + subnetOptionsAuth + subnetOptionsSharePoint:
+        dialogEntries['addSubnetHostname_%s' % name] = FormUtils.NodeEntry(
+            name='addSubnetHostname_%s' % name,
+            label=label,
+            widget='checkboxLeft',
+            tooltip=tooltip)
+        dialogEntries['editSubnetHostname_%s' % name] = FormUtils.NodeEntry(
+            name='editSubnetHostname_%s' % name,
+            label=label,
+            widget='checkboxLeft',
+            tooltip=tooltip)
+        nodePath = '/rbt/sport/blade/http/config/auto_config/selection/%s' % name
+        nodeName = pathPrefix + nodePath
+        dialogEntries['b' + nodeName] = FormUtils.NodeEntry(
+            name='b' + nodeName,
+            path=nodePath,
+            label=label,
+            widget='checkboxLeft',
+            tooltip=tooltip)
+
+    # Special Case: "Strip Compression" defaults to checked when adding a subnet.
+    dialogEntries['addSubnetHostname_strip_compress'].value = 'true'
+
+    return dialogEntries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+autoConfig = Nodes.present(mgmt,
+    pathPrefix + '/rbt/sport/blade/http/config/auto_config/enable') == 'true'
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+if pathPrefix: {
+    windowsDomainLink = 'Windows Domain'
+    windowsDomainAuthLink = 'Windows Domain Authentication'
+}
+else: {
+    windowsDomainLink = '<a href="/mgmt/gui?p=setupServiceDomain">Windows Domain</a>'
+    windowsDomainAuthLink = '<a href="/mgmt/gui?p=setupWinDomAuth">Windows Domain Authentication</a>'
+}
+
+self.beginPagelet();
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsHttp" />
+    <legend>Settings</legend>
+
+    <div class="midLevel">
+      <%= nodeEntries['enableHttp'].html(self) %>
+    </div>
+
+    <div class="indent midLevel" id="httpSettings">
+      <span id="optLabel" class="popupTitle"
+        title="Store HTTP response objects and serve subsequent requests of the
+          same resource.">Object Prefetch Table Settings</span>:
+      <div class="midLevel indent">
+        <%= nodeEntries['cacheMode'].html(self, value='all') %>
+        <%= nodeEntries['cacheMode'].html(self, value='use-list') %>
+        <div id="optList" class="indent">
+          <%= dialogEntries['cacheExts'].html(self, format='block') %>
+        </div>
+        <%= nodeEntries['cacheMode'].html(self, value='none') %>
+        <table>
+          <%= nodeEntries['cacheTimeMin'].html(self) %>
+          <%= nodeEntries['cacheTimeMax'].html(self) %>
+        </table>
+      </div>
+      <%= dialogEntries['prefetchExts'].html(self, format='block') %>
+      <%= nodeEntries['enableStreamSplitting'].html(self) %>
+      <%= nodeEntries['enableAutoConfig'].html(self) %>
+      <div id="autoConfigDefaultDiv" class="indent">
+          <%= self.formatSharepointAutoConfigDiv('b' + pathPrefix + '/rbt/sport/blade/http/config/auto_config/selection/', dialogEntries) %>
+      </div>
+      <%= nodeEntries['kerbAuthSupportEnable'].html(self) %>
+      <p>
+        Note: The server-side appliance must be joined to the
+        <%= windowsDomainLink %> in order to use this feature.
+        Additionally, NTLM Delegation Mode and Kerberos
+        Authentication require configuration of
+        <%= windowsDomainAuthLink %> on the server-side appliance.
+      </p>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+prefetchTagsTable = ajaxentrytable.AjaxEntryTable('prefetchTags',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=serviceHttpPrefetchTags'),
+    titleText='HTML Tags to Prefetch',
+    headerSpec=(('', 'ajaxEntryTable_selectCheckboxCell'), 'Tag Name', 'Tag Attribute'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedTag_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('attribute')]""",
+    emptyMessage='No prefetch tags',
+    addButtonText='Add a Prefetch Tag',
+    addButtonName='addPrefetchTag',
+    removeName='removePrefetchTags',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedTag_')
+
+prefetchTagsTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['addPrefetchTag_name'].html(self),
+       dialogEntries['addPrefetchTag_attribute'].html(self))
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceHttpPrefetchTags" />
+    <%= prefetchTagsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<%
+row = """
+[AjaxEntryTable.tdSelectCheckbox('id-remove', 'selectedSubnet_', ''),
+ AjaxEntryTable.td([editCell('id', 'id-pretty', 'class')]),
+ AjaxEntryTable.tdAttr('options'),
+"""
+
+if not policyName: {
+    row += "AjaxEntryTable.tdAttr('transactions'),"
+    header = (('', 'ajaxEntryTable_selectCheckboxCell'),
+              ('Subnet or Host', 'subnetHdr'),
+              'Options',
+              'Transactions',
+              ('Config', 'config_hdr'))
+} else: {
+    header = (('', 'ajaxEntryTable_selectCheckboxCell'),
+              ('Subnet or Host', 'subnetHdr'),
+              'Options',
+              ('Config', 'config_hdr'))
+}
+row += "AjaxEntryTable.tdAttr('config-pretty', 'configRow')]"
+subnetTable = ajaxentrytable.AjaxEntryTable('subnet',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=serviceHttpSubnets'),
+    headerSpec=header,
+    rowSpec=row,
+    emptyMessage='No subnets or hostnames',
+    addButtonText='Add a Subnet or Host',
+    addButtonName='addSubnetHost',
+    editButtonName='editSubnetHost',
+    removeName='removeSubnetHosts',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedSubnet_')
+%>
+
+<psp:method name="formatSubnetDiv" params="prefix, dialogEntries">
+    return self.formatSharepointOptions(prefix, dialogEntries, 'configDiv')
+</psp:method>
+
+<psp:method name="formatSharepointAutoConfigDiv" params="prefix, dialogEntries">
+    return self.formatSharepointOptions(prefix, dialogEntries, 'autoConfigDiv')
+</psp:method>
+
+<psp:method name="formatSharepointOptions" params="prefix, dialogEntries, indentClass">
+    return '''
+  <div class="%s">
+    <h3>Basic Tuning</h3>
+    <div class="midLevel">
+      %s
+    </div>
+    <h3>Prefetch Schemes</h3>
+    <div class="midLevel">
+      %s
+    </div>
+  </div>
+  <div class="configDiv">
+    <h3>Authentication Tuning</h3>
+    <div class="midLevel">
+      %s
+    </div>
+    <h3>SharePoint</h3>
+    <div class="midLevel">
+      %s
+    </div>
+  </div>
+  <div class="clear">
+  </div>
+''' %  (indentClass,
+        '\n'.join([dialogEntries['%s%s' % (prefix, name)].html(self)
+                   for name in subnetBasicNames]),
+        '\n'.join([dialogEntries['%s%s' % (prefix, name)].html(self)
+                   for name in subnetPrefetchNames]),
+        '\n'.join([dialogEntries['%s%s' % (prefix, name)].html(self)
+                   for name in subnetAuthNames]),
+        '\n'.join([dialogEntries['%s%s' % (prefix, name)].html(self)
+                   for name in subnetSharePointNames]))
+</psp:method>
+
+<%
+subnetTable.addDivContent = '''
+  <div class="midLevel">
+    %s
+    %s
+  </div>
+''' % (
+    dialogEntries['addSubnetHostname'].html(self, format='block'),
+    self.formatSubnetDiv('addSubnetHostname_', dialogEntries))
+
+subnetTable.editDivContent = '''
+  <div class="midLevel">
+    <input type="hidden" id="editSubnetHostname" name="editSubnetHostname"/>
+    %s
+  </div>
+  <div id="editAutoText" class="hidden">To save this this configuration, click <strong>Apply and Make Static.</strong> Otherwise this hostname will be removed if the optimization service restarts.</div>
+  <div id="editEvalText" class="hidden">This hostname is under an evaluation period and these current settings may be neither final nor optimal. To cease further evaluation, click <strong>Apply and Make Static</strong> and this hostname will be saved.</div>
+  <div id="editStaticText" class="hidden deleteRuleNotice">To allow this server hostname to be auto configured, delete this rule.</div>
+
+''' % self.formatSubnetDiv('editSubnetHostname_', dialogEntries)
+%>
+
+<form id="subnetForm" method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <!-- MSIE Bug: Forms with only one text input don't send the submit field with the return key! -->
+    <input type="text" style="display: none;" disabled="disabled" size="1" />
+    <input type="hidden" name="_action_" value="setupServiceProtocolsHttpSubnet" />
+  </div>
+  <div id="filterDiv">
+    <strong>Server Subnet and Host Settings</strong>
+    <!-- Hide the filters if we're editing a CMC policy page or auto-configuration is disabled.-->
+    <% if not policyName and autoConfig: { %>
+    <div style='float:right;display:inline'>
+      <span class="labelPaddedLeft">Row Filters:</span>
+      <span class="labelPaddedLeft"><%= dialogEntries['filterStatic'].html(self, format='inline') %></span>
+      <span class="labelPaddedLeft"><%= dialogEntries['filterAuto'].html(self, format='inline') %></span>
+      <span class="labelPaddedLeft"><%= dialogEntries['filterEval'].html(self, format='inline') %></span>
+    </div>
+    <% } %>
+  </div>
+  <%= subnetTable.html(self) %>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Applies a class to the parent TD to ensure that the 'default' rule is italicized.
+function editCell(attribId, attribDisplay, clssName) {
+    return AjaxEntryTable.td(
+        [
+            AjaxEntryTable.edit(attribId, attribDisplay)
+        ], clssName
+    );
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+subnetTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = $('subnetForm');
+    setFormValue(form, 'editSubnetHostname', editName);
+<%  for name in subnetBasicNames + subnetPrefetchNames + subnetAuthNames + subnetSharePointNames: { %>
+        setFormValue(form, 'editSubnetHostname_<%= name %>', el.getAttribute('<%= name %>'));
+<% } %>
+
+    // Adjust editDiv button and text to row type, hostname:Static | hostname:Auto | subnet
+    if (el.getAttribute('config') == 'Auto') {
+        if (el.getAttribute('eval') == 'false') {
+            enableElements('editAutoText', true);
+            enableElements('editEvalText', 'hide');
+        }
+        else {
+            // for eval rows
+            enableElements('editAutoText', 'hide');
+            enableElements('editEvalText', true);
+        }
+        enableElements('editStaticText', 'hide');
+        Y.one('input[name="editSubnetHost"]').set('value', 'Apply and Make Static');
+    }
+    else {
+        if (el.getAttribute('type') == 'hostname') {
+            enableElements('editStaticText', true);
+        }
+        else {
+            // subnets
+            enableElements('editStaticText', 'hide');
+        }
+        enableElements('editAutoText', 'hide');
+        enableElements('editEvalText', 'hide');
+        Y.one('input[name="editSubnetHost"]').set('value', 'Apply');
+    }
+    return true;
+}
+
+function validateExtensionList(val) {
+    if (!val.match(/^\w{1,10}(,\s*\w{1,10})*$/)) {
+        throw 'A comma-separated list of extensions is required.';
+    }
+};
+
+// Event when a filter checkbox has changed
+function filterAction() {
+    if (subnetTable.editMode == 'edit') {
+        subnetTable.setEditMode(false); // hide the edit mode when filter changes
+    }
+    subnetTable.filterResults();
+}
+
+// Does the initial filtering when page is loaded based on the
+// default values for the checkboxes
+subnetTable.postPopulateTableHook = function() {
+
+    <% if not policyName and autoConfig: { %>
+    // We insert a dummy table row which is needed if the row filters leave us with
+    // nothing. A rowless table is not a pretty sight.
+    var tbodyElement = $(subnetTable.tableId).getElementsByTagName('tbody').item(0);
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    td.appendChild(document.createTextNode('No matching subnets or hostnames'));
+    td.colSpan = subnetTable.rowSpec.length;
+    td.className = 'ajaxEntryTable_tableEmpty';
+    tr.id = 'subnetTable_emptyRow';
+    tr.appendChild(td);
+    tbodyElement.appendChild(tr);
+
+    this.filterResults();
+    <% } %>
+}
+
+subnetTable.updateHook = function() {
+    this.filterResults();
+}
+
+// filter function for hidding / showing rows based on the config attribute
+subnetTable.filterResults = function() {
+    // All Subnet/Hosts are statically configured in a CMC policy or when
+    // auto configuration is disabled.
+    <% if not policyName and autoConfig: { %>
+    var staticDisplay = Y.one('input[name="filterStatic"]').get('checked') ? '' : 'none';
+    var autoDisplay = Y.one('input[name="filterAuto"]').get('checked') ? '' : 'none';
+    var evalDisplay = Y.one('input[name="filterEval"]').get('checked') ? '' : 'none';
+    var showEmptyRow = !!this.rowList.length;
+
+    for (var i = 0; i < this.rowList.length; i++) {
+        // Static rules
+        if (this.rowList[i][1].getAttribute('config') == 'Static') {
+            this.rowList[i][0].style.display = staticDisplay;
+            if (staticDisplay == '') {
+                showEmptyRow = false;
+            }
+        }
+        else if (this.rowList[i][1].getAttribute('config') == 'Auto') {
+            // Auto configured rules
+            if (this.rowList[i][1].getAttribute('eval') == 'false') {
+                this.rowList[i][0].style.display = autoDisplay;
+                if (autoDisplay == '') {
+                    showEmptyRow = false;
+                }
+            }
+            // Rules in evaluation
+            else {
+                this.rowList[i][0].style.display = evalDisplay;
+                if (evalDisplay == '') {
+                    showEmptyRow = false;
+                }
+            }
+        }
+    }
+    enableElements('subnetTable_emptyRow', showEmptyRow ? true : 'hide');
+
+    this.colorRows();
+    <% } %>
+}
+
+// Validate a rule name by accepting only an IP address, subnet or
+// host name that isn't already in use.
+function subnethost(addName)
+{
+    try {
+        RBT.Validator.Syntax.hostname(addName);
+    } catch (e) {
+        try {
+            RBT.Validator.Syntax.ipv4or6subnetoraddr(addName);
+        } catch (e) {
+            throw "Not a valid address, subnet or hostname";
+        }
+    }
+
+    // See if this name is already in use.
+
+    var ruleXml = subnetTable.docElement;
+    for (var child = ruleXml.firstChild; child; child = child.nextSibling) {
+        if (child.getAttribute('id') == addName) {
+            throw "'" + addName + "' is already being used";
+        }
+    }
+}
+
+// ]]>
+</script>

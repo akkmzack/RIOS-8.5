@@ -1,0 +1,1292 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: virtualized-generic
+#
+# Functions:
+#    VOID get_platform()
+#
+#       Returns CMC, for instance.
+#
+#    VOID init_hardware_phase0(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    BOOL  uses_fan_status(VOID)
+#       Returns true if the hardware platform supports fan status, or false
+#       otherwise.
+#
+#    STRING uses_flash_disk
+#       This returns a string of:
+#           "true" if a boot flash disk is supported
+#           "false" if a boot flash disk is not supported
+#           "error" if an error occurred determining flash support.
+#    VOID mount_proxy_fs
+#       Mounts /dev/sdc1 on /proxy, if it exists.  (CMCVE only).
+#
+#    BOOL supports_bmc_watchdog_pretimeout
+#       Little routine to indicate whether the motherboard supports BMC
+#       watchdog pre-timeout or not.
+#
+#    BOOL supports_rfut
+#       Little routine to indicate whether the motherboard supports 
+#       rfut (riverbed firmware upgrading tool) or not.
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+HWTOOL=/opt/hal/bin/hwtool.py
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+MODPROBE=/sbin/modprobe
+RMMOD=/sbin/rmmod
+HAL_CACHE=/var/opt/tms/hal_cache
+CACHED_MOBO=${HAL_CACHE}/motherboard
+RVBD_SUPER=/opt/tms/bin/rvbd_super
+RRDM_TOOL=/opt/hal/bin/raid/rrdm_tool.py
+VSH_SB_CTRL=/opt/hal/bin/vm/vsh_bypass_ctrl
+VSH_SB_INIT=/opt/hal/bin/vm/vsh_bypass_init.py
+VSH_SB_TOPDIR=/var/run/vsh_bypass
+NAMEIF=/sbin/nameif
+
+HAL_LOG_NOTICE="/usr/bin/logger -p user.notice -t hal"
+HAL_LOG_WARN="/usr/bin/logger -p user.warn -t hal"
+HAL_LOG_ERROR="/usr/bin/logger -p user.err -t hal"
+
+. /opt/hal/bin/upgrade_common.sh
+
+exit_if_error() {
+    if [ $? -ne 0 ]; then
+        echo Error: $1 [exiting]
+        exit 1
+    fi
+}
+
+
+#
+# Silicom Bypass Control for Virtual Steelhead
+#
+
+# Called from rbtkmod at system startup to probe interfaces,
+# looking for info related to the silicom bypass driver.
+# This is called before interfaces are renamed so that we
+# can look for the bpvm interface and make sure it isn't
+# taken into account by the interface rename.
+#
+# Information dirs & files are written into VSH_SB_TOPDIR, and those
+# files are used by vsh_bypass_iface_type to correctly use
+# the bpvm control commands throughout the hal nic interface requests.
+vsh_bypass_init() {
+    local max_bypass_pairs=0
+    if [[ $# > 0 ]]; then
+        max_bypass_pairs=$1
+        shift
+    fi
+
+    echo "vsh_bypass_init: probing for hardware bypass"
+
+    # Create and fill the VSH_SB_TOPDIR/macs directory tree 
+    local sys_ifaces=$(ls -1 /sys/class/net | grep -v lo)
+    $VSH_SB_INIT \
+        --bpctl $VSH_SB_CTRL \
+        --topdir $VSH_SB_TOPDIR \
+        --hwtool $HWTOOL \
+        --max_bypass_pairs $max_bypass_pairs \
+        --nameif $NAMEIF \
+        --stage pre_rename \
+        $sys_ifaces
+
+    if [[ $? -ne 0 ]]; then
+        echo "vsh_bypass_init: hardware bypass disabled"
+        exit 1
+    fi
+
+    exit 0
+}
+
+# Perform final checking after interface renaming;
+# ensure that every bypass related pair of interfaces
+# are actually matched to the same inpath interface.
+vsh_bypass_init_post_rename() {
+    local max_bypass_pairs=0
+    if [[ $# > 0 ]]; then
+        max_bypass_pairs=$1
+        shift
+    fi
+
+    $VSH_SB_INIT \
+        --bpctl $VSH_SB_CTRL \
+        --topdir $VSH_SB_TOPDIR \
+        --hwtool $HWTOOL \
+        --max_bypass_pairs $max_bypass_pairs \
+        --nameif $NAMEIF \
+        --stage post_rename
+
+    if [[ $? -ne 0 || ! -d $VSH_SB_TOPDIR/management ]]; then
+        echo "vsh_bypass_init: hardware bypass disabled"
+        exit 1
+    fi
+
+    local bypass_enabled_inpaths=""
+    for mac in $(ls -1 $VSH_SB_TOPDIR/macs); do
+	local type=$(cat $VSH_SB_TOPDIR/macs/$mac/type)
+	local iface=$(mac_to_iface $mac)
+
+	case $type in
+	    management)
+		management_mac=$mac
+		local driver_version=$(cat $VSH_SB_TOPDIR/macs/$mac/driver_version)
+		local device_count=$(cat $VSH_SB_TOPDIR/macs/$mac/device_count)
+
+		echo "vsh_bypass_init: management interface $iface mac $mac driver_version $driver_version device_count $device_count"
+		;;
+	    control)
+		local esx_nic=$(cat $VSH_SB_TOPDIR/macs/$mac/esx_nic)
+		local esx_mac=$(cat $VSH_SB_TOPDIR/macs/$mac/esx_mac)
+		local oem_data=$(cat $VSH_SB_TOPDIR/macs/$mac/oem_data)
+		local devnum=$(cat $VSH_SB_TOPDIR/macs/$mac/devnum)
+		local slave=$(cat $VSH_SB_TOPDIR/macs/$mac/slave)
+
+                local control_slot_port=$(echo $iface | cut -c 4-)
+                local lan=lan$control_slot_port
+                local wan=wan$control_slot_port
+                local lan_mac=$(iface_to_mac $lan)
+                local wan_mac=$(iface_to_mac $wan)
+                local lan_esx_nic=$(cat $VSH_SB_TOPDIR/macs/$lan_mac/esx_nic)
+                local wan_esx_nic=$(cat $VSH_SB_TOPDIR/macs/$wan_mac/esx_nic)
+                local lan_esx_mac=$(cat $VSH_SB_TOPDIR/macs/$lan_mac/esx_mac)
+                local wan_esx_mac=$(cat $VSH_SB_TOPDIR/macs/$wan_mac/esx_mac)
+
+               if [[ -d $VSH_SB_TOPDIR/validated/$mac ]]; then
+                    echo "vsh_bypass_init: control interface $iface mac $mac devnum $devnum slave $slave esx_nic $esx_nic esx_mac $esx_mac"
+                    bypass_enabled_inpaths="[ inpath$control_slot_port : $lan ESX nic $lan_esx_nic ESX mac $lan_esx_mac ; $wan ESX nic $wan_esx_nic ESX mac $wan_esx_mac ] $bypass_enabled_inpaths"
+                else
+                    echo "vsh_bypass_init: WARNING: unused control interface $iface mac $mac devnum $devnum slave $slave esx_nic $esx_nic esx_mac $esx_mac"
+                fi
+		;;
+	    slave)
+		local esx_nic=$(cat $VSH_SB_TOPDIR/macs/$mac/esx_nic)
+		local esx_mac=$(cat $VSH_SB_TOPDIR/macs/$mac/esx_mac)
+		local devnum=$(cat $VSH_SB_TOPDIR/macs/$mac/devnum)
+
+                if [[ -d $VSH_SB_TOPDIR/validated/$mac ]]; then
+		    echo "vsh_bypass_init: slave interface $iface mac $mac devnum $devnum esx_nic $esx_nic esx_mac $esx_mac"
+                else
+		    echo "vsh_bypass_init: WARNING: unused slave interface $iface mac $mac devnum $devnum esx_nic $esx_nic esx_mac $esx_mac"
+                fi
+		;;
+	esac
+    done
+
+    echo "vsh_bypass_init: success, hardware bypass enabled on $bypass_enabled_inpaths"
+    exit 0
+}
+
+# If an interface is controlled by the bpvm system, return a string
+# describing its function.  If the interface isn't controlled by bpvm,
+# or if there was some branding or other issue, return empty string.
+vsh_bypass_iface_type() {
+    if [[ -d $VSH_SB_TOPDIR/management ]]; then
+	local iface=$1
+	local mac=$(iface_to_mac $iface)
+
+        if [[ -d $VSH_SB_TOPDIR/validated/$mac ]]; then
+            local typefile=$VSH_SB_TOPDIR/macs/$mac/type
+
+            if [[ -e $typefile ]]; then
+                cat $typefile
+                return
+            fi
+        fi
+    fi
+
+    echo ""
+}
+
+# Translate an interface name, lanXX, wanXX, or inpathXX, to the 
+# bpvm device number representing the control interface.
+vsh_bypass_control_devnum() {
+    local iface=$1
+    local mac=$(iface_to_mac $iface)
+    
+    local devnum=$(cat $VSH_SB_TOPDIR/macs/$mac/devnum)
+    if [[ "control" == $(cat $VSH_SB_TOPDIR/macs/$mac/type) ]]; then
+	echo $devnum
+	return
+    fi
+
+    for m in $(ls -1 $VSH_SB_TOPDIR/macs); do
+	if [[ "control" == $(cat $VSH_SB_TOPDIR/macs/$m/type) ]]; then
+	    if [[ $devnum == $(cat $VSH_SB_TOPDIR/macs/$m/slave) ]]; then
+		echo $(cat $VSH_SB_TOPDIR/macs/$m/devnum)
+		return
+	    fi
+	fi
+    done
+}
+
+vsh_bypass_devnum_to_iface() {
+    local devnum=$1
+
+    for m in $(ls -1 $VSH_SB_TOPDIR/macs); do
+        if [[ $devnum == $(cat $VSH_SB_TOPDIR/macs/$m/devnum) ]]; then
+            mac_to_iface $m
+            return
+        fi
+    done
+}
+
+# Must have checked that vsh_bypass_iface_type
+# returns non-zero before calling this!
+vsh_bypass_iface_cmd() {
+    local rios_iface=$1
+    shift
+    
+    $VSH_SB_CTRL bpvm0 -d $(vsh_bypass_control_devnum $rios_iface) $@
+    if [[ $? -ne 0 ]]; then
+        ${HAL_LOG_ERROR} "vsh_bypass: failed to issue command to ESX bpvm interface, will will try direct to $rios_iface interface, verify that the ESX bpvm interface is still connected to this guest"
+        $VSH_SB_CTRL $rios_iface $@
+    fi
+}
+
+function mac_to_iface() {
+    local mac1=$(echo $1 | tr [:lower:] [:upper:])
+    for i in $(ls -1 /sys/class/net); do
+	local mac2=$(tr [:lower:] [:upper:] < /sys/class/net/$i/address)
+	if [[ $mac1 == $mac2 ]]; then
+	    echo $i
+	fi
+    done
+}
+
+function iface_to_mac() {
+    local mac=$(tr [:lower:] [:upper:] < /sys/class/net/$1/address)
+    echo $mac
+}
+
+#
+# end of Silicom Bypass Control for Virtual Steelhead
+#
+
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#------------------------------------------------------------------------------
+# missing_rvbd_super
+#------------------------------------------------------------------------------
+
+missing_rvbd_super()
+{
+    RESULT=`${RVBD_SUPER} -g $1`
+    RET=$?
+    # Try again just to be sure that its not a transient error
+    if [ ${RET} -ne 0 ]; then
+        RESULT=`${RVBD_SUPER} -g $1`
+        RET=$?
+    fi
+    
+    echo ${RET}
+}
+
+#------------------------------------------------------------------------------
+# bail_if_not_SH 
+#------------------------------------------------------------------------------
+
+bail_if_not_SH()
+{
+    if [ ! `get_platform` = "SH" ]; then
+        echo "Not implemented"
+        exit 128
+    fi
+}
+
+KEY='segstore'
+RVBD_SUPER='/opt/tms/bin/rvbd_super'
+#------------------------------------------------------------------------------
+# add_segstore_kvp 
+#------------------------------------------------------------------------------
+add_segstore_kvp () {
+    RESULT=`${RVBD_SUPER} -a ${KEY}=true /dev/disk1p1 >/dev/null 2>&1`
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_ERROR} "Error adding Key-Value pair to RVBD_SUPER"
+        return 1
+    fi
+
+    return 0	
+}
+
+#------------------------------------------------------------------------------
+# delete_kvp 
+#------------------------------------------------------------------------------
+delete_kvp() {
+    RESULT=`${RVBD_SUPER} -d ${KEY} /dev/disk1p1 >/dev/null 2>&1`
+    if [ $? -ne 0 ]; then
+	return 1
+    fi
+
+    return 0	
+}
+
+
+#------------------------------------------------------------------------------
+#
+# Nondestructively resize a partition.  For CMCVE/Virtual CB.
+#
+# Users may increase the size of their second or third disk.
+# They will grow the second disk (the one dedicated to the /data filesystem) if
+# they plan to manage more appliances (according to the rule that for n
+# appliances they need 1 + 0.4n GB of space).  They will grow their third
+# disk (the /proxy filesystem) to accomodate more RSP packages.
+#
+# This script detects such a disk enlargement and sees to nondestructively
+# extending the existing filesystem into the new area.
+# If the disk is seen to have become smaller, that's a user error, but to
+# avoid having the whole CMC become disabled, we wipe the disk clean.
+#
+#------------------------------------------------------------------------------
+diskresize() {
+  disk=$1
+  total_cyls=`fdisk -l /dev/$disk 2>/dev/null | grep heads | grep cylinders \
+      | awk '{print $(NF-1)}'`
+  highest_cyl=`fdisk -l /dev/$disk 2>/dev/null | tail -1 | awk '{print $3}'`
+  # Note fdisk and sfdisk give off-by-one accounts of what the "start" and
+  # "end" cylinder on a partition is.  If fdisk says 1 and 5, sfdisk will say
+  # 0 and 4.  As if that's not bad enough, when you use sfdisk to create a
+  # partition, you need to say (referring to the example above) 0 and 5!
+  # The redirection 2>/dev/null is in case the disk has no partitions or
+  # formatting at all (i.e. it was newly created, something we need to be
+  # prepared for on /dev/sdc).  And in that case we'll set highest_cyl to 0:
+  if [ -z $highest_cyl ]; then highest_cyl=0; fi
+
+  # If disk hasn't grown, then there's nothing to do.
+  if [ "$total_cyls" = "$highest_cyl" ]; then
+      return
+  fi
+
+  echo "Resizing /dev/${disk}..."
+  # None of these echos will show up on the virtual console by the way.  To
+  # see them watch the serial port (serial ports are easy to set up as of
+  # vSphere (ESX4's mgmt UI), yay).  The virtual console is /dev/tty0.
+
+  # Change /dev/${disk}1 to cover its entire disk.
+  echo "Laying down format with sfdisk for /dev/$disk..."
+  echo "0,$total_cyls,83" | sfdisk -L -uC /dev/$disk
+  exit_if_error "sfdisk partition-grow operation failed on /dev/$disk"
+
+  # Need to do this or mke2fs and/or resize2fs may fail:
+  major_minor=`grep ${disk}1 /proc/partitions | awk '{print $1, $2}'`
+  mknod /dev/${disk}1 b $major_minor
+  # If /dev/${disk}1 already exists, there'll be a warning but that's ok; it
+  # seems /dev/${disk}1 sometimes is, sometimes isn't created by the sfdisk
+  # call.  But we do care if the mknod itself failed:
+  if [ ! -b /dev/${disk}1 ]; then
+      echo "mknod failed"
+      exit 1
+  fi
+
+  block_count_param=""
+  block_size_param=""
+  # if platform is cb, set max size here for /data disk
+  if [ `get_platform` = "CB" ]; then
+      max_disk_size=2199023255552
+      block_size=4096
+      # check if it over 2tb
+      disk_size=`fdisk -l /dev/${disk} | grep Disk | awk '{ print $5 }'`
+      if [ $disk_size -gt $max_disk_size ]; then 
+          block_count_param=$(($max_disk_size/$block_size))
+      fi
+      block_size_param="-b $block_size"
+  fi
+
+  # Extend formatting to new areas of /dev/${disk}1.
+  # highest_cyl=0 is what we'll have with a brand-new /dev/sdc, and that's ok.
+  # But total_cyls<highest_cyl means the user shrank a disk, which is very bad;
+  # we need to wipe that disk.
+  if [ $highest_cyl -eq 0  -o  $total_cyls -lt $highest_cyl ]; then
+      if [ $disk = sdb ]; then
+          label=DATA
+      elif [ $disk = sdc ]; then
+          label=PROXY
+      else
+          label=${disk}_label
+      fi
+      echo "Calling mke2fs on /dev/${disk}1..."
+      mke2fs -v -j -L $label $block_size_param /dev/${disk}1 $block_count_param
+      exit_if_error "mke2fs failed"
+  else
+      if [ `get_platform` = "CB" -a "x${block_count_param}" != "x"]; then
+          # if we are asked to expand, check if we are already at max size
+          curr_blk_count=dumpe2fs -h /dev/${disk}1 2>/dev/null | grep 'Block count:' | awk '{ print $3 }'
+          if [ $curr_blk_count -ge $block_count_param ]; then
+              # no need to try resizing to the same size again
+              return
+          fi
+      fi
+
+      # Nondestructively expand it.
+      echo "Calling e2fsck on /dev/$disk..."
+      e2fsck -y -f /dev/${disk}1
+      case $? in
+        0|1) ;;
+        2) echo "0,$highest_cyl,83" | sfdisk /dev/$disk;
+           reboot;;
+        *) exit_if_error "e2fsck found error we can not recover from";;
+      esac
+      echo "Calling resize2fs on /dev/$disk..."
+      resize2fs /dev/${disk}1 $block_count_param
+      exit_if_error "resize2fs failed"
+  fi
+}
+
+#------------------------------------------------------------------------------
+diskresize_gpt() {
+  disk=$1
+  start_pos=65536
+  # backup gpt partition table in the end
+  end_pos=16896
+  disk_size=`parted -s /dev/${disk} unit B print | grep Disk | sed 's/B//' | awk '{ print $3 }'`
+  data_size=`parted -s /dev/${disk} unit B print | grep primary | awk '{ print $4 }' | sed 's/B//'`
+
+  resize=0
+  if [ "x$disk_size" != "x" -a "x$data_size" != "x" ]; then
+      # This is not a fresh disk, we need to check if we
+      # have room to expand
+      # if it is expanded before, it will start from start_pos and 
+      # leave end_pos for backup gpt partition table in the end.
+      if [ ${disk_size} -le $((${data_size} + $start_pos + $end_pos)) ]; then
+          # disk hasn't grown, nothing to do here.
+          return
+      else
+          # set the flag to resize disk below
+          resize=1
+      fi
+  fi
+
+  # if we are here, then it is:
+  # 1] fresh disk (resize = 0)
+  # 2] resize
+
+  echo "Laying down format with parted for /dev/$disk..."
+
+  if [ $resize = 0 ]; then
+      parted -s /dev/$disk mklabel gpt
+      disk_size=`parted -s /dev/$disk unit B print | grep Disk | sed 's/B//' | awk '{ print $3 }'`
+      parted -s /dev/$disk mkpart primary $start_pos'B' $(($disk_size - 1 - $end_pos))B
+      exit_if_error "parted mkpart operation failed on /dev/$disk"
+  else
+      partition_start=`parted -s /dev/${disk} unit B print | grep primary | awk '{ print $2 }' | sed 's/B//'`
+      echo "Resizing /dev/${disk}..."
+      # Change /dev/${disk}1 to cover its entire disk.
+      parted -s /dev/${disk} rm 1
+      # work around as suggested in https://bugzilla.redhat.com/show_bug.cgi?id=217979
+      parted /dev/${disk} print Fix
+      parted -s /dev/${disk} mkpart primary $partition_start'B' $(($disk_size - 1 - $end_pos))B
+      exit_if_error "parted resize operation failed on /dev/$disk"
+  fi
+
+  # Need to do this or mke2fs and/or resize2fs may fail:
+  major_minor=`grep ${disk}1 /proc/partitions | awk '{print $1, $2}'`
+  mknod /dev/${disk}1 b $major_minor
+  # If /dev/${disk}1 already exists, there'll be a warning but that's ok; it
+  # seems /dev/${disk}1 sometimes is, sometimes isn't created by the sfdisk
+  # call.  But we do care if the mknod itself failed:
+  if [ ! -b /dev/${disk}1 ]; then
+      echo "mknod failed"
+      exit 1
+  fi
+
+  # Extend formatting to new areas of /dev/${disk}1.
+  # resize=0 is what we'll have with a brand-new /dev/sdc, and that's ok.
+  if [ $resize = 0 ]; then
+      if [ $disk = sdb ]; then
+          label=DATA
+      elif [ $disk = sdc ]; then
+          label=PROXY
+      else
+          label=${disk}_label
+      fi
+      echo "Calling mke2fs on /dev/${disk}1..."
+      mke2fs -t ext4 -O 64bit -q -L $label /dev/${disk}1
+      exit_if_error "mke2fs failed"
+  else
+      # Nondestructively expand it.
+      echo "Calling e2fsck on /dev/$disk..."
+      e2fsck -p -f /dev/${disk}1
+      case $? in
+        0|1) ;;
+        *) exit_if_error "e2fsck found error(return code $?) we can not recover from";;
+      esac
+      echo "Calling resize2fs on /dev/$disk..."
+      resize2fs /dev/${disk}1 
+      exit_if_error "resize2fs failed"
+  fi
+}
+
+#------------------------------------------------------------------------------
+# mount_proxy_fs
+#
+# The /proxy fs is for RSP packages.  On a physical CMC it's part of /dev/sda
+# or /dev/md* but on the CMCVE we make it (yet another) separate disk, so its
+# formatted area can be nondestructively grown (just like /data -- /dev/sdb1)
+# when the user grows the virtual disk.
+#
+#------------------------------------------------------------------------------
+mount_proxy_fs() {
+    if [ \( `get_model` = "8001"   -o  `get_model` = "8151" \) -a `get_platform` = "CMC" -a -b /dev/sdc1 ]
+    then
+        mount /dev/sdc1 /proxy -o defaults,acl,noauto
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_ERROR} "Critical error: unable to mount /proxy disk."
+        fi
+    fi
+}
+
+#------------------------------------------------------------------------------
+# update_store_size
+#------------------------------------------------------------------------------
+
+update_store_size()
+{
+    CURR_MODEL=`get_model`
+    MODEL_FILE="${MODEL_PATH}/model_${CURR_MODEL}.sh"
+    FORCE=$1
+
+    source ${MODEL_FILE}
+
+    PART_SIZE=`sfdisk -s $MODEL_STOREDEV`
+    PART_SIZE=$[ ${PART_SIZE} / 1024 ]
+    STORE_SIZE=$[ ${MODEL_DISKSIZE} / (1024 * 1024) ]
+
+    if [ ${STORE_SIZE} -gt ${PART_SIZE} ]; then
+        STORE_SIZE=${PART_SIZE}
+    fi
+
+    CURR_SIZE=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/store/size`
+
+    if [ "${FORCE}" = "true" -o "${CURR_SIZE}" != "${STORE_SIZE}" ]; then
+        do_update_mfdb /rbt/mfd/store/size uint32 "${STORE_SIZE}"
+        # clear the segstore
+        dd if=/dev/zero of=${MODEL_STOREDEV} bs=1024k count=10 > /dev/null 2>&1
+
+        # re-layout changes were successful.
+        touch /var/opt/rbt/.clean
+        if [ $? -ne 0 ]; then
+            echo "Unable to set segstore clean file, store will need to be cleaned manually."
+        fi
+    fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase0
+#------------------------------------------------------------------------------
+
+init_hardware_phase0()
+{
+    if [ \( `get_model` = "8001"  -o  `get_model` = "8151" \) -a `get_platform` = "CMC" ]
+    then
+        diskresize sdb
+        ls /dev/sdc > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            diskresize sdc
+        fi
+    fi
+    
+    if [ `get_model` = "8551" -a `get_platform` = "GW" ]
+    then
+        diskresize sdb
+    fi
+
+    if [ `get_platform` = "SH" ]; then
+        CURR_MODEL=`get_model`
+        MODEL_FILE="${MODEL_PATH}/model_${CURR_MODEL}.sh"
+
+        source ${MODEL_FILE}
+
+        SEG_DISK_SIZE=`sfdisk -s ${MODEL_DISKDEV}`
+        
+        if [ -f /config/.segstore_disk_size ]; then
+            CACHE_DISK_SIZE=`cat /config/.segstore_disk_size`
+        else
+            echo "${SEG_DISK_SIZE}" > /config/.segstore_disk_size
+            CACHE_DISK_SIZE=${SEG_DISK_SIZE}
+        fi
+
+        if [ "${CACHE_DISK_SIZE}" != "${SEG_DISK_SIZE}" ]; then
+            SUPER_MISSING=`missing_rvbd_super /dev/disk1p1`
+            if [ ! "x${SUPER_MISSING}" = "x0" ]; then
+                echo "Disk is blank. Skipping setup until later"
+            else
+                # Clear the segstore=true flag from the rvbd superblock
+                # Needed in the case we expand the disk as opposed to
+                # destroying & re-creating it
+                dd if=/dev/zero of=/dev/disk1p1 > /dev/null 2>&1
+
+                ${RRDM_TOOL} -u -m ${CURR_MODEL} --setup
+                if [ $? -ne 0 ]; then
+                    echo "An error occured while resizing the segstore"
+                fi
+
+                update_store_size true
+            fi
+
+            echo "${SEG_DISK_SIZE}" > /config/.segstore_disk_size
+
+        fi
+
+    fi
+
+    # check to see if we need to act on any hardware upgrades that may 
+    # have failed.
+    if [ "x`supports_hw_upgrades`" = "xtrue" ]; then
+	check_hardware_upgrades_phase0
+    fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    check_kernel_options
+
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    mount_proxy_fs
+
+    # If this is a VSH machine, check if the second disk i.e. 
+    # segstore, was deleted & re-created while the VM was powered off.
+    # The user might do this to expand the segstore, which is
+    # needed for model upgrades. In such a scenario, the second disk 
+    # would not have the rvbd_super on /dev/disk1p1.
+    # We will invoke rrdm_tool.py to repartition the second disk based
+    # on the current model
+    if [ `get_platform` = "SH" ]; then
+        SUPER_MISSING=`missing_rvbd_super /dev/disk1p1`
+        if [ ! "x${SUPER_MISSING}" = "x0" ]; then
+            # RVBD Superblock is missing - recreate the partition
+            ${HAL_LOG_NOTICE} "Blank segstore disk detected. Partitioning it !"
+            ${RRDM_TOOL} -u -m `get_model` > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_ERROR} "Critical error: unable to fix disk1 on VSH"
+                exit 1
+            fi
+
+            update_store_size true
+            # Signal sport to start clean
+            touch /var/opt/rbt/.clean
+        fi
+	elif [ `get_platform` = "GW" ]; then	
+		echo "Checking for flash_disk"
+		FLASH_SUP=`uses_flash_disk`
+		if [ "x${FLASH_SUP}" = "xtrue" ]; then
+			mount_flash_disk
+			create_flash_data_dir
+		elif [ "x${FLASH_SUP}" = "xerror" ]; then
+			${HAL_LOG_ERROR} "Flash disk not found. Manufacturing without flash. "
+		fi
+    fi
+
+    if [ `get_platform` = "CB" ]; then
+        ptype=`parted -s /dev/sdb print | grep "Partition Table:" | awk '{print $3 }'`
+        if [ "x${ptype}" = "xmsdos" ]; then
+            # if it is existing msdos partition continue using diskresize
+            diskresize sdb
+        else
+            # if it is a fresh disk or gpt partitioned, pass it to diskresize_gpt
+            diskresize_gpt sdb
+        fi
+        mount -o noatime,user_xattr /dev/sdb1 /data
+    fi
+
+    if [ "x`supports_hw_upgrades`" = "xtrue" ]; then
+	check_hardware_upgrades_phase1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+
+get_ecc_ram_support()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Fan status support
+#------------------------------------------------------------------------------
+
+uses_fan_status()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# supports_bmc_watchdog_pretimeout
+# This hal function is called by mgmt to check whether
+# the machine supports bmc hardware watchdog pre-timout.
+#------------------------------------------------------------------------------
+supports_bmc_watchdog_pretimeout()
+{
+        echo "true"
+}
+
+#------------------------------------------------------------------------------
+# uses_flash_disk
+#------------------------------------------------------------------------------
+FLASH_DEV="/dev/sdb"
+FLASH_MOUNT="/flash/cfg"
+
+uses_flash_disk()
+{
+    MOD=`get_model`
+
+    case "${MOD}" in
+        "8550")
+	    TMP_FLASH_DEV=`echo $FLASH_DEV | awk '{ print substr( $0, 6 , length($0)) }'`
+	    DISK_SIZE=`cat /sys/block/${TMP_FLASH_DEV}/size`
+            if [ $? -ne 0 ]; then
+                echo "error"
+            fi
+
+            #Minnimum disk size is 10MB
+            if [ $DISK_SIZE -le 10000 ]; then
+                echo "error"
+            fi
+
+            echo "true"
+
+        ;;
+        *)
+            echo "false"
+
+        ;;
+    esac
+}
+
+mount_flash_disk()
+{
+    if [ ! -d /flash/cfg ]; then
+        mkdir -p ${FLASH_MOUNT} >> /dev/null
+    fi
+
+    mount ${FLASH_DEV} ${FLASH_MOUNT} >> /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        umount ${FLASH_DEV} > /dev/null 2>&1
+
+        ${HAL_LOG_WARN} "Cannot mount FLASH. Forcing recovery. "
+
+        /sbin/fsck -y ${FLASH_DEV} > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            mount ${FLASH_DEV} ${FLASH_MOUNT} > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                ${HAL_LOG_WARN} "FLASH recovery successful. "
+                return 0
+            fi
+        fi
+
+        #fsck -y failed, or the mount after fsck -y failed.
+        ${HAL_LOG_WARN} "FLASH filesystem is unrecoverable, rebuilding clean filesystem. "
+
+        #force an unmount
+        umount ${FLASH_MOUNT} > /dev/null 2>&1
+
+        /sbin/mke2fs -qF -O ^resize_inode -j ${FLASH_DEV}
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_ERROR} "Unable to rebuild FLASH filesystem. Aborting manufacture. "
+            return 1
+        fi
+
+        #mount FLASH one last time
+        mount ${FLASH_DEV} ${FLASH_MOUNT} > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Unable to rebuild FLASH filesystem. "
+                return 1
+        else
+            ${HAL_LOG_WARN} "FLASH filesystem is rebuilt and mounted. "
+            return 0
+        fi
+    fi
+
+	return 0
+}
+
+#------------------------------------------------------------------------------
+# create_flash_data_dir
+#------------------------------------------------------------------------------
+create_flash_data_dir()
+{
+    if [ ! -d /flash/cfg/data/ ]; then
+        mkdir -p /flash/cfg/data/
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_ERROR} "Unable to create GW persistent data directory."
+            exit 1
+        fi
+    fi
+
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_led
+#------------------------------------------------------------------------------
+
+uses_disk_led()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# uses_disk_power
+#------------------------------------------------------------------------------
+
+uses_disk_power()
+{
+    echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# vm_get_if_type 
+#------------------------------------------------------------------------------
+# Called from wdt to determine what watchdog code to run there
+vm_get_if_type()
+{
+    bail_if_not_SH
+
+    if [[ -n $(vsh_bypass_iface_type $1) ]]; then
+	echo "vsh_silicom_bypass"
+	exit 0
+    fi
+
+    get_if_type $@
+    exit $?
+}
+
+#------------------------------------------------------------------------------
+# vm_get_if_status 
+#------------------------------------------------------------------------------
+
+vm_get_if_status()
+{
+    bail_if_not_SH
+    INTF="${1}"
+    IFACE_TYPE=`get_if_type ${INTF}`
+    if [ $? -ne 0 ]; then
+        ${HAL_LOG_WARN} "Failed to get interface type for [${INTF}]"
+        exit 1
+    fi
+
+    case "x${IFACE_TYPE}" in
+        "xsysfs")
+            get_if_status ${INTF}
+            exit $?
+            ;;
+        "xVSH")
+            get_er_if_status ${ARGS}
+            exit $?
+            ;;
+        "xvsh_silicom_bypass")
+            STATUS=$(vsh_bypass_iface_cmd ${INTF} print_current_state)
+            if [ $? -ne 0 ]; then
+                ${HAL_LOG_WARN} "Unable to determine hw status on [${INTF}]"
+                exit 1
+            fi
+
+            echo $STATUS
+            return 0
+            ;;
+    esac
+
+    ${HAL_LOG_WARN} "Failed to get interface type for [${INTF}]"
+    exit
+}
+
+# Returns the relay index
+find_relay_index()
+{
+    #the interface has format of wan0_0, lan1_0, etc.
+    slot_port=`echo $1 | tr -d '[a-z][A-Z]'`
+    slot=`echo $slot_port | cut -c 1`
+    port=`echo $slot_port | cut -c 3`
+
+    wan_lan=`echo $1 | cut -c 1-3`
+    RELAY_IF="inpath${slot}_${port}"
+    RELAY_IX=`get_er_relay_index ${RELAY_IF}`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "No ether-relay interface for [${RELAY_IF}]"
+	exit 1
+    fi
+
+    echo ${RELAY_IX}
+}
+
+#------------------------------------------------------------------------------
+# get_data_partition_type
+# This just prints out the data partition type for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition_type ()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            echo "ext3"
+            ;;
+        *)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# get_data_partition
+# This just prints out the data partition for WW appliances
+#------------------------------------------------------------------------------
+get_data_partition ()
+{
+    PLATFORM=`get_platform`
+    case "${PLATFORM}" in
+        "CB")
+            echo "/dev/disk1p1"
+            ;;
+        *)
+            echo "Not implemented"
+            return 128
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# vm_set_if_wdt_block
+#------------------------------------------------------------------------------
+
+vm_set_if_wdt_block()
+{
+    bail_if_not_SH
+
+    verify_nic_arg $1
+
+    if [[ -n $(vsh_bypass_iface_type $1) ]]; then
+        vsh_bypass_iface_cmd $1 set_default_state disconnect
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Unable to configure bpvm fail to block on [$1]"
+            exit 1
+        fi
+    fi
+
+    set_if_wdt_block $@
+
+    exit 0
+}
+
+#------------------------------------------------------------------------------
+# vm_set_if_wdt_bypass 
+#------------------------------------------------------------------------------
+
+vm_set_if_wdt_bypass()
+{
+    bail_if_not_SH
+
+    verify_nic_arg $1
+
+    if [[ -n $(vsh_bypass_iface_type $1) ]]; then
+        vsh_bypass_iface_cmd $1 set_default_state bypass
+        if [ $? -ne 0 ]; then
+            ${HAL_LOG_WARN} "Unable to configure bpvm fail to bypass on [$1]"
+            exit 1
+        fi
+    fi
+
+    set_if_wdt_bypass $@
+
+    exit 0
+}
+
+#------------------------------------------------------------------------------
+# get_if_wdt_status 
+#------------------------------------------------------------------------------
+
+get_if_wdt_status()
+{
+    bail_if_not_SH
+
+    if [[ -z $(vsh_bypass_iface_type $1) ]]; then
+	get_generic_if_wdt_status ${ARGS}
+	exit $?
+    fi
+
+    STATUS=$(vsh_bypass_iface_cmd $1 print_default_state)
+    if [[ $? -ne 0 ]]; then
+	${HAL_LOG_WARN} "Unable to determine hw status on [$1]"
+	exit 1
+    fi
+    
+    echo $STATUS
+    exit 0
+}
+
+
+#------------------------------------------------------------------------------
+# vm_get_if_block_cap
+#------------------------------------------------------------------------------
+vm_get_if_block_cap()
+{
+    verify_nic_arg $1
+
+    if [[ -n $(vsh_bypass_iface_type $1) ]]; then
+        echo "true"
+
+    else
+        get_if_block_cap $@
+    fi
+}
+
+
+#------------------------------------------------------------------------------
+# mark_segstore_zerod 
+#------------------------------------------------------------------------------
+
+mark_segstore_zerod()
+{
+    bail_if_not_SH
+    # Delete an older one if present
+    delete_kvp
+    # Add the KVP
+    res=`add_segstore_kvp`
+    if [ $? -ne 0 ]; then
+	${HAL_LOG_WARN} "Could not disable segstore alarm"
+	exit 1
+    fi 
+
+    exit 0
+}
+#------------------------------------------------------------------------------
+# supports_rfut
+# This hal function is called by mgmt to check whether
+# the machine supports rfut or not.
+#------------------------------------------------------------------------------
+supports_rfut()
+{
+        echo "false"
+}
+
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+
+case "${FUNCTION}" in
+
+    init_hardware_phase0 |\
+    init_hardware_phase1 |\
+    init_hardware_phase2 |\
+    deinit_hardware_phase1 |\
+    deinit_hardware_phase2 |\
+    get_num_raid_arrays |\
+    get_temperature |\
+    uses_power_supplies |\
+    uses_fan_status |\
+    uses_flash_disk |\
+    supports_hw_upgrades |\
+    update_store_size |\
+    uses_hardware_wdt |\
+    uses_disk_led |\
+    uses_disk_power |\
+    get_ecc_ram_support |\
+    get_motherboard |\
+    get_motherboard_is_vm |\
+    get_model |\
+    get_platform |\
+    check_update_bios |\
+    get_system_led_color |\
+    get_avail_speed_duplex |\
+    get_default_speed_duplex |\
+    mark_segstore_zerod |\
+    get_if_wdt_status |\
+    get_data_partition |\
+    get_data_partition_type |\
+    supports_bmc_watchdog_pretimeout |\
+    vsh_bypass_init |\
+    vsh_bypass_init_post_rename |\
+    get_er_if_status |\
+    get_default_ipmi_wdt_timeout) \
+        $FUNCTION ${ARGS}
+        exit 0
+        ;;
+
+esac
+
+# interface related
+case "${FUNCTION}" in
+    "get_if_block_cap")
+        vm_get_if_block_cap ${ARGS} ;;
+
+    "get_if_status")
+        vm_get_if_status ${ARGS} ;;
+
+    "get_if_type")
+        vm_get_if_type ${ARGS} ;;
+
+    "set_if_wdt_block")
+        vm_set_if_wdt_block ${ARGS} ;;
+
+    "set_if_wdt_bypass")
+        vm_set_if_wdt_bypass ${ARGS} ;;
+
+    get_if_wdt_status |\
+    set_speed_duplex)
+        $FUNCTION ${ARGS}
+        exit 0
+        ;;
+    "get_platform")
+       get_platform
+       ;;
+    *)
+        echo "Not implemented."
+        exit 128
+        ;;
+    "supports_rfut")
+        supports_rfut
+        ;;
+
+
+
+esac

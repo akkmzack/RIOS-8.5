@@ -1,0 +1,52 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_simplified.psp
+##
+## Advanced Networking Simplified Routing
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = [
+        'setupServiceGeneral',
+    ]
+%>
+
+<psp:method name="nodeEntries">
+    return {
+        'mappings': FormUtils.NodeEntry(
+            path='/rbt/sport/intercept/config/simplified/mappings',
+            selectOptions=(('none', 'None'),
+                           ('dest-only', 'Destination Only'),
+                           ('dest-source', 'Destination and Source'),
+                           ('all', 'All')),
+            label='Collect Mappings From')
+    }
+</psp:method>
+
+<%
+self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Mapping Data Collection Setting</legend>
+    <div class="midLevel">
+      <%= nodeEntries['mappings'].html(self, format="block") %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

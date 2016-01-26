@@ -1,0 +1,39 @@
+<%
+## Copyright 2012 Riverbed Technology, Inc., All rights reserved.
+## Author: Aaron Endelman
+##
+## Inbound QoS Report
+##
+## The vast bulk of the code for this report is found in
+## includes/reportQoSStats.psp, which serves both the
+## Inbound and Outbound QoS reports.
+%>
+
+<% self.relatedPages = ('setupAdvNet_inboundQos',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/qos_inbound',
+            '/rbt/qos/inbound/config/class']
+</psp:method>
+
+<psp:method name="getClassId" params="treeifiedSubtree, className">
+    return treeifiedSubtree[className]['classid']
+</psp:method>
+
+<psp:file>
+    # Set a few variables that are used by includes/reportQoSStats.psp.
+    qosDirection = 'inbound'
+    dataUrl = Reports2.constructDataUrl('reportQosInbound')
+    nodeTreePath = '/rbt/qos/inbound/config/class'
+</psp:file>
+
+<!-- Everything interesting happens in this file. -->
+<%@include file="includes/reportQoSStats.psp" %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var sentReceivedLabel = 'Received';
+
+// ]]>
+</script>

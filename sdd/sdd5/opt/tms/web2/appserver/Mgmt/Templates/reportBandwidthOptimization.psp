@@ -1,0 +1,177 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## Bandwidth Optimization Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, Reports2Controls, FormUtils, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<% self.relatedPages = ('setupAdministrationPorts',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/bw_optimization',
+            '/net/services/state/port',
+            '/rbt/sport/reports/config/bandwidth/port',
+            '/stats/state/bulk_reg_class/3/subclass']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'port': FormUtils.NodeEntry(
+            name='port',
+            label='Port',
+            widget='select',
+            userPath='sh/web/reports/traffic_port',
+            userConfigAutoSave=True,
+            selectOptions=Reports2Controls.trafficPorts(self.session().value('mgmt')),
+            action='paramChanged()',
+            enableKeyNav=False
+        ),
+        'direction': FormUtils.NodeEntry(
+            name='direction',
+            label='Direction',
+            widget='select',
+            userPath='sh/web/reports/traffic_direction',
+            userConfigAutoSave=True,
+            selectOptions=(('bi', 'Bi-directional'),
+                           ('ltw', 'LAN to WAN'),
+                           ('wtl', 'WAN to LAN')),
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['port'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['direction'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions(true);
+
+    highstockOptions.yAxis[0].title.text = 'Data Reduction (%)';
+    highstockOptions.yAxis[2].title.text = 'Average Throughput (bps)';
+
+    // Clamp the data reduction percentage graph.
+    highstockOptions.yAxis[0].max = 100;
+
+    highstockOptions.series = [
+        { name: 'Data Reduction',
+          color: RBT.Reports2.GREEN,
+          type: 'area' },
+        { name: 'LAN Throughput',
+          type: 'area',
+          color: RBT.Reports2.BLUE,
+          yAxis: 2 },
+        { name: 'WAN Throughput',
+          type: 'area',
+          color: RBT.Reports2.ORANGE,
+          yAxis: 2}
+    ];
+
+    // Make the navigator shadow the first series (Data Reduction).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+    highstockOptions.navigator.yAxis.max = 100;
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        options: highstockOptions,
+        topPaneHeightPercent: 50,
+        dataFormatterFn: dataFormatter,
+        customControlDiv: Y.one('div#reportControls'),
+        statsFn: bandwidthStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['Data Reduction']
+    });
+});
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    // Collect user input.
+    var port = Y.one('select[name="port"]').get('value');
+    var direction = Y.one('select[name="direction"]').get('value');
+
+    // Construct the data URL.
+    var dataUrl = '<%= Reports2.constructDataUrl("reportBandwidthOptimization") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'port', port);
+    dataUrl = addQueryStringParameter(dataUrl, 'direction', direction);
+    return dataUrl;
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl()
+    });
+}
+
+// A callback function that supplies the summary stats displayed in the legend.
+function bandwidthStats(allSeriesData) {
+    var allStats = [];
+
+    var totalLAN = RBT.Reports2.integrate(allSeriesData[1]) / 8;
+    var totalWAN = RBT.Reports2.integrate(allSeriesData[2]) / 8;
+    var dataRemoved = totalLAN - totalWAN;
+
+    // Calculate the data reduction and capacity increase.
+    var overallReduction = (dataRemoved > 0) ? (dataRemoved / totalLAN * 100) : 0;
+    var overallReductionText = 'Average: ' + dataFormatter(overallReduction, 'Data Reduction');
+    var maxReduction = RBT.Reports2.max(allSeriesData[0]);
+    var maxReductionText = 'Peak: ' + dataFormatter(maxReduction, 'Data Reduction');
+    var capacityIncrease = RBT.Reports2.roundWithPadding(100 / (100 - overallReduction), 1);
+    var capacityIncreaseText = capacityIncrease + 'x capacity increase';
+    allStats.push([overallReductionText, maxReductionText, capacityIncreaseText]);
+
+    // Calculate total LAN bytes transferred.
+    var totalLANText = 'Total: ' + RBT.Reports2.scale(totalLAN, 1, 'si', 'B');
+    allStats.push([totalLANText]);
+
+    // Calculate total WAN bytes transferred.
+    var totalWANText = 'Total: ' + RBT.Reports2.scale(totalWAN, 1, 'si', 'B');
+    allStats.push([totalWANText]);
+
+    // Calculate the amount removed from the WAN link.
+    var removedFromWan = (dataRemoved > 0) ? dataRemoved : 0;
+    var removedFromWanText = RBT.Reports2.scale(removedFromWan, 1, 'si', 'B') +
+                      ' was removed from the WAN link.';
+    allStats.push([removedFromWanText]);
+
+    return allStats;
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    if (seriesName == "Data Reduction") {
+        return RBT.Reports2.roundWithPadding(value, 1) + '%';
+    } else {
+        return RBT.Reports2.scale(value, 1, 'si', 'bps');
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

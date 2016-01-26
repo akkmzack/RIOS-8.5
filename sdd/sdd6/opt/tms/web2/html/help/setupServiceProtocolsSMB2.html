@@ -1,0 +1,552 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Optimizing SMB2</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.05.01.html#316460">Chapter 3	Configuring Optimization Features</a> : <a class="WebWorks_Breadcrumb_Link" href="optimization.05.11.html#316460">Configuring CIFS Optimization</a> : Optimizing SMB2</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading2Topic"><a name="316460">Optimizing SMB2</a></div>
+      <div class="Body"><a name="316597">RiOS v6.5 and later includes support for SMB2 traffic latency optimization for native SMB2 clients and </a>servers.   SMB2 allows more efficient access across disparate networks. It is the default mode of communication between Windows Vista and Windows Server 2008. Microsoft has later modified SMB2 again (to SMB v2.1) for Windows 7 and Windows Server 2008 R2.</div>
+      <div class="Body"><a name="358236">SMB2 brought a number of improvements, including but not limited to:</a></div>
+      <li class="Bullet"><a name="358237">A vastly reduced set of opcodes (a total of only 18); in contrast SMBv1 has over 70 separate opcodes. </a>Note that use of SMB2 does not result in lost functionality (most of the SMB1 opcodes were redundant).</li>
+      <li class="Bullet"><a name="358240">General mechanisms for data pipelining and lease-based flow control. </a></li>
+      <li class="Bullet"><a name="358263">Request compounding which allows multiple SMB requests to be sent as a single network request.</a></li>
+      <li class="Bullet"><a name="358243">Larger reads and writes provide for more efficient use of networks with high latency.</a></li>
+      <li class="Bullet"><a name="358244">Caching of folder and file properties, where clients keep local copies of folders and files.</a></li>
+      <li class="Bullet"><a name="358245">Improved scalability for file sharing (number of users, shares and open files per server greatly </a>increased).</li>
+      <div class="HeadingProcedure"><a name="312769">To display optimization settings for SMB2</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="334022">Choose Configure &gt; Optimization &gt; SMB2 to display the SMB2 page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="312724">Under Settings, complete the configuration on both the client-side and server-side Steelhead appliances </a>as described in the following table. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="504325">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="504327">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504329">Enable SMB2 Latency </a>Optimization </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504332">Performs SMB2 latency optimization in addition to the existing bandwidth </a>optimization features. These optimizations include cross-connection caching, read-ahead, write-behind, and batch prediction among several other techniques to ensure low latency transfers. RiOS maintains the data integrity and the client always receives data directly from the servers.</div>
+            <div class="CellBody"><a name="504336">By default, SMB2 optimization is enabled.</a></div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="504337">You must enable (or disable) SMB2 latency optimization on both the </a>client-side and server-side Steelhead appliances and both Steelheads must be running RiOS v6.5 or later. After enabling SMB2 optimization, you must restart the optimization service.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504348">Down-negotiate SMB2 </a>connections to SMB1 </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504353">Enable on the client-side Steelhead appliance. Optimizes connections that are </a>successfully negotiated down to SMB1 according to the settings on the Configure &gt; Optimization &gt; CIFS (SMB1) page.</div>
+            <div class="CellBody"><a name="504354">Down negotiation is bypassed when the client or the server is configured to </a>only use SMB2 or the client has already established an SMB2 connection with the server. If the client already has a connection with the server, you must restart the client. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504356">Do Not Optimize Connections </a>that Couldn&#8217;t Down Negotiate </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504361">Specifies that the Steelhead appliance does not optimize the connection when it </a>is unable to negotiate down to SMB1. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504363">Enable SMB2 Latency </a>Optimization on Connections that Couldn&#8217;t Down Negotiate</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504365">Enable to use SMB1 latency optimization when possible, but use SMB2 latency </a>optimization when the Steelhead appliance is unable to negotiate down to SMB1.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504370">Disable SMB2 Latency </a>Optimization</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504372">Disables SMB2 latency optimization. </a></div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="504373">You must enable (or disable) SMB2 latency optimization on both the </a>client-side and server-side Steelhead appliances and both Steelheads must be running RiOS v6.5 or later. After enabling SMB2 optimization, you must restart the optimization service.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="312755">Click </a><span class="Bold">Apply</span> to apply your settings to the current configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="390402">If you have enabled or disabled SMB2 latency optimization, you must restart the optimization service.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><span class="Bold"><a name="312792">Related Topic</a></span></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupPrepop.html#251100', '');" title="Configuring CIFS Prepopulation" name="312796">Configuring CIFS Prepopulation</a></span></li>
+      <div class="Heading2"><a name="251677">Configuring SMB Signing</a></div>
+      <div class="Body"><a name="251679">You can display and modify SMB signing settings in the Configure &gt; Optimization &gt; CIFS page. </a></div>
+      <div class="Body"><a name="297016">When sharing files, Windows provides the ability to sign CIFS messages to prevent man-in-the-middle </a>attacks. Each CIFS message has a unique signature which prevents the message from being tampered with. This security feature is called SMB signing. Prior to v5.5, RiOS did not provide latency optimization for signed traffic.</div>
+      <div class="Body"><a name="297027">You can enable the RiOS SMB signing feature on a server-side Steelhead appliance to alleviate latency in file </a>access with CIFS acceleration while maintaining message security signatures. With SMB signing on, the Steelhead appliance optimizes CIFS traffic by providing bandwidth optimizations (SDR and LZ), TCP optimizations, and CIFS latency optimizations&#8212;even when the CIFS messages are signed. </div>
+      <div class="Body"><a name="358280">RiOS v6.5 and later includes support for optimizing SMB2-signed traffic for native SMB2 clients and </a>servers. SMB2 signing support includes:</div>
+      <li class="Bullet"><a name="358281">Windows domain integration, including domain join and domain-level support.</a></li>
+      <li class="Bullet"><a name="358282">Authentication using transparent mode and delegation mode. Delegation mode is the default for </a>SMB2. Transparent mode works out of the box with Windows Vista (but not Windows 7). To use transparent mode with Windows 7, you must join the server-side Steelhead appliance as a backup domain controller (BDC) or a read-only domain controller (RODC). For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSMB2.html#287818', '');" title="Optimizing SMB2">Authentication</a></span>.</li>
+      <li class="Bullet"><a name="316611">Secure inner-channel SSL support. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSSLPeering.html#237300', '');" title="Configuring Secure Peers">Configuring Secure Peers</a></span>.</li>
+      <div class="Body"><a name="251697">By default, RiOS SMB2 signing is disabled.</a></div>
+      <div class="Heading3"><a name="287797">Domain Security</a></div>
+      <div class="Body"><a name="251701">The RiOS SMB signing feature works with Windows domain security and is fully compliant with the </a>Microsoft SMB-signing v1 and v2 protocols. RiOS v6.1 and later supports domain security in both native   and mixed modes for:</div>
+      <li class="Bullet"><a name="297235">Windows 2000</a></li>
+      <li class="Bullet"><a name="297242">Windows 2003 R2</a></li>
+      <li class="Bullet"><a name="297205">Windows 2008 </a></li>
+      <li class="Bullet"><a name="297251">Windows 2008 R2</a></li>
+      <div class="Body"><a name="297226">The server-side Steelhead appliance in the path of the signed CIFS traffic becomes part of the Windows trust </a>domain. The Windows domain is either the same as the domain of the user or has a trust relationship with the domain of the user. The trust relationship can be either a parent-child relationship or an unrelated trust relationship. </div>
+      <div class="Body"><a name="288418">RiOS v6.0 and later optimizes signed CIFS traffic even when the logged-in user or client machine and the </a>target server belong to different domains, provided these domains have a trust relationship with the domain the Steelhead appliance has joined. RiOS v6.1 and later supports delegation for users that are in domains trusted by the server's domain. The trust relationships include:</div>
+      <li class="Bullet"><a name="288143">A basic parent and child domain relationship. Users from the child domain try to access CIFS/MAPI </a>servers in the parent domain: for example, users in ENG.RVBD.COM accessing servers in RVBD.COM. </li>
+      <li class="Bullet"><a name="288403">A grandparent and child domain relationship. Users from grandparent domain access resources from </a>the child domain: for example, users from RVBD.COM accessing resources in DEV.ENG.RVBD.COM.</li>
+      <li class="Bullet"><a name="288150">A sibling domain relationship: for example, users from ENG.RVBD.COM try to access resources in </a>MARKETING.RVBD.COM. </li>
+      <div class="Heading3"><a name="287818">Authentication</a></div>
+      <div class="Body" style="color: #000000; font-style: normal; font-variant: normal; font-weight: normal; margin-bottom: 5.0pt; margin-top: 5.0pt; text-transform: none; vertical-align: baseline"><span style="color: #000000; font-family: &quot;Microsoft Sans Serif&quot;; font-size: 10.0pt; font-style: normal; font-variant: normal; font-weight: normal; text-transform: none; vertical-align: baseline"><a name="404407">The process RiOS uses to authenticate domain users depends upon the release version. </a></span></div>
+      <div class="Body"><a name="404458">RiOS</a><span style="font-family: &quot;Times New Roman&quot;; font-size: 12.0pt"> </span>v7.0 and later features the following authentication modes: </div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="404504">NTLM delegation mode</a></span> - Uses Kerberos delegation architecture to authenticate signed packets between the server-side Steelhead appliance and any configured servers participating in the signed session. NTLM is used between the client-side and server-side Steelhead appliance. This is the default mode for SMB2. SMB2 delegation mode in RiOS<span class="Emphasis" style="font-style: normal"> v6.5 and later supports Windows 7 and Samba 4 </span><span class="Emphasis" style="font-style: normal">clients. Delegation mode requires additional configuration of Windows domain authentication.</span></li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="404469">NTLM transparent mode</a></span> - Uses NTLM authentication end to end between the client-side and server- side Steelhead appliances and the server-side Steelhead and the server. This is the default mode for SMB1. Transparent mode in RiOS<span class="Emphasis" style="font-style: normal"> v6.1 and later supports a</span>ll Windows servers, including Windows 2008 R2, that have NTLM enabled. It is easier to configure.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="404536">Kerberos authentication support</a></span> - Uses Kerberos authentication end to end between the client-side and server-side Steelhead appliance and the server-side Steelhead appliance and the server. <span class="Emphasis" style="font-style: normal">Kerberos </span><span class="Emphasis" style="font-style: normal">authentication requires additional configuration of Windows domain authentication.</span></li>
+      <div class="Body"><span class="Emphasis" style="font-style: normal"><a name="297065">Transparent mode in </a></span>RiOS<span class="Emphasis" style="font-style: normal"> v6.1 and later does </span><span class="Emphasis">not</span><span class="Emphasis" style="font-style: normal"> support:</span> </div>
+      <li class="Bullet"><a name="297090">Windows 7 clients. RiOS</a><span class="Emphasis"> </span>v7.0 and later supports transparent mode<span class="Emphasis"> </span>when you join the server-side Steelhead appliance as a backup domain controller (BDC) or a read-only domain controller (RODC). </li>
+      <li class="Bullet"><a name="297097">Windows 2008 R2 domains which have NTLM disabled. </a></li>
+      <li class="Bullet"><a name="297104">Windows servers that are in domains with NTLM disabled. </a></li>
+      <li class="Bullet"><a name="417618">Windows 7 clients which have NTLM disabled.</a></li>
+      <div class="Body"><a name="257237">In RiOS v6.0 and later, you can enable extra security using the secure inner channel. The peer Steelhead </a>appliances using the secure channel encrypt signed CIFS traffic over the WAN. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSSLPeering.html#237300', '');" title="Configuring Secure Peers">Configuring Secure Peers</a></span>.</div>
+      <div class="Body"><a name="404438">RiOS v5.5.x uses Kerberos authentication between the server-side Steelhead appliance and any configured </a>servers participating in the signed session. It uses NTLM authentication between the client-side and server-side Steelhead appliances. </div>
+      <div class="Heading3"><a name="251722">SMB Signing Prerequisites</a></div>
+      <div class="Body"><a name="425069">This section describes prerequisites and recommendations for using SMB signing:</a></div>
+      <li class="Bullet"><a name="251729">With RiOS SMB signing enabled, Steelhead appliances sign the traffic between the client and the client-</a>side Steelhead appliance and between the server and the server-side Steelhead appliance. The traffic is not signed between the Steelhead appliances, but the Steelheads implement their own integrity mechanisms. Whether Steelhead appliances are used or not, SMB-signed traffic is only signed, not encrypted. For maximum security, Riverbed recommends that you configure the Steelhead appliances as SSL peers and use the secure inner channel to secure the traffic between them. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSSLPeering.html#237300', '');" title="Configuring Secure Peers">Configuring Secure Peers</a></span>.</li>
+      <li class="Bullet"><a name="326241">When upgrading from RiOS v6.1 to v6.5 or later, you might already have a delegate user and be joined </a>to a domain. If so, enabling SMB2 signing will work when enabled with no additional configuration.</li>
+      <li class="Bullet"><a name="262585">SMB signing requires joining a Windows domain. It is vital to set the correct time zone for joining a </a>domain. The most common reason for failing to join a domain is a significant difference in the system time on the Windows domain controller and the Steelhead appliance. When the time on the domain controller and the Steelhead appliance do not match, the following error message appears:</li>
+      <div class="CodeIndent1"><span style="font-family: &quot;Courier New&quot;"><a name="262592">lt-kinit: krb5_get_init_creds: Clock skew too great</a></span><span style="font-family: &quot;Times New Roman&quot;">  </span></div>
+      <div class="Indent1"><a name="262597">Riverbed recommends using NTP time synchronization to synchronize the client and server clocks. It </a>is critical that the Steelhead appliance time is the same as on the Active Directory controller. Sometimes an NTP server is down or inaccessible, in which case there can be a time difference. You can also disable NTP if it is not being used and manually set the time. You must also verify that the time zone is correct. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupHostSettings.html#203918', '');" title="Modifying General Host Settings">Modifying General Host Settings</a></span>. For more troubleshooting, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceDomain.html#281967', '');" title="Joining a Windows Domain or Workgroup">Troubleshooting a Domain Join Failure</a></span>.</div>
+      <li class="Bullet"><a name="325626">Both the client and the server must support SMB2 to use RiOS SMB2 signing.</a></li>
+      <div class="Heading3"><a name="262604">Verifying the Domain Functional Level and Host Settings</a></div>
+      <div class="Body"><a name="251778">This section describes how to verify the domain and DNS settings before joining the Windows domain and </a>enabling SMB signing.</div>
+      <div class="HeadingProcedure"><a name="251779">To verify the domain functional level (Delegation mode and Replication users)</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="251781">If you are using delegation mode or configuring replication users, verify that the Windows domain </a>functionality is at the Windows 2003 level or higher. In Windows, open Active Directory Users and Computers on the domain controller, choose Domain Name, right-click, and select Raise Domain functionality level. If the domain is not already at the Windows 2003 level or higher, manually raise the domain functionality. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="417625">If replication users are configured to use password replication policy (PRP), the domain functional </a>level should be Windows 2008 or higher. For details on delegation mode, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSMB2.html#251847', '');" title="Optimizing SMB2">Enabling SMB Signing</a></span>. For details on replication users, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#409363', '');" title="Windows Domain Authentication">Configuring Replication Users (Kerberos)</a></span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="251783">After you raise the domain level, you cannot lower it.</a></div>
+      <div class="Indent1"><a name="431598">For details, see the Microsoft Windows Server 2003 Active Directory documentation:</a></div>
+      <div class="Indent1"><a href="http://www.microsoft.com/windowsserver2003/technologies/directory/activedirectory/default.mspx" target="external_window" name="431600">http://www.microsoft.com/windowsserver2003technologies/directory/activedirectory/default.mspx</a></div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251791">Identify the full domain name, which must be the same as DNS. You must specify this name when you </a>join the server-side Steelhead appliance to the domain.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251796">Identify the short (NetBIOS) domain name by pressing Ctrl+Alt+Del on any member server. You must </a>explicitly specify the short domain name when the Steelhead appliance joins the domain if it does not match the leftmost portion of the fully qualified domain name. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251803">Make sure that the primary or auxiliary interface for the server-side Steelhead appliance is routable to </a>the DNS and the domain controller. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251804">Verify the DNS settings.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="251808">You must be able to ping the server-side Steelhead appliance, by name, from a CIFS server joined to the </a>same domain that the server-side Steelhead appliance joins. If you cannot, you must manually create an entry in the DNS server for the server-side Steelhead appliance and perform a DNS replication prior to joining the Windows domain. The Steelhead appliance does not automatically register the required DNS entry with the Windows domain controller.</div>
+      <div class="Indent1"><a name="251820">You must be able to ping the domain controller, by name, whose domain the server-side Steelhead </a>appliance joins. If you cannot, choose Configure &gt; Networking &gt; Host Settings to configure the DNS settings.</div>
+      <div class="Indent1"><a name="503287">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupHostSettings.html#203918', '');" title="Modifying General Host Settings">Modifying General Host Settings</a></span>.</div>
+      <div class="Indent1"><a name="251830">The next step is to join a Windows domain.</a></div>
+      <div class="HeadingProcedure"><a name="251831">To join a Windows domain</a></div>
+      <li class="Bullet"><a name="251835">Choose Configure &gt; Networking &gt; Windows Domain on the server-side Steelhead appliance and join </a>the domain.</li>
+      <div class="Indent1"><a name="251843">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceDomain.html#416386', '');" title="Joining a Windows Domain or Workgroup">Joining a Windows Domain or Workgroup</a></span>. After you have joined the domain, the next step is to enable SMB signing.</div>
+      <div class="Heading3"><a name="251847">Enabling SMB Signing</a></div>
+      <div class="Body"><a name="251848">Now that you have joined a Windows domain you can enable SMB signing.</a></div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="251850">When SMB signing is set to Enabled for both the client and server-side SMB component (but not set to </a>Required), and the RiOS Optimize Connections with Security Signatures feature is enabled, it takes priority and prevents SMB signing. You can resolve this by disabling the Optimize Connections with Security Signatures feature and restarting the Steelhead appliance <span style="font-style: italic">before</span> enabling this feature.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="308945">The RiOS Optimize Connections with Security Signatures feature can lead to unintended consequences in </a>the scenario when SMB signing is required on the client, but set to Enabled on the server. With this feature enabled the client concludes that the server does not support signing and might terminate the connection with the server as a result. You can resolve this by using one of the following procedures <span style="font-style: italic">before</span> enabling this feature:<br /><br />1. Disable the Optimize Connections with Security Signatures feature and restart the Steelhead appliance. <br /><br />&#8212;or&#8212;<br /><br />2. Apply a Microsoft Service pack update to the clients (recommended). You can download the update from the Microsoft Download Center:<br /><br /><a href="http://support.microsoft.com/kb/916846" target="external_window">http://support.microsoft.com/kb/916846 <br /></a></div>
+      <div class="HeadingProcedure"><a name="312586">To enable SMB1 signing</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="312587">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; CIFS (SMB1) to display the </a>CIFS page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="345280">Under SMB Signing, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.50112pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.76584pt">
+            <div class="CellHeading"><a name="504261">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 362.73528pt">
+            <div class="CellHeading"><a name="504263">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504265">E</a>nable SMB Signing</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504267">Enables CIFS traffic optimization by providing bandwidth optimizations (SDR and LZ), </a>TCP optimizations, and CIFS latency optimizations, even when the CIFS messages are signed. By default, this setting is disabled. You must enable this feature on the server-side Steelhead appliance.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="504271">If you enable this feature without first joining a Windows domain, a message tells </a>you that the Steelhead appliance must join a domain before it can support SMB signing.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504276">N</a>TLM Transparent Mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504281">Provides SMB1 signing with transparent authentication. The server-side Steelhead uses </a>NTLM to authenticate users. Select transparent mode with Vista for the simplest configuration. You can also use transparent mode with Windows 7, provided that you join the server-side Steelhead appliance as a backup domain controller (BDC) or a read-only domain controller (RODC).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504286">N</a>TLM Delegation Mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504288">Re-signs SMB signed packets using the Kerberos delegation facility. This setting is </a>enabled by default when you enable SMB signing. Delegation mode is required for Windows 7, but works with all clients (unless the client has NTLM disabled).</div>
+            <div class="CellBody"><a name="504289">Delegation mode requires additional configuration. Choose Configure &gt; Optimization &gt; </a>Windows Domain Authentication or click the link provided in the CIFS Optimization page.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504291">E</a>nable Kerberos Authentication Support</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504293">Provides SMB signing with end-to-end authentication using Kerberos. The server-side </a>Steelhead appliance uses Kerberos to authenticate users.</div>
+            <div class="CellBody"><a name="504299">I</a>n addition to enabling this feature, you must also join the server-side Steelhead appliance to a Windows domain and add replication users on the Configure &gt; Optimization &gt; Windows Domain Authentication page. </div>
+            <div class="CellBody"><a name="504307">T</a>he server-side Steelhead appliance must be running RiOS v7.0.x. The client-side Steelhead appliance must be running RiOS v5.5 or later.</div>
+            <div class="CellBody"><a name="504317">N</a>o configuration is needed on the client-side Steelhead appliance.</div>
+            <div class="CellBody"><a name="504318">If you want to use password replication policy (PRP) with replication users, Kerberos </a>authentication requires additional replication user configuration on the Windows 2008 Domain Controller.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="345317">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="308950">Click </a><span class="Bold">Save</span> to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="312635">To enable SMB2 signing</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="251858">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; SMB2 to display the SMB2 </a>page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251863">Under SMB2 Signing, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.50112pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.76584pt">
+            <div class="CellHeading"><a name="504922">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 362.73528pt">
+            <div class="CellHeading"><a name="504924">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504926">Enable SMB2 Signing</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504928">Enables SMB2 traffic optimization by providing bandwidth optimizations (SDR and LZ), </a>TCP optimizations, and SMB2 latency optimizations, even when the SMB2 messages are signed. By default, this setting is disabled. You must enable this feature on the server-side Steelhead appliance.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="504935">If you are upgrading from RiOS v6.1 to v6.5, you might already have a </a>delegate user and be joined to a domain. If so, enabling SMB2 signing works when enabled with no additional configuration.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="504936">If you enable this feature without first joining a Windows domain, a message tells </a>you that the Steelhead appliance must join a domain before it can support SMB2 signing.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="504940">You must enable SMB2 latency optimization before enabling SMB2 signing. To </a>enable SMB2 latency optimization, choose Configure &gt; Optimization &gt; SMB2.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504942">NTLM Transparent </a>Mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504947">Provides SMB2 signing with transparent authentication. The server-side Steelhead uses </a>NTLM to authenticate users. Select transparent mode with Vista for the simplest configuration. You can also use transparent mode with Windows 7, provided you join the server-side Steelhead appliance as a backup domain controller (BDC) or a read-only domain controller (RODC).</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504952">NTLM Delegation </a>Mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504954">Re-signs SMB2 signed packets using the delegation facility. This setting is enabled by </a>default when you enable SMB2 signing. Delegation mode is required for Windows 7, but works with all clients (unless the client has NTLM disabled).</div>
+            <div class="CellBody"><a name="504955">Delegation mode requires additional configuration. Choose Configure &gt; Optimization &gt; </a>Windows Domain Authentication or click the link in the CIFS Optimization page.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504957">Enable Kerberos </a>Authentication Support</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="504959">Provides SMB2 signing with end-to-end authentication using Kerberos. The server-side </a>Steelhead appliance uses Kerberos to authenticate users.</div>
+            <div class="CellBody"><a name="504965">In addition to enabling this feature, you must also join the server-side Steelhead </a>appliance to a Windows domain, and add replication users on the Configure &gt; Optimization &gt; Windows Domain Authentication page. </div>
+            <div class="CellBody"><a name="504973">The server-side Steelhead appliance must be running RiOS v7.0. The client-side </a>Steelhead appliance must be running RiOS v6.5 or later.</div>
+            <div class="CellBody"><a name="504983">No configuration is needed on the client-side Steelhead appliance.</a></div>
+            <div class="CellBody"><a name="504984">If you want to use password replication policy (PRP) with replication users, Kerberos </a>authentication requires additional replication user configuration on the Windows 2008 domain controller.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251917">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251918">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="251921">If you change the SMB2 mode, you must restart the optimization service. For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAppliance_service.html#281155', '');" title="Starting and Stopping the Optimization Service">Starting and Stopping the Optimization Service</a></span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="251924">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupPrepop.html#251100', '');" title="Configuring CIFS Prepopulation" name="251928">Configuring CIFS Prepopulation</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#284558', '');" title="Windows Domain Authentication" name="288697">Windows Domain Authentication</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396241', '');" title="Configuring Inbound QoS" name="251932">Creating Inbound QoS Classes</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportConnections.html#296976', '');" title="Viewing Current Connections" name="251936">Viewing Current Connections</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

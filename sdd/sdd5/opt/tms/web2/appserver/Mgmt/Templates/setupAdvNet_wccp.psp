@@ -1,0 +1,713 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_wccp.psp
+##
+## Advanced Networking WCCP
+
+# The page layout looks like this:
+#
+# wccpForm1
+#   [nodeEntries]
+#
+# wccpForm2
+#   groupsTable
+#     addDiv
+#       dialogEntries
+#     editDiv
+#       dialogEntries
+#       wccpRouterTable
+#         addDiv
+#           dialogEntry
+#         editDiv
+#           status items
+#       wccpWebcacheTable
+#         editDiv
+#            div:hash mode
+#              hash stats items
+#            div:mask mode
+#               wccpWebcacheMaskTable
+
+# The display of a given webcache can be either hashes, or a table of
+# masks, depending on the mode of that cache.
+#
+# The CMC doesn't have access to state data, so we can't include the router details
+# and we can't inlcude the webcache table.  But we can set the router ip's, so
+# for the CMC those are set and edited with a comma-delimited textual list.
+#
+# There's a JavaScript issue where clicking on Add Router or Remove Routers would
+# normally validate and submit all the group edit information.  We redefine
+# submitCommandField() to work around that.
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, RbtUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isIB" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#wccpRouterTable_main,
+#wccpWebcacheTable_main,
+#wccpWebcacheMaskTable_main {
+  width: auto;
+}
+.wccpHashcode {
+  font-family: Lucida Console, monospace;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableV2Support': NodeEntry(
+            path='/rbt/sport/wccp/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable WCCP v2 Support',
+            enableDiv='enablev2'),
+        'multicastTTL': NodeEntry(
+            path='/rbt/sport/wccp/config/mcast_ttl',
+            type='uint16',
+            widgetClass='small',
+            label='Multicast TTL'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+
+    wccp_protocol = {'selectOptions': (('6', 'TCP'), ('17', 'UDP'), ('1', 'ICMP')),
+                     'label': 'Protocol'}
+    wccp_routerIps = {'widgetClass': 'wide3',
+                      'label': 'Router IP Address(es)', 'hint': '(comma separated list)',
+                      'validate': 'ipv4addr_list'}
+    wccp_password = {'widget': 'password', 'label': 'Password',
+                     'inputOptional': True,
+                     'validate': ('password', '[null, 8]')}
+    wccp_passwordConfirm = {'widget': 'password', 'label': 'Password Confirm',
+                            'inputOptional': True,
+                            'validate': ('password', '[null, 8]')}
+    wccp_priority = {'type': 'uint16', 'value': '200', 'widgetClass': 'small',
+                     'label': 'Priority', 'hint': '(0-255)',
+                     'validate': 'uint8'}
+    wccp_weight = {'type': 'uint16', 'widgetClass': 'medium', 'label': 'Weight'}
+    wccp_encap = {'selectOptions': (('either', 'Either'), ('gre', 'GRE'), ('l2', 'L2')),
+                  'label': 'Encapsulation Scheme'}
+    wccp_assign = {'selectOptions': (('either', 'Either'), ('mask', 'Mask'), ('hash', 'Hash')),
+                   'action': 'return groupsTable.updateHook()',
+                   'label': 'Assignment Scheme'}
+
+    wccp_srcIpMask = {'label': 'IP Mask', 'value': '0x1741',
+                      'widgetClass': 'medium', 'validate': 'validateIPMask'}
+    wccp_srcPortMask = {'label': 'Port Mask', 'value': '0x0',
+                        'widgetClass': 'small', 'validate': 'validatePortMask'}
+    wccp_dstIpMask = {'label': 'IP Mask', 'value': '0x0',
+                      'widgetClass': 'medium', 'validate': 'validateIPMask'}
+    wccp_dstPortMask = {'label': 'Port Mask', 'value': '0x0',
+                        'widgetClass': 'small', 'validate': 'validatePortMask'}
+
+    wccp_srcIpHash = {'widget': 'checkbox', 'label': 'Source IP Hash', 'value': 'true'}
+    wccp_srcPortHash = {'widget': 'checkbox', 'label': 'Source Port Hash'}
+    wccp_dstIpHash = {'widget': 'checkbox', 'label': 'Destination IP Hash', 'value': 'true'}
+    wccp_dstPortHash = {'widget': 'checkbox', 'label': 'Destination Port Hash'}
+
+    wccp_portsMode = {'selectOptions': (('0', 'Ports Disabled'),
+                                        ('2', 'Use Source Ports'),
+                                        ('1', 'Use Destination Ports')),
+                      'label': 'Ports Mode'}
+    wccp_ports = {'label': 'Ports', 'validate': 'portList', 'inputOptional': True}
+
+    fields = self.request().fields()
+    policyName, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+
+    # We have to treat policy pages differently from host pages.
+    # Testing pathPrefix is a more accurate test of whether this page
+    # is being used as a proxy than testing whether the product is a CMC.
+    if pathPrefix:
+        # Only import cmc.py on CMC appliances
+        import cmc
+
+        # For CMC policies, use the hard-coded inpath interfaces.
+        # It is not clear whether this code will operate the same way
+        # for SH policies and IB policies.
+        appIf = cmc.allInpathInterfaces
+
+    # The "else" clause handles the this page as a host page
+    #
+    # Note that the "else" clause never executes on the CMC because
+    # the CMC does not natively use inpath interfaces.
+    else:
+        # Interceptor uses a different root node path for its list of in-path
+        # interfaces from any other product.
+        ifaceRootPath = \
+            isIB() and '/rbt/interface/state/inpath' or \
+                       '/rbt/sport/intercept/state/ifaces/inpath'
+        appIf = Nodes.getMgmtLocalChildrenNames(mgmt, ifaceRootPath)
+        appIf.sort(FormUtils.alphanumericCompare)
+    # assert appIf
+
+    return {
+        'addWccp_id': NodeEntry(
+            name='addWccp_id',
+            widgetClass='small',
+            label='Service Group ID',
+            validate='uint8',
+            hint='(0-255)'),
+        'addWccp_interface': NodeEntry(
+            name='addWccp_interface',
+            widget='select',
+            selectOptions=appIf,
+            label='Interface'),
+        'addWccp_protocol': NodeEntry(name='addWccp_protocol', **wccp_protocol),
+        'addWccp_routerIps': NodeEntry(name='addWccp_routerIps', **wccp_routerIps),
+        'addWccp_password': NodeEntry(name='addWccp_password', **wccp_password),
+        'addWccp_passwordConfirm': NodeEntry(name='addWccp_passwordConfirm',
+                                             **wccp_passwordConfirm),
+        'addWccp_priority': NodeEntry(name='addWccp_priority', **wccp_priority),
+        'addWccp_weight': NodeEntry(name='addWccp_weight', **wccp_weight),
+        'addWccp_encap': NodeEntry(name='addWccp_encap', **wccp_encap),
+        'addWccp_assign': NodeEntry(name='addWccp_assign', **wccp_assign),
+        'addWccp_srcIpMask': NodeEntry(name='addWccp_srcIpMask', **wccp_srcIpMask),
+        'addWccp_srcPortMask': NodeEntry(name='addWccp_srcPortMask', **wccp_srcPortMask),
+        'addWccp_dstIpMask': NodeEntry(name='addWccp_dstIpMask', **wccp_dstIpMask),
+        'addWccp_dstPortMask': NodeEntry(name='addWccp_dstPortMask', **wccp_dstPortMask),
+        'addWccp_srcIpHash': NodeEntry(name='addWccp_srcIpHash', **wccp_srcIpHash),
+        'addWccp_srcPortHash': NodeEntry(name='addWccp_srcPortHash', **wccp_srcPortHash),
+        'addWccp_dstIpHash': NodeEntry(name='addWccp_dstIpHash', **wccp_dstIpHash),
+        'addWccp_dstPortHash': NodeEntry(name='addWccp_dstPortHash', **wccp_dstPortHash),
+        'addWccp_ports': NodeEntry(name='addWccp_ports', **wccp_ports),
+        'addWccp_portsMode': NodeEntry(name='addWccp_portsMode', **wccp_portsMode),
+        'addWccpRouter_ip': NodeEntry(
+            name='addWccpRouter_ip',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='Router IP Address',
+            validate='ipv4addr'),
+
+        'editWccp_protocol': NodeEntry(name='editWccp_protocol', **wccp_protocol),
+        'editWccp_routerIps': NodeEntry(name='editWccp_routerIps', **wccp_routerIps),
+        'editWccp_password': NodeEntry(name='editWccp_password', **wccp_password),
+        'editWccp_passwordConfirm': NodeEntry(name='editWccp_passwordConfirm',
+                                              **wccp_passwordConfirm),
+        'editWccp_priority': NodeEntry(name='editWccp_priority', **wccp_priority),
+        'editWccp_weight': NodeEntry(name='editWccp_weight', **wccp_weight),
+        'editWccp_encap': NodeEntry(name='editWccp_encap', **wccp_encap),
+        'editWccp_assign': NodeEntry(name='editWccp_assign', **wccp_assign),
+        'editWccp_srcIpMask': NodeEntry(name='editWccp_srcIpMask', **wccp_srcIpMask),
+        'editWccp_srcPortMask': NodeEntry(name='editWccp_srcPortMask', **wccp_srcPortMask),
+        'editWccp_dstIpMask': NodeEntry(name='editWccp_dstIpMask', **wccp_dstIpMask),
+        'editWccp_dstPortMask': NodeEntry(name='editWccp_dstPortMask', **wccp_dstPortMask),
+        'editWccp_srcIpHash': NodeEntry(name='editWccp_srcIpHash', **wccp_srcIpHash),
+        'editWccp_srcPortHash': NodeEntry(name='editWccp_srcPortHash', **wccp_srcPortHash),
+        'editWccp_dstIpHash': NodeEntry(name='editWccp_dstIpHash', **wccp_dstIpHash),
+        'editWccp_dstPortHash': NodeEntry(name='editWccp_dstPortHash', **wccp_dstPortHash),
+        'editWccp_ports': NodeEntry(name='editWccp_ports', **wccp_ports),
+        'editWccp_portsMode': NodeEntry(name='editWccp_portsMode', **wccp_portsMode),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+# Related pages do not show up when this page is being used in a policy.
+# The related page on SH is setupServiceGeneral, which does not exist on IB.
+# The related page on IB is setupInterceptorGeneral, which does not exist on SH.
+# PagePresentation flushes any related pages not in the nav menu,
+# so only one or the other will show up depending on the product.
+self.relatedPages = ('setupServiceGeneral', 'setupInterceptorGeneral')
+
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+onCMC = policyType != None
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+dialogEntries['addWccp_weight'].value = Nodes.present(mgmt,
+    '/rbt/sport/wccp/state/default_group_weight')
+
+%>
+
+<% self.beginPagelet()
+if isIB(): {
+    # Bug#119616. TODO: Remove this code when vlan seg supports WCCP.
+    if Nodes.present(mgmt, '/rbt/vlanseg/state/enabled') == 'true': {
+        self.write('<p>WCCP is not compatible with VLAN Segregation.</p>')
+        self.endPagelet()
+        return
+    }
+}
+%>
+
+<%
+if 'true' == Nodes.present(mgmt, '/rbt/model_capability/wccp', 'true'): {
+%>
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="wccpForm1">
+  <fieldset>
+    <legend>WCCP Service Groups</legend>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <div class="midLevel">
+      <%= nodeEntries['enableV2Support'].html(self) %>
+      <div id="enablev2" class="indent">
+        <%= nodeEntries['multicastTTL'].html(self, format='inline') %>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<%
+}
+else: {
+%>
+<p>WCCP is not supported on this appliance.</p>
+<%
+}
+%>
+
+<%
+
+# Routers Table inside of the Groups Table editDiv.
+wccpRouterTable = ajaxentrytable.AjaxEntryTable('wccpRouter',
+    titleText='Routers',
+    headerSpec=('', 'IP', 'State', 'Forward Scheme', 'Return Scheme', 'Assign Scheme'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedWccpRouter_'),
+ AjaxEntryTable.tdEdit('id', 'id'),
+ AjaxEntryTable.tdAttr('state'),
+ AjaxEntryTable.tdAttr('forward_scheme_negotiated'),
+ AjaxEntryTable.tdAttr('return_scheme_negotiated'),
+ AjaxEntryTable.tdAttr('assign_scheme_negotiated')]""",
+    emptyMessage='No routers.',
+    addButtonText='Add a New WCCP Router',
+    addButtonName='addWccpRouter',
+    removeButtonText='Remove Selected Routers',
+    removeName='removeWccpRouter')
+
+wccpRouterTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+  </table>
+</div>
+''' % dialogEntries['addWccpRouter_ip'].html(self)
+
+wccpRouterTable.editDiv = '''
+<div class="midLevel">
+<table>
+  <tr>
+    <td class="label-fixed">Identity:</td>
+    <td><span id="router_identity">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">State:</td>
+    <td><span id="router_state">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Forward Scheme Negotiated:</td>
+    <td><span id="router_forward_scheme_negotiated">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Return Scheme Negotiated:</td>
+    <td><span id="router_return_scheme_negotiated">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Assign Scheme Negotiated:</td>
+    <td><span id="router_assign_scheme_negotiated">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">i-see-you Message Count:</td>
+    <td><span id="router_iseeyou_msg_count">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Last i-see-you Message:</td>
+    <td><span id="router_iseeyou_msg_time">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Removal Query Message Count:</td>
+    <td><span id="router_removalquery_msg_count">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Last Removal Query Message:</td>
+    <td><span id="router_removalquery_msg_time">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">here-i-am Message Count:</td>
+    <td><span id="router_hereiam_msg_count">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Last here-i-am Query Message:</td>
+    <td><span id="router_hereiam_msg_time">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Redirect Assign Message Count:</td>
+    <td><span id="router_redirectassign_msg_count">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label-fixed">Last Redirect Assign Message:</td>
+    <td><span id="router_redirectassign_msg_time">&nbsp;</span></td>
+  </tr>
+</table>
+</div>
+'''
+
+# The Mask table within the webcaches table editDiv.
+wccpWebcacheMaskTable = ajaxentrytable.AjaxEntryTable('wccpWebcacheMask',
+  titleText='Web Cache Masks',
+  headerSpec=('Mask', 'Source<br />Address', 'Source<br />Port', 'Dest<br />Address', 'Dest<br />Port'),
+  rowSpec="""
+[AjaxEntryTable.tdAttr('id'),
+ AjaxEntryTable.tdAttr('src_addr'),
+ AjaxEntryTable.tdAttr('src_port'),
+ AjaxEntryTable.tdAttr('dst_addr'),
+ AjaxEntryTable.tdAttr('dst_port')]""",
+  emptyMessage = 'No webcache masks.')
+
+if not onCMC: {
+    # WebCache Table inside of the Groups Table editDiv.
+    wccpWebcacheTable = ajaxentrytable.AjaxEntryTable('wccpWebcache',
+        titleText='Web Caches',
+        headerSpec=('Index', 'ID', 'Weight', 'Distribution'),
+        rowSpec = """
+    [AjaxEntryTable.tdEdit('id', 'id'),
+     AjaxEntryTable.tdAttr('cacheidPretty'),
+     AjaxEntryTable.tdAttr('wc_weight'),
+     AjaxEntryTable.tdAttr('distribution')]""",
+        emptyMessage='No web caches.')
+
+    wccpWebcacheTable.editDivContent = '''
+    <div class="midLevel">
+      <div id="wccpWebcacheTable_hashes">
+        <p>
+          <span class="label">Hash Assignment Map:</span>
+          <br/>
+          <span id="wccpWebcacheTable_hashReceived" class="wccpHashcode">&nbsp;</span>
+        </p>
+      </div>
+      %s
+    </div>
+    ''' % wccpWebcacheMaskTable.html(self, 'midLevel')
+}
+
+groupsTable = ajaxentrytable.AjaxEntryTable('groups',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=wccpGroups'),
+    titleText='WCCP Groups',
+    headerSpec=('', 'Interface, Group ID', 'Protocol', 'Priority', 'Weight', 'Encapsulation', 'Assignment'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('interface_id', 'selectedWccp_'),
+ AjaxEntryTable.tdEdit('interface_id', 'interface_idPretty'),
+ AjaxEntryTable.tdAttr('protocol_str'),
+ AjaxEntryTable.tdAttr('priority'),
+ AjaxEntryTable.tdAttr('weight'),
+ AjaxEntryTable.tdAttr('encap_scheme'),
+ AjaxEntryTable.tdAttr('assign_scheme')]""",
+    emptyMessage='No service groups.',
+    addButtonText='Add a New Service Group',
+    addButtonName='addWccp',
+    editButtonName='editWccpApply',
+    removeName='removeWccpGroups',
+    removeButtonText='Remove Selected Groups',
+    removePrefix='selectedWccp_',
+    editDivTitle='Editing Interface <span id="editWccp_interface">&nbsp;</span>, Service Group <b><span id="editWccp_id">&nbsp;</span></b>')
+
+groupsTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      <tr id="addWccp_src_mask_div">
+        <td class="label">Source Mask:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="addWccp_dst_mask_div">
+        <td class="label">Destination Mask:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="addWccp_src_hash_div">
+        <td class="label">Source Hash:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="addWccp_dst_hash_div">
+        <td class="label">Destination Hash:</td>
+        <td>%s %s</td>
+      </tr>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['addWccp_interface'].html(self),
+       dialogEntries['addWccp_id'].html(self),
+       dialogEntries['addWccp_protocol'].html(self),
+       dialogEntries['addWccp_password'].html(self),
+       dialogEntries['addWccp_passwordConfirm'].html(self),
+       dialogEntries['addWccp_priority'].html(self),
+       dialogEntries['addWccp_weight'].html(self),
+       dialogEntries['addWccp_encap'].html(self),
+       dialogEntries['addWccp_assign'].html(self),
+
+       dialogEntries['addWccp_srcIpMask'].html(self, format='inline'),
+       dialogEntries['addWccp_srcPortMask'].html(self, format='inline'),
+
+       dialogEntries['addWccp_dstIpMask'].html(self, format='inline'),
+       dialogEntries['addWccp_dstPortMask'].html(self, format='inline'),
+
+       dialogEntries['addWccp_srcIpHash'].html(self, format='inline'),
+       dialogEntries['addWccp_srcPortHash'].html(self, format='inline'),
+
+       dialogEntries['addWccp_dstIpHash'].html(self, format='inline'),
+       dialogEntries['addWccp_dstPortHash'].html(self, format='inline'),
+
+       dialogEntries['addWccp_portsMode'].html(self),
+       dialogEntries['addWccp_ports'].html(self),
+       dialogEntries['addWccp_routerIps'].html(self))
+
+groupsTable.editDivContent = '''
+  <div id="groupsTable_editables">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      <tr id="editWccp_src_mask_div">
+        <td class="label">Source Mask:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="editWccp_dst_mask_div">
+        <td class="label">Destination Mask:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="editWccp_src_hash_div">
+        <td class="label">Source Hash:</td>
+        <td>%s %s</td>
+      </tr>
+      <tr id="editWccp_dst_hash_div">
+        <td class="label">Destination Hash:</td>
+        <td>%s %s</td>
+      </tr>
+      %s
+      %s
+      %s
+    </table>
+  </div>
+  %s
+  %s
+  <input type="hidden" name="editWccp_id" />
+  <input type="hidden" name="editWccp_interface" />
+  ''' % (dialogEntries['editWccp_protocol'].html(self),
+         dialogEntries['editWccp_password'].html(self),
+         dialogEntries['editWccp_passwordConfirm'].html(self),
+         dialogEntries['editWccp_priority'].html(self),
+         dialogEntries['editWccp_weight'].html(self),
+         dialogEntries['editWccp_encap'].html(self),
+         dialogEntries['editWccp_assign'].html(self),
+
+         dialogEntries['editWccp_srcIpMask'].html(self, format='inline'),
+         dialogEntries['editWccp_srcPortMask'].html(self, format='inline'),
+
+         dialogEntries['editWccp_dstIpMask'].html(self, format='inline'),
+         dialogEntries['editWccp_dstPortMask'].html(self, format='inline'),
+
+         dialogEntries['editWccp_srcIpHash'].html(self, format='inline'),
+         dialogEntries['editWccp_srcPortHash'].html(self, format='inline'),
+
+         dialogEntries['editWccp_dstIpHash'].html(self, format='inline'),
+         dialogEntries['editWccp_dstPortHash'].html(self, format='inline'),
+
+         dialogEntries['editWccp_portsMode'].html(self),
+         dialogEntries['editWccp_ports'].html(self),
+         onCMC and dialogEntries['editWccp_routerIps'].html(self) or '',
+
+	 (not onCMC) and wccpRouterTable.html(self, 'midLevel') or '',
+	 (not onCMC) and wccpWebcacheTable.html(self, 'midLevel') or '')
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="wccpForm2">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceWccp" />
+    <%= groupsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+
+<script type="text/javascript">
+<!--
+
+function validateIPMask(val) {
+    if (!val.match(/^0x[0-9A-Fa-f]{1,8}$/)) {
+        throw 'A 4-byte value is required.';
+    }
+}
+
+function validatePortMask(val) {
+    if (!val.match(/^0x[0-9A-Fa-f]{1,4}$/)) {
+        throw 'A 2-byte value is required.';
+    }
+}
+
+// -->
+</script>
+
+<%
+if not onCMC: {
+    self.addOnload('RBT.Validator.addButtonValidation("input[name=editWccpApply]", adjustButtons)')
+}
+
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+<!--
+
+groupsTable.editEntry = function(editInterface_Id) {
+    editInterface = editInterface_Id.split('&&&')[0];
+    editName      = editInterface_Id.split('&&&')[1];
+
+    var form = document.getElementById('wccpForm2');
+    var el = this.getEntryElement('interface_id', editInterface_Id);
+    setElementText('editWccp_id', editName);
+    setElementText('editWccp_interface', editInterface);
+    form.editWccp_id.value = editName;
+    form.editWccp_interface.value = editInterface;
+    form.editWccp_protocol.value = el.getAttribute('protocol');
+    form.editWccp_password.value = el.getAttribute('password');
+    form.editWccp_passwordConfirm.value = el.getAttribute('password');
+    form.editWccp_priority.value = el.getAttribute('priority');
+    form.editWccp_weight.value = el.getAttribute('weight');
+    form.editWccp_encap.value = el.getAttribute('encap_scheme');
+    form.editWccp_assign.value = el.getAttribute('assign_scheme');
+    form.editWccp_srcIpMask.value = el.getAttribute('src_ip_mask');
+    form.editWccp_dstIpMask.value = el.getAttribute('dst_ip_mask');
+    form.editWccp_srcPortMask.value = el.getAttribute('src_port_mask');
+    form.editWccp_dstPortMask.value = el.getAttribute('dst_port_mask');
+    var flags = parseInt(el.getAttribute('flags'), 10);
+    form.editWccp_srcIpHash.checked = (flags & 0x1) ? 'checked' : '';
+    form.editWccp_dstIpHash.checked = (flags & 0x2) ? 'checked' : '';
+    form.editWccp_srcPortHash.checked = (flags & 0x4) ? 'checked' : '';
+    form.editWccp_dstPortHash.checked = (flags & 0x8) ? 'checked' : '';
+    var portsMode = (flags >> 4) & 0x3;
+    form.editWccp_portsMode.value = portsMode;
+    form.editWccp_ports.value = el.getAttribute('ports');
+    var routers = el.getElementsByTagName('routers').item(0);
+
+<% if onCMC: { %>
+    form.editWccp_routerIps.value = getChildAttribute(routers, 'router', 'id');
+<% } else: { %>
+    wccpRouterTable.setXMLData(routers);
+    var webcaches = el.getElementsByTagName('webcaches');
+    if (webcaches.length) {
+        wccpWebcacheTable.setXMLData(webcaches.item(0));
+    }
+    wccpRouterTable.setEditMode();
+    wccpRouterTable.update();
+    wccpWebcacheMaskTable.update();
+<% } %>
+}
+
+<% if not onCMC: { %>
+groupsTable.addEntry = function() {
+    // in case the add was left open
+    wccpRouterTable.setEditMode();
+}
+<% } %>
+
+groupsTable.updateHook = function() {
+    var assignmentScheme = null;
+    var form = document.getElementById('wccpForm2');
+    switch (this.editMode) {
+    case 'add':
+        assignmentScheme = form.addWccp_assign.value;
+        enableElements('addWccp_src_mask_div', 'hash' != assignmentScheme);
+        enableElements('addWccp_dst_mask_div', 'hash' != assignmentScheme);
+        enableElements('addWccp_src_hash_div', 'mask' != assignmentScheme);
+        enableElements('addWccp_dst_hash_div', 'mask' != assignmentScheme);
+        break;
+    case 'edit':
+        assignmentScheme = form.editWccp_assign.value;
+        enableElements('editWccp_src_mask_div', 'hash' != assignmentScheme);
+        enableElements('editWccp_dst_mask_div', 'hash' != assignmentScheme);
+        enableElements('editWccp_src_hash_div', 'mask' != assignmentScheme);
+        enableElements('editWccp_dst_hash_div', 'mask' != assignmentScheme);
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+<% if not onCMC: { %>
+
+// Tweaks for route table edits within groups table.
+wccpRouterTable.update = function() {
+    AjaxEntryTable.prototype.update.call(this);
+    enableElements('groupsTable_editables', ('add' != this.editMode));
+    RBT.Validator.validatePage();
+}
+
+// hack alert: redefining submitCommandField() so the remove router
+// button doesn't send the edit group apply material
+originalSubmitCommandField = AjaxEntryTable.submitCommandField;
+
+AjaxEntryTable.submitCommandField = function(element, command, val) {
+    if ('wccpRouterTable_removeEnabled' == element) {
+        enableElements('groupsTable_editables', false);
+    }
+    return originalSubmitCommandField(element, command, val);
+}
+
+wccpRouterTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    setElementText('router_identity', el.getAttribute('identity'));
+    setElementText('router_state', el.getAttribute('state'));
+    setElementText('router_forward_scheme_negotiated', el.getAttribute('forward_scheme_negotiated'));
+    setElementText('router_return_scheme_negotiated', el.getAttribute('return_scheme_negotiated'));
+    setElementText('router_assign_scheme_negotiated', el.getAttribute('assign_scheme_negotiated'));
+    setElementText('router_iseeyou_msg_count', el.getAttribute('iseeyou_msg_count'));
+    setElementText('router_iseeyou_msg_time', el.getAttribute('iseeyou_msg_time'));
+    setElementText('router_removalquery_msg_count', el.getAttribute('removalquery_msg_count'));
+    setElementText('router_removalquery_msg_time', el.getAttribute('removalquery_msg_time'));
+    setElementText('router_hereiam_msg_count', el.getAttribute('hereiam_msg_count'));
+    setElementText('router_hereiam_msg_time', el.getAttribute('hereiam_msg_time'));
+    setElementText('router_redirectassign_msg_count', el.getAttribute('redirectassign_msg_count'));
+    setElementText('router_redirectassign_msg_time', el.getAttribute('redirectassign_msg_time'));
+}
+
+wccpWebcacheTable.editEntry = function(editName) {
+    var webcacheEl = this.getEntryElement('id', editName);
+    if ('true' == webcacheEl.getAttribute('is_hash')) {
+        enableElements('wccpWebcacheMaskTable_main', 'hide');
+        enableElements('wccpWebcacheTable_hashes', true);
+        setElementText('wccpWebcacheTable_hashReceived', webcacheEl.getAttribute('hash_received'));
+    } else {
+        enableElements('wccpWebcacheMaskTable_main', true);
+        enableElements('wccpWebcacheTable_hashes', 'hide');
+        var masks = webcacheEl.getElementsByTagName('masks').item(0);
+        wccpWebcacheMaskTable.setXMLData(masks);
+        wccpWebcacheMaskTable.update();
+    }
+}
+
+function adjustButtons(buttonEl, isValid) {
+    return isValid && ('add' != wccpRouterTable.editMode);
+}
+
+<% } %>
+// -->
+</script>
+
+

@@ -1,0 +1,137 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportNeighbors.psp
+## This is the template for the Neighbor Statistics report page ('Connection Forwarding').
+## Refactored to use common reports code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:NeighborsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="NeighborsPagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="getNeighborOptions">
+    req = self.request()
+    mgmt = req.session().value('mgmt')
+    fields = req.fields()
+    neighborInfo = ProductGfxContext.fetchSubtree(mgmt, '/rbt/sport/intercept/config/neighbor/name', fields)
+    neighborNames = [k for k in neighborInfo.keys()
+                     if '/' not in k and '%s/main_address' % k in neighborInfo]
+    neighborAddresses = [neighborInfo['%s/main_address' % k]
+                         for k in neighborNames]
+    return [('0', 'All')] + zip(neighborAddresses, neighborNames)
+</psp:method>
+
+<psp:method name="prepare" params="reportOpts">
+    super(NeighborsPagelet, self).prepare(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    typeField = fields.get('stype', session.value('stype', 'bytes'))
+    self.updateGfxParams(reportOpts, {'stype': typeField})
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(NeighborsPagelet, self).dialogEntries(reportOpts)
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "document.getElementById('%s').submit();" % controlFormId
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    statField = fields.get('stype', session.value('stype', 'bytes'))
+    statOptions = (('bytes', 'Byte Counts'),
+                   ('packets', 'Packet Counts'))
+    neighborField = fields.get('neighbor', session.value('neighbor', '0'))
+    self.updateGfxParams(reportOpts, {'neighbor': neighborField})
+    neighborOptions = self.getNeighborOptions()
+    dialogEntries['statistic'] = FormUtils.NodeEntry(
+        name = 'stype',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = statOptions,
+        value = statField,
+        )
+    dialogEntries['neighbor'] = FormUtils.NodeEntry(
+        name = 'neighbor',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = neighborOptions,
+        value = neighborField,
+        )
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'neighborDataForm',
+    'reportSpecs': {
+        'nn': {
+            'tableName': 'neighborDataTable',
+            'gfxId': 'neighborDataOld',
+            'gfxDisplayId': 'neighborDataGraphImg'
+        }
+    }
+}
+neighborDataTable = ajaxentrytable.AjaxEntryTable('neighborData',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Neighbor Statistics.')
+
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+hideNeighbor = reportOpts.get('hideNeighbor')
+%>
+
+<div id="neighborDataGraphDiv" class="graphDiv">
+  <img id="neighborDataGraphImg" class="graphImg"
+    alt="Neighbor Statistics Graph" />
+</div>
+
+<form id="neighborDataForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+<% if not hideNeighbor: { %>
+          <th>Neighbor:</th>
+<% } %>
+          <th>Statistic:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+<% if not hideNeighbor: {%>
+          <%= dialogEntries['neighbor'].html(self, format='horiz') %>
+<% } %>
+          <%= dialogEntries['statistic'].html(self, format='horiz') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= neighborDataTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+

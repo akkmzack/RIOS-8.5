@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2010 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_sport_srdf                                          -->
+<!--   Module Root: /rbt/sport/srdf/                                        -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--   .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_srdf.c              -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/srdf/symm/config</name>               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_sport_srdf">
+
+    <config-wildcard>
+       <name>/rbt/sport/srdf/symm/config/id/*</name>
+       <description>List of symmids for configured Symmetrix devices</description>
+       <value type="string"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/sport/srdf/symm/config/id/*/log_latency</name>
+        <description>Configure SRDF transaction logger</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config-wildcard>
+       <name>/rbt/sport/srdf/symm/config/id/*/addr/*</name>
+       <description>Source IP address of Symmetrix device</description>
+       <value type="ipv4addr"/>
+    </config-wildcard>
+
+    <config>
+       <name>/rbt/sport/srdf/symm/config/id/*/rdf_base</name>
+       <description>Controls if RDF group numbers are indexed by zero or one</description>
+       <value type="uint8">1</value>
+       <value-choices>
+          <choice>0</choice>
+          <choice>1</choice>
+       </value-choices>
+    </config>
+
+    <config-wildcard>
+       <name>/rbt/sport/srdf/symm/config/id/*/rdf_rule/*</name>
+       <description>SRDF RDF group rule</description>
+       <value type="uint8"/>
+    </config-wildcard>
+
+    <config>
+       <name>/rbt/sport/srdf/symm/config/id/*/rdf_rule/*/optpolicy</name>
+       <description>RDF rule optimization policy</description>
+       <value type="string">sdr-default</value>
+       <value-choices>
+          <choice>sdr-default</choice>
+          <choice>lz-only</choice>
+          <choice>none</choice>
+       </value-choices>
+    </config>
+
+    <config>
+       <name>/rbt/sport/srdf/symm/config/id/*/rdf_rule/*/description</name>
+       <description>Description</description>
+       <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/srdf/symm/config/id/*/base_hash</name>
+        <description>Base hash for the symm id</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <external-state>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id</name>
+         <description>Optimization state for SRDF selective optimization blade</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state-wildcard>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id/*</name>
+         <description>List of symmids reporting optimization state</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+
+    <external-state-wildcard>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id/*/rdf_rule/*</name>
+         <description>List of symmids reporting optimization state</description>
+         <value type="uint16"/>
+         <state-provider>sport</state-provider>
+    </external-state-wildcard>
+
+    <external-state>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id/*/rdf_rule/*/optpolicy</name>
+         <description>Optimization state for SRDF selective optimization blade</description>
+         <value type="string"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id/*/rdf_rule/*/bytes_in</name>
+         <description>Optimization state for SRDF selective optimization blade</description>
+         <value type="uint64"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/srdf/symm/state/live_stats/id/*/rdf_rule/*/bytes_out</name>
+         <description>Optimization state for SRDF selective optimization blade</description>
+         <value type="uint64"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+</node-list>

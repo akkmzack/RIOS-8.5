@@ -1,0 +1,346 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+
+# This page governs RSP packages
+# Author: Robin Schaufler, Andrew Hao
+
+# Some packages that are worth of testing include
+# http://rspimages.nbttech.com/guam/qa_inpath_bridge/v7/inpathbridge_v7.zip
+# http://rspimages/guam/riverbed_openwrt_test/002/riverbed_openwrt_test_002.pkg
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, rsp" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return [
+        '/rbt/rsp2/action/install_package',
+    ]
+</psp:method>
+
+<psp:method name="css">
+    return '''
+.packageDetails span { font-style: italic; }
+.packageDetails td { padding-right: 10px; }
+#pkgOptVniTable_main { width: 512px; }
+#pkgMgmtVniTable_main { width: 512px; }
+#packageTable_main { width: 100%; }
+'''
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        # Package Table NodeEntries
+        'packageName': FormUtils.NodeEntry(
+            name='packageName',
+            label='Name',
+            validate='restrictedPathElement',
+            inputOptional=True,
+            widgetClass='wide2',
+            hint='optional'),
+        'packageSource': FormUtils.NodeEntry(
+            name='packageSource',
+            widget='radio',
+            value='url',
+            label={'url': 'From URL:', 'file': 'From Local File (for packages less than 2GB in size):'},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>https://host/path/to/file</li>
+                        <li>ftp://user:password@host/path/to/file</li>
+                        <li>scp://user:password@host/path/to/file</li>
+                      </ul>
+                    </p>'''
+            },
+            enableDiv={'url': 'packageSourceUrl', 'file': 'packageSourceFile'}),
+        'packageUrl': FormUtils.NodeEntry(
+            name='packageUrl',
+            widgetClass='wide4',
+            validate='checkUrl'),
+        'packageFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('rspTmpPackageDirectory', 'rspPackageFile'),
+            widget='file',
+            validate='checkExisting'),
+        'newPackageName': FormUtils.NodeEntry(
+            name='newPackageName',
+            validate='nonempty',
+            widgetClass='wide2',
+            label='File Name')
+    }
+</psp:method>
+
+<%
+    mgmt = self.session().value('mgmt')
+    rspInstalled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/image/state/installed')
+    rspPublicName = rsp.publicName()
+
+    # If RSP is not installed, the entire RSP packages page is invalid.
+    if not rspInstalled: {
+        self.beginPagelet()
+        self.writeln('''<p><a href="/mgmt/gui?p=setupRSPService">%s must be installed</a>
+before configuring Packages.</p>''' % rspPublicName)
+        self.endPagelet()
+        return
+    }
+
+    # Check if RSP is supported in the current disk layout.
+    rspDiskLayout = Nodes.present(mgmt, '/rbt/rsp2/state/disk_layout/supported', 'true') == 'true'
+    if not rspDiskLayout: {
+        self.beginPagelet()
+        self.writeln('<p>VSP is not supported in the current ' \
+                     '<a href="/mgmt/gui?p=setupDiskManagement">disk layout</a>.</p>')
+        self.endPagelet()
+        return
+    }
+
+    rspEnabled = 'true' == Nodes.present(mgmt, '/rbt/rsp2/config/enable')
+    # inpathOop stands for inpath-out-of-path, which is another term for
+    # virtual inpath. That is, the SH is physically out-of-path,
+    # but is using a routing mechanism such as WCCP or PBR to send
+    # packets to the SH as if it were inpath.
+    # inpathOop is True if the SH is virtually inpath.
+    inpathOop = 'true' == Nodes.present(mgmt,
+        '/rbt/sport/intercept/config/inpath_oop')
+%>
+
+<script type="text/javascript">
+<!--
+
+// Validate only if the file basename (final path component) does NOT match
+// a package already on the system.
+//
+// Throw an exception for invalid.
+function checkExisting(val, el) {
+    val = val.trim();
+    el = Y.Node.getDOMNode(el);
+    if (!val.length) {
+        throw 'A value is required';
+    }
+    // The following RE strips off everything up to the last '/'.
+    var basename = /[^\\/]+$/.exec(val);
+    if (!basename) {
+        throw 'Enter the name of a file, not a directory';
+    }
+    basename = basename[0];
+
+    // The packageName field can override the original file name.
+    var nameField = el.form.elements['packageName'].value;
+    if (nameField) {
+        basename = nameField;
+    }
+    if (!packageTable || !packageTable.docElement) {
+        return;
+    }
+    var entryEl = packageTable.getEntryElement('name', basename);
+    if (entryEl) {
+        throw 'A package by that name already exists.';
+    }
+}
+
+// A url for a package to fetch is valid if its syntax is valid for a URL
+// AND its basename (final URL component) does NOT match a package already
+// on the system.
+function checkUrl(val, el) {
+    RBT.Validator.Syntax.url(val, el);
+    checkExisting(val, el);
+}
+
+// -->
+</script>
+
+<% self.beginPagelet() %>
+
+<%
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+# Package fetch meter
+packageMeter = FormUtils.Meter(self, 'rspPackageFetch',
+                               buttonText='Add Package',
+                               formId='packagesForm')
+
+pkgOptVniTable = ajaxentrytable.AjaxEntryTable('pkgOptVni',
+    titleText='Optimization Virtual Network Interfaces',
+    headerSpec=('Name', 'Type', 'Default IP Policy', 'Default Non-IP Policy', 'VLAN'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('type'),
+ AjaxEntryTable.tdAttr('defIP'),
+ AjaxEntryTable.tdAttr('defNonIP'),
+ AjaxEntryTable.tdAttr('vlan')]
+""",
+    emptyMessage='No Optimization Virtual Network Interfaces')
+
+pkgMgmtVniTable = ajaxentrytable.AjaxEntryTable('pkgMgmtVni',
+    titleText='Management Virtual Network Interfaces',
+    headerSpec=('Name',),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name')]
+""",
+    emptyMessage='No Management Virtual Network Interfaces')
+
+packageTable = ajaxentrytable.AjaxEntryTable('package',
+    url='/mgmt/xmldata?p=rspPackages',
+    headerSpec=('', 'Local Name', 'Package Name', 'Version', 'Description'),
+    titleText='Packages',
+    rowSpec= """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedPackage_'),
+ AjaxEntryTable.td([pkgEditOrError()]),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('vendorName')]),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('version')]),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('description')])]
+""",
+    emptyMessage='No packages.',
+    addButtonText='Add a Package',
+    removeName='remove',
+    removeButtonText='Remove Selected Packages')
+
+packageTable.addDivContent = '''
+    <div class="midLevel">
+      %s
+    </div>
+    <div class="midLevel">
+      %s
+      <div id="packageSourceUrl" class="indent">
+        %s
+      </div>
+      %s
+      <div id="packageSourceFile" class="indent">
+        %s
+      </div>
+    </div>
+    <p class="warning">
+      Navigating away from this page may interrupt the file transfer.
+    </p>
+    %s
+''' % (dialogEntries['packageName'].html(self, format='block'),
+       dialogEntries['packageSource'].html(self, value='url', format='block'),
+       dialogEntries['packageUrl'].html(self, format='block'),
+       dialogEntries['packageSource'].html(self, value='file', format='block'),
+       dialogEntries['packageFile'].html(self, format='block'),
+       packageMeter.buttonHtml())
+
+packageTable.editDivContent = '''
+  <input type="hidden" name="editPackageName" />
+  %s
+  <div class="midLevel">
+    <fieldset id="packageInfo" class="packageDetails">
+      <legend>Package Information</legend>
+      <table>
+        <tr>
+          <td>Uncompressed Size:</td><td><span id="packageInfoUncompressed">&nbsp;</span></td>
+        </tr>
+        <tr>
+          <td>Encrypted:</td><td><span id="packageInfoEncrypted">&nbsp;</span></td>
+        </tr>
+      </table>
+    </fieldset>
+    <fieldset id="packageWd" class="packageDetails">
+      <legend>Watchdog Settings</legend>
+      <table>
+        <tr>
+          <td>Timeout:</td><td><span id="packageWdTimeout">&nbsp;</span> <em>sec</em></td>
+          <td>Ping Monitoring:</td><td><span id="packageWdPingUse">&nbsp;</span></td>
+        </tr>
+        <tr>
+          <td>Startup Grace Period:</td><td><span id="packageWdGracePeriod">&nbsp;</span> <em>sec</em></td>
+          <td>Ping Interval:</td><td><span id="packageWdPingInterval">&nbsp;</span> <em>sec</em></td>
+        </tr>
+        <tr>
+          <td>VNI policy on fail:</td><td><span id="packageWdVniPolicy">&nbsp;</span></td>
+          <td>Heartbeat Monitoring:</td><td><span id="packageWdHeartbeatUse">&nbsp;</span></td>
+        </tr>
+        <tr>
+          <td>VM reboot on fail:</td><td><span id="packageWdReboot">&nbsp;</span></td>
+          <td>Heartbeat Port:</td><td><span id="packageWdHeartbeatPort">&nbsp;</span></td>
+        </tr>
+      </table>
+    </fieldset>
+  </div>
+  <div class="midLevel">
+    %s
+    %s
+  </div>
+  %s
+''' % (dialogEntries['newPackageName'].html(self, format='block'),
+       pkgOptVniTable.html(self, 'midLevel'),
+       pkgMgmtVniTable.html(self, 'midLevel'),
+       FormUtils.formSubmitButtons(self, {'name': 'rename',
+                                    'value': 'Update'}))
+
+%>
+
+<form id="packagesForm" method="post" enctype="multipart/form-data" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= packageTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupRspPackages" />
+  </div>
+</form>
+<p>
+  To install packages or configure virtual machines, please
+  visit the <a href="/mgmt/gui?p=setupRSPSlots"><%= rspPublicName %> Slots</a> page.
+</p>
+
+<script type="text/javascript">
+<!--
+
+// An AET callback that either sets the table cell's cssClass
+// to 'rspFailure' and fills it with the package name, or
+// fills the table cell with an edit link,
+// depending on the 'cssClass' element attribute.
+function pkgEditOrError() {
+    var validPkgEdit = AjaxEntryTable.edit('name', 'name');
+    return function(entryTable, parent, element) {
+        var cssClass = element.getAttribute('cssClass');
+        if ('rspFailure' == cssClass) {
+            setElementClass(parent, 'rspFailure');
+            parent.appendChild(document.createTextNode(
+                element.getAttribute('name')
+            ));
+        } else {
+            validPkgEdit(entryTable, parent, element);
+        }
+    }
+}
+
+// -->
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+packageTable.editEntry = function(editName) {
+    var form = document.getElementById('packagesForm');
+    var el = this.getEntryElement('name', editName);
+
+    setFormValue(form, 'editPackageName', editName);
+    setFormValue(form, 'newPackageName', editName);
+
+    setElementText('packageInfoUncompressed', el.getAttribute('infoUncompressed'));
+    setElementText('packageInfoEncrypted', el.getAttribute('infoEncrypted'));
+
+    setElementText('packageWdTimeout', el.getAttribute('wdTimeout'));
+    setElementText('packageWdGracePeriod', el.getAttribute('wdGracePeriod'));
+    setElementText('packageWdVniPolicy', el.getAttribute('wdVniPolicy'));
+    setElementText('packageWdReboot', el.getAttribute('wdReboot'));
+    setElementText('packageWdPingUse', el.getAttribute('wdPingUse'));
+    setElementText('packageWdPingInterval', el.getAttribute('wdPingInterval'));
+    setElementText('packageWdHeartbeatUse', el.getAttribute('wdHeartbeatUse'));
+    setElementText('packageWdHeartbeatPort', el.getAttribute('wdHeartbeatPort'));
+
+    pkgOptVniTable.sendRequest('/mgmt/xmldata?p=rspPkgOptVnis&package=' +
+                               encodeURIComponent(editName));
+    pkgMgmtVniTable.sendRequest('/mgmt/xmldata?p=rspPkgMgmtVnis&package=' +
+                                encodeURIComponent(editName));
+}
+
+// -->
+</script>

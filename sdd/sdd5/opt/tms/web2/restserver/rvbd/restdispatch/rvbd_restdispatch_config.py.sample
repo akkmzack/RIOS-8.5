@@ -1,0 +1,96 @@
+
+# This file must be edited by the product that is using the REST Dispatch.
+
+# NAMESPACES contains the namespaces/versions supported by the product.
+# This dict will be merged with any namespaces that the REST Dispatch
+# itself supports.
+#
+# Example:
+#
+#     NAMESPACES = [
+#         { 'id': 'foo', 'versions': ['1.0', '1.1'] },
+#     ]
+
+NAMESPACES = [
+    { 'id': 'foo', 'versions': ['1.0', '1.1'] },
+]
+
+# HANDLER_DIRECTORIES contains additional directories that contain
+# handlers that the REST Dispatch will check for handlers.
+#
+# Example:
+#
+#     HANDLER_DIRECTORIES = [
+#         '/my/full/path/to/some/handler/directory'
+#     ]
+
+HANDLER_DIRECTORIES = [
+    '/my/full/path/to/some/handler/directory'
+]
+
+# AUTH_MODULE points to the name of the module containing the
+# authentication gateway between the REST Dispatch and the product
+# that is using it.
+#
+# Example:
+#
+#     AUTH_MODULE = 'a.b.c.auth_module'
+#
+# If your product will not be using authenticated calls, you can
+# leave the AUTH_MODULE to be an empty string so that you don't
+# have to implement the module.
+
+AUTH_MODULE = 'a.b.c.auth_module'
+
+# TOKEN_LIFETIME contains how long tokens are valid for in seconds.
+#
+# Example:
+#
+#     TOKEN_LIFETIME = 3600
+
+TOKEN_LIFETIME = 3600
+
+def get_auth_info(engine_info):
+    """
+    This function must return info that may be necessary to properly
+    authenticate to the device. The engine_info passed in is info
+    that is calculated by the engine. You can modify this and return
+    it or you can choose to just return your own information. Please
+    see GL7 for more info.
+    """
+    return engine_info
+
+def get_info(version):
+    """
+    This function must return information about the device/server that
+    is hosting the REST APIs as part of GL7. Please see GL7 for the
+    updated list of fields that must be included.
+
+    This is implemented as a method because some of the values may
+    change dynamically and need to be requiried when the call is made.
+
+    Example:
+
+        info = {
+            'device_ip': '192.168.1.1',
+            'device_name': 'foobar',
+            'serial': 'ABCD1234',
+            'model': 'unknown',
+            'hw_version': '1.0',
+            'sw_version': '1.0',
+        }
+    """
+
+    hostname = 'foo'
+    model = 'bar'
+    serial = 'baz'
+    version = 'noidea'
+
+    info = {
+        'device_name': hostname,
+        'serial': serial,
+        'model': model,
+        'sw_version': version,
+    }
+
+    return info

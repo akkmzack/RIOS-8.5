@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2010 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_procruve                                            -->
+<!--   Module Root: /rbt/procurve                                           -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp/md_rbt_procruve.cc  -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/procurve/config/<name>                               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_procurve">
+    <config>
+        <name>/rbt/procurve/config/switch_gw/interface</name>
+        <description>Interface the switch gateway is mapped to</description>
+        <value type="string">wan0_0</value>
+        <value-choices>
+            <choice>lan0_0</choice>
+            <choice>wan0_0</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/procurve/config/zone_service_policy/name</name>
+        <description>Name of the zone service policy</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/procurve/config/zone_service_policy/enable</name>
+        <description>Enable the zone service policy</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config-wildcard>
+        <name>/rbt/procurve/config/zone/*</name>
+        <description>ProCurve zone id</description>
+        <value type="uint16" min="0" max="9"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/procurve/config/zone/*/zone_name</name>
+        <description>Name of the ProCurve zone mapped in SteelHead</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/procurve/config/zone/*/interface</name>
+        <description>Interface the ProCurve zone is mapped to</description>
+        <value type="string">lan0_0</value>
+        <value-choices>
+            <choice>lan0_0</choice>
+            <choice>wan0_0</choice>
+        </value-choices>
+    </config>
+
+</node-list>

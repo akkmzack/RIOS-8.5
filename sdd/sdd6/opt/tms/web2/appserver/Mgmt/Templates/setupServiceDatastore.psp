@@ -1,0 +1,124 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceDatastore.psp
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupVault', 'reportDatastore') %>
+
+<psp:method name="nodeEntries">
+    return {
+        'encType': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/config/encryption_type',
+            selectOptions= (('NONE', 'None'),
+                             'AES_128',
+                             'AES_192',
+                             'AES_256'),
+            label='Data Store Encryption Type',
+            labelClass='label-fixed-small'),
+        'enableSync': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Automated Data Store Synchronization',
+            enableDiv='syncSubsection'),
+        'enableBranchWarming': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/config/branch_warm',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Branch Warming for Steelhead Mobile Clients'),
+        'master': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/master',
+            type='bool',
+            selectOptions=(('true', 'Master'), ('false', 'Backup')),
+            label='Current Appliance',
+            labelClass='label-fixed-small-indent'),
+        'peerIp': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/peer',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='Peer IP Address',
+            hint='(primary or aux interface IP)'),
+        'syncPort': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/port',
+            type='uint16',
+            validate='port',
+            widgetClass='port',
+            label='Synchronization Port'),
+        'recon': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/sync/config/reconnect_seconds',
+            type='uint32',
+            validate=('intInRange', '[5, null]'),
+            widgetClass='small',
+            label='Reconnection Interval (seconds)'),
+        'dataStore': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/notification/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Data Store Wrap Notifications',
+            enableDiv='dataStoreSubsection'),
+        'dataStoreWrap': FormUtils.NodeEntry(
+            path='/rbt/sport/datastore/notification/config/expected_wrap_time',
+            type='uint32',
+            widgetClass='small',
+            label='Threshold',
+            units='days'),
+}
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+
+  <fieldset>
+    <legend>General Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['encType'].html(self) %>
+      </table>
+    </div>
+
+    <div class="midLevel">
+      <%= nodeEntries['enableSync'].html(self) %>
+      <div id="syncSubsection" class="indent">
+        <table>
+          <%= nodeEntries['master'].html(self) %>
+          <%= nodeEntries['peerIp'].html(self) %>
+          <%= nodeEntries['syncPort'].html(self) %>
+          <%= nodeEntries['recon'].html(self) %>
+       </table>
+      </div>
+      <%= nodeEntries['enableBranchWarming'].html(self) %>
+    </div>
+
+    <div class="midLevel">
+      <%= nodeEntries['dataStore'].html(self) %>
+      <div id="dataStoreSubsection" class="indent">
+        <table>
+          <%= nodeEntries['dataStoreWrap'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+
+  <div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+<% self.endPagelet() %>

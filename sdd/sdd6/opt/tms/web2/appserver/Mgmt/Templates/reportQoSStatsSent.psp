@@ -1,0 +1,38 @@
+<%
+## Copyright 2006,2009 Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportQosStatsSent.psp
+## This is the template for the QoS Stats Sent report page.
+## Refactored to use common reports code.
+##
+## QoS Stats Dropped and QoS Stats Sent are virtually identical except for data source and labelling,
+## so they use the same Pagelet superclass and include PSP.
+##
+%>
+
+<%
+reportOpts = {
+    'direction': 'outbound',
+    'controlFormId': 'qosClassesEnforcedForm',
+    'dtype': 'sent',
+    'reportSpecs': {
+        'qsssp': {
+            'gfxId': 'qosClassesPreEnforcement',
+            'gfxDisplayId': 'qosClassesPreEnforcementGraphImg',
+            'order' : 1,
+        },
+        'qsse': {
+            'tableName': 'qosClassesEnforcedTable',
+            'gfxId': 'qosClassesEnforced',
+            'gfxDisplayId': 'qosClassesEnforcedGraphImg',
+            'order' : 2,
+        }
+    },
+    'supportedProds': ['sh'] # Required for reports on the CMC
+}
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<%@include file="includes/reportQoSStats.psp" %>

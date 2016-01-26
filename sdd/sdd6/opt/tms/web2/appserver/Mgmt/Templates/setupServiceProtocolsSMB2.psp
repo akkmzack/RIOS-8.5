@@ -1,0 +1,146 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Kate Kligman
+##
+## setupServiceProtocolsSMB2.psp
+## This is the template for SMB2.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupPrepop', 'setupServiceProtocolsCIFS') %>
+
+<psp:method name="nodeEntries">
+
+    return {
+        'signingEnable': NodeEntry(
+            path='/rbt/sport/smb2signing/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SMB2 Signing',
+            enableDiv='signingDiv'),
+        'signingMode': NodeEntry(
+            path='/rbt/sport/smb2signing/config/mode_type',
+            widget='radio',
+            type='string',
+            label={'transparent': 'NTLM Transparent Mode',
+                   'delegation':  'NTLM Delegation Mode'},
+            tooltip={'transparent': 'Transparent Mode provides SMB2 signed packets with transparent authentication and may not work with all clients (Windows 7 and newer clients are not supported with this mode).',
+                     'delegation': 'Delegation Mode (default) re-signs SMB2 signed packets using Kerberos delegation architecture.'}),
+        'kerbAuthSupportEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/smb2signing/config/native_krb',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Optimize signed-SMB2 connections that use Kerberos authentication.',
+            label='Enable Kerberos Authentication Support')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    smb2Enabled = Nodes.present(mgmt, pathPrefix + '/rbt/sport/smb2/config/enable')
+    smb2Fallback = Nodes.present(mgmt, pathPrefix + '/rbt/sport/blade/cifs/config/down_negotiate_smb2_protocol')
+
+    enableFallbackOption = 'false'
+
+    if smb2Fallback == 'true':
+        enableLatencyOption = '2'
+        if smb2Enabled == 'true':
+            enableFallbackOption = 'true'
+    elif smb2Fallback == 'false' and smb2Enabled == 'true':
+        enableLatencyOption = '1'
+    else:
+        enableLatencyOption = '0'
+
+    return {
+        'enableLatency': NodeEntry(
+            value=enableLatencyOption,
+            name='enableLatency',
+            widget='radio',
+            label={'1':  'Enable SMB2 Latency Optimization',
+                   '2':  'Down-Negotiate SMB2 Connections to SMB1',
+                   '0':  'Disable SMB2 Latency Optimization'},
+            tooltip={'2': '<p>Connections that successfully down-negotiate will be optimized according to the settings on the CIFS (SMB1) page.</p><p><em>Note: Down-negotiation can fail if the client only supports SMB2 or if it already knows that the server supports SMB2 because negotiation may be bypassed in this situation.</em></p>'},
+            enableDiv={'2': 'enableFallbackDiv'}
+        ),
+        'enableFallback': NodeEntry(
+            value=enableFallbackOption,
+            name='enableFallback',
+            widget='radio',
+            label={'true':  'Enable SMB2 Latency Optimization on Connections that Couldn\'t Down-Negotiate',
+                   'false':  'Do Not Optimize Connections that Couldn\'t Down-Negotiate'},
+            tooltip={'true': '<p>Prefer CIFS (SMB1) optimizations but perform SMB2 optimization if down-negotiation is not possible.  This setting is not commonly used.</p>'}
+        )
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+if pathPrefix: {
+    windowsDomainLink = 'Windows Domain'
+    windowsDomainAuthLink = 'Windows Domain Authentication'
+}
+else: {
+    windowsDomainLink = '<a href="/mgmt/gui?p=setupServiceDomain">Windows Domain</a>'
+    windowsDomainAuthLink = '<a href="/mgmt/gui?p=setupWinDomAuth">Windows Domain Authentication</a>'
+}
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="smb2form">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSMB2" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= dialogEntries['enableLatency'].html(self, value='1') %>
+      <%= dialogEntries['enableLatency'].html(self, value='2') %>
+      <div id="enableFallbackDiv" class="indent">
+        <%= dialogEntries['enableFallback'].html(self, value='false') %>
+        <%= dialogEntries['enableFallback'].html(self, value='true') %>
+      </div>
+      <%= dialogEntries['enableLatency'].html(self, value='0') %>
+    </div>
+  </fieldset>
+
+  <div id="signingContainerDiv">
+    <fieldset>
+      <legend>SMB2 Signing</legend>
+      <div class="midLevel">
+        <%= nodeEntries['signingEnable'].html(self) %>
+      </div>
+
+      <div class="midLevel">
+        <div id="signingDiv" class="indent">
+          <%= nodeEntries['signingMode'].html(self, value='transparent') %>
+          <%= nodeEntries['signingMode'].html(self, value='delegation') %>
+          <%= nodeEntries['kerbAuthSupportEnable'].html(self) %>
+          <p> 
+            Note: The server-side appliance must be joined to the 
+            <%= windowsDomainLink %> in order to use this feature.
+            Additionally, NTLM Delegation Mode and Kerberos 
+            Authentication require configuration of
+            <%= windowsDomainAuthLink %> on the server-side appliance.
+          </p>
+
+        </div>
+      </div>
+    </fieldset>
+  </div>
+
+  <%= FormUtils.formSubmitButtons(self) %>
+
+</form>
+
+<% self.endPagelet() %>

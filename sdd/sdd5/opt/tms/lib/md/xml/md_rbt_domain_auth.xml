@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2010 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_domain_auth                                         -->
+<!--   Module Root: /rbt/sport/domain_auth                                  -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_domain_auth.c    -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/domain_auth/config/myconfig</name>             -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_domain_auth">
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/config/domain/*</name>
+         <description>List of trusted domain</description>
+         <value type="string"/>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/config/domain/*/user</name>
+         <description>Domain username</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/domain/*/password</name>
+         <description>Domain password</description>
+         <value type="string"></value>
+    </config>
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*</name>
+         <description>List of trusted replication domain</description>
+         <value type="string"/>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*/user_domain</name>
+         <description>Replication User Domain</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*/user</name>
+         <description>Replication Domain username</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*/password</name>
+         <description>Replication Domain password</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*/rodc</name>
+         <description>Replication PRP</description>
+         <value type="bool">false</value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/replication/domain/*/dcname</name>
+         <description>Replication DC</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/rules/use_always_list</name>
+         <description>Use always_list</description>
+         <value type="bool">true</value>
+    </config>
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/config/rules/always_list/*</name>
+         <description>Domain authentication delegation always list</description>
+         <value type="ipv4addr"/>
+    </config-wildcard>
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/config/rules/never_list/*</name>
+         <description>Domain authentication delegation never list</description>
+         <value type="ipv4addr"/>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/config/delegation/enable</name>
+         <description>Delegation across domains enable</description>
+         <value type="bool">true</value>
+    </config>
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/config/oneway_trust/*</name>
+         <description>One way trust domain name</description>
+         <value type="string"/>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/config/oneway_trust/*/netbios_name</name>
+         <description>Netbios name</description>
+         <value type="string"></value>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/config/auto_delegation/enable</name>
+         <description>Auto Delegation Mode</description>
+         <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/domain_auth/config/native_krb/enable</name>
+        <description>Native Kerberos Mode</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/domain_auth/config/repl_krb/enable</name>
+        <description>Kerberos Replication Mode</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/domain_auth/config/bposd_krb/enable</name>
+        <description>BPOSD Kerberos Mode</description>
+        <value type="bool">false</value>
+    </config>
+
+    <!-- domaind configuration settings -->
+    <config>
+        <name>/rbt/sport/domain_auth/config/domaind/core_on_timeout/enable</name>
+        <description>Use SIGQUIT to kill timed out processes</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/rbt/sport/domain_auth/config/domaind/process_timeout</name>
+        <description>Maximum execution time for domaind sub-processes (in seconds)</description>
+        <value type="uint32" min="5" max="600">180</value>
+    </config>
+    <!-- end domaind configuration settings -->
+
+    <config>
+         <name>/rbt/sport/domain_auth/config/ticket_cache/enable</name>
+         <description>Delegation Ticket Cache</description>
+         <value type="bool">true</value>
+    </config>
+    <config>
+        <name>/rbt/sport/domain_auth/config/encrypted_ldap/enable</name>
+        <description>Encrypted LDAP Mode</description>
+        <value type="bool">false</value>
+    </config>
+    <external-state>
+         <name>/rbt/sport/domain_auth/state/*/delegation/enable</name>
+         <description>Domain delegate user status</description>
+         <value type="bool"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/domain_auth/state/wbcomm/enable</name>
+         <description>Communication status with domain controller</description>
+         <value type="bool"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <action>
+        <name>/rbt/sport/domain_auth/action/encrypt_password</name>
+        <description>Add trusted domain</description>
+        <action-func>mrda_encrypt_password</action-func>
+        <parameter type="string">domain</parameter>
+        <parameter type="string">user</parameter>
+        <parameter type="string">clr_password</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/domain_auth/action/encrypt_password_r</name>
+        <description>Add trusted replication domain</description>
+        <action-func>mrda_encrypt_password_r</action-func>
+        <parameter type="string">domain</parameter>
+        <parameter type="string">user_domain</parameter>
+        <parameter type="string">user</parameter>
+        <parameter type="string">clr_password</parameter>
+        <parameter type="bool">rodc</parameter>
+        <parameter type="string">dcname</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/domain_auth/action/migrate</name>
+        <description>Enable secure DB Migration</description>
+        <action-func>mrda_run_migration</action-func>
+    </action>
+    <event>
+        <name>/rbt/sport/domain_auth/event/change/smb_domains</name>
+        <description>Event of delegation domain change</description>
+        <parameter>is_add_operation</parameter>
+        <parameter>domain</parameter>
+    <parameter>user</parameter>
+    <parameter>password</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/change/replication_domains</name>
+    <description>Event of Replication domain change</description>
+    <parameter>is_add_operation</parameter>
+    <parameter>domain</parameter>
+    <parameter>user_domain</parameter>
+    <parameter>user</parameter>
+    <parameter>password</parameter>
+    <parameter>rodc</parameter>
+    <parameter>dcname</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/change/smb_rules</name>
+    <description>Event of always/never list change</description>
+    <parameter>is_add_operation</parameter>
+    <parameter>is_always_delegate</parameter>
+    <parameter>srv_ip</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/change/flags</name>
+    <description>Event of choosing always_list or never_list</description>
+    <parameter>flag_val</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/delegation_enable</name>
+    <description>Event that the delegation across domains enable state has changed</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/change/oneway_trust</name>
+    <description>Event of one-way trust list change</description>
+    <parameter>is_add_operation</parameter>
+    <parameter>dns_name</parameter>
+    <parameter>netbios_name</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/auto_delegation</name>
+    <description>Event that auto delegation mode has changed</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/native_krb</name>
+    <description>Event that native kerberos mode has changed</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/repl_krb</name>
+    <description>Event that kerberos replication mode has changed</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/bposd_krb</name>
+    <description>Event that BPOSD Kerberos mode has changed</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/ticket_cache</name>
+    <description>Event triggered by ticket cache changes</description>
+    <parameter>enable</parameter>
+</event>
+<event>
+    <name>/rbt/sport/domain_auth/event/encrypted_ldap</name>
+    <description>Event that ldap encrypted mode has changed</description>
+    <parameter>enable</parameter>
+</event>
+<action>
+	<name>/rbt/sport/domain_auth/action/domaind/*</name>
+        <description>Domain Health Actions</description>
+        <action-func>mrda_dom_health</action-func>
+    </action>
+    <action>
+        <name>/rbt/sport/domain_auth/action/domaind/*/*</name>
+        <description>Domain Health Actions</description>
+        <action-func>mrda_dom_health</action-func>
+    </action>
+    <passthrough>
+         <name>/rbt/sport/domain_auth/state/domaind/*</name>
+         <description>Domain Health Results</description>
+         <value type="string"/>
+         <passthrough-provider>domaind</passthrough-provider>
+    </passthrough>
+    <passthrough>
+        <name>/rbt/sport/domain_auth/state/domaind/*/*</name>
+         <description>Domain Health Results</description>
+         <value type="string"/>
+         <passthrough-provider>domaind</passthrough-provider>
+    </passthrough>
+    <state-wildcard>
+        <name>/rbt/sport/domain_auth/state/domain/*</name>
+        <description>For Querying delegation domains</description>
+        <value type="string"/>
+        <get-func>mrda_delegation_domains_get</get-func>
+        <iterate-func>mrda_delegation_domains_iterate</iterate-func>
+    </state-wildcard>
+    <state>
+        <name>/rbt/sport/domain_auth/state/domain/*/user</name>
+        <description>For Querying delegation user</description>
+        <value type="string"/>
+        <get-func>mrda_delegation_domains_get</get-func>
+        <get-func-arg>user</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/sport/domain_auth/state/domain/*/password</name>
+        <description>For Querying delegation user password</description>
+        <value type="string"/>
+        <get-func>mrda_delegation_domains_get</get-func>
+        <get-func-arg>password</get-func-arg>
+    </state>
+    <state-wildcard>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*</name>
+        <description>For Querying replication domains</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <iterate-func>mrda_replication_domains_iterate</iterate-func>
+    </state-wildcard>
+    <state>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*/user</name>
+        <description>For Querying replication user</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <get-func-arg>user</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*/password</name>
+        <description>For Querying replication user password</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <get-func-arg>password</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*/user_domain</name>
+        <description>For Querying replication user domain</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <get-func-arg>user_domain</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*/rodc</name>
+        <description>For Querying replication rodc</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <get-func-arg>rodc</get-func-arg>
+    </state>
+    <state>
+        <name>/rbt/sport/domain_auth/state/replication/domain/*/dcname</name>
+        <description>For Querying replication dcname</description>
+        <value type="string"/>
+        <get-func>mrda_replication_domains_get</get-func>
+        <get-func-arg>dcname</get-func-arg>
+    </state>
+
+    <action>
+        <name>/rbt/sport/domain_auth/action/delete_trusted_domain</name>
+        <description>Delete trusted domain</description>
+        <action-func>mrda_delete_trusted_domain</action-func>
+        <parameter type="string">domain</parameter>
+    </action>
+    <action>
+        <name>/rbt/sport/domain_auth/action/delete_replication_domain</name>
+        <description>Delete replication domain</description>
+        <action-func>mrda_delete_replication_domain</action-func>
+        <parameter type="string">domain</parameter>
+    </action>
+
+    <!-- Domain Auth local DB nodes -->
+    <config>
+         <name>/rbt/sport/domain_auth/local/config/migration_done</name>
+         <description>Migration Enable</description>
+         <value type="bool" squash="false">true</value>
+         <db-policy>localdb</db-policy>
+    </config>
+    
+    <!-- Domain Auth Secure DB nodes -->
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/secure/config/domain/*</name>
+         <description>List of trusted domain</description>
+         <value type="string"/>
+         <db-policy>securedb</db-policy>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/domain/*/user</name>
+         <description>Domain username</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/domain/*/password</name>
+         <description>Domain password</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config-wildcard>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*</name>
+         <description>List of trusted replication domain</description>
+         <value type="string"/>
+         <db-policy>securedb</db-policy>
+    </config-wildcard>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*/user_domain</name>
+         <description>Replication User Domain</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*/user</name>
+         <description>Replication Domain username</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*/password</name>
+         <description>Replication Domain password</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*/rodc</name>
+         <description>Replication PRP</description>
+         <value type="bool">false</value>
+         <db-policy>securedb</db-policy>
+    </config>
+    <config>
+         <name>/rbt/sport/domain_auth/secure/config/replication/domain/*/dcname</name>
+         <description>Replication DC</description>
+         <value type="string"></value>
+         <db-policy>securedb</db-policy>
+    </config>
+
+</node-list>

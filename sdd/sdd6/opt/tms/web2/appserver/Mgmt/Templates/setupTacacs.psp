@@ -1,0 +1,421 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupTacacs.psp
+## This is the template for setting up remote TACACS+ servers.
+%>
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:formSubmitButtons, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupSecurity',) %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        # server is a wildcard, used in the ajaxentrytable.
+        'server': FormUtils.NodeEntry(
+            path='/tacacs/server/*'),
+        'key-usage': FormUtils.NodeEntry(
+            name='tacacsGlobal_key-usage',
+            widget='checkboxLeft',
+            label='Set a Global Default Key',
+            enableDiv='globalKeyDiv_div'),
+        'timeout': FormUtils.NodeEntry(
+            path='/tacacs/global/timeout',
+            type='duration_sec',
+            validate=('intInRange', '[1, 60]'),
+            widgetClass='small',
+            widget='text',
+            hint='(1 - 60)',
+            label='Timeout (seconds)'),
+        'retransmit': FormUtils.NodeEntry(
+            path='/tacacs/global/retransmit',
+            type='int32',
+            validate=('intInRange', '[0, 5]'),
+            widgetClass='small',
+            widget='text',
+            hint='(0 - 5)',
+            label='Retries')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries" params="globalTimeout, globalRetries">
+    entries = {
+
+        'tacacsGlobal_key': FormUtils.NodeEntry(
+            name='tacacsGlobal_key',
+            widget='password',
+            label='Global Key',
+            hint='(leave unchanged to leave the global key unchanged)',
+            validate='password'),
+        'tacacsGlobal_keyConfirm': FormUtils.NodeEntry(
+            name='tacacsGlobal_keyConfirm',
+            widget='password',
+            label='Confirm Global Key',
+            validate='password'),
+
+        'serverAddress': FormUtils.NodeEntry(
+            name='address',
+            type='string',
+            validate='hostnameOrIp',
+            widgetClass='hostname',
+            widget='text',
+            label='Hostname or IP Address'),
+        'serverAuthenticationPort': FormUtils.NodeEntry(
+            name='auth-port',
+            type='uint16',
+            validate='port',
+            widgetClass='small',
+            widget='text',
+            value='49',
+            label='Authentication Port'),
+        'serverAuthenticationType': FormUtils.NodeEntry(
+            name='auth-type',
+            type='string',
+            widget='radio',
+            value='pap',
+            label={'pap': 'PAP',
+                   'ascii': 'ASCII'}),
+        'addServerKeyUsage': FormUtils.NodeEntry(
+            name='tacacsAdd_keyUsage',
+            type='string',
+            value='true',
+            widget='checkboxLeft',
+            label='Override the Global Default Key',
+            enableDiv='tacacsAddKeyDiv_div'),
+        'editServerKeyUsage': FormUtils.NodeEntry(
+            name='tacacsEdit_keyUsage',
+            type='string',
+            value='true',
+            widget='checkboxLeft',
+            label='Override the Global Default Key',
+            enableDiv='tacacsEditKeyDiv_div'),
+        'serverKey': FormUtils.NodeEntry(
+            name='key',
+            widget='password',
+            label='Server Key',
+            validate='password'),
+        'serverKeyConfirm': FormUtils.NodeEntry(
+            name='keyConfirm',
+            widget='password',
+            label='Confirm Server Key',
+            validate='password'),
+        'serverTimeout': FormUtils.NodeEntry(
+            name='timeout',
+            type='duration_sec',
+            value=globalTimeout,
+            validate=('intInRange', '[1, 60]'),
+            widgetClass='small',
+            widget='text',
+            hint='(1 - 60)',
+            label='Timeout (seconds)'),
+        'serverRetransmit': FormUtils.NodeEntry(
+            name='retransmit',
+            type='int32',
+            value=globalRetries,
+            validate=('intInRange', '[0, 5]'),
+            widgetClass='small',
+            widget='text',
+            hint='(0 - 5)',
+            label='Retries'),
+        'serverEnable': FormUtils.NodeEntry(
+            name='enable',
+            type='bool',
+            value='true',
+            widget='checkboxLeft',
+            label='Enabled')
+    }
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+globalKeyStandIn = Nodes.present(mgmt, pathPrefix + '/tacacs/global/key', '')
+globalTimeout = Nodes.present(mgmt, pathPrefix + '/tacacs/global/timeout', '3')
+globalRetries = Nodes.present(mgmt, pathPrefix + '/tacacs/global/retransmit', '1')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(globalTimeout, globalRetries)
+
+nodeEntries['key-usage'].value = globalKeyStandIn and 'true' or 'false'
+globalKeyStandIn = globalKeyStandIn and FormUtils.bogusPassword or ''
+dialogEntries['tacacsGlobal_key'].value = globalKeyStandIn
+dialogEntries['tacacsGlobal_keyConfirm'].value = globalKeyStandIn
+%>
+
+<script type="text/javascript">
+<!--
+function updateEditElement(idPrefix, xmlEl, editEl)
+{
+    var inputElements = editEl.getElementsByTagName('input');
+    var i = 0;
+    for (i = 0; i < inputElements.length; i++) {
+        var inp = inputElements[i];
+        switch (inp.name) {
+        case idPrefix + 'Edit_address':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'ip', '');
+            break;
+        case idPrefix + 'Edit_auth-port':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'port', '49');
+            break;
+        case idPrefix + 'Edit_auth-type':
+            if (inp.value
+            == getAttributeValueOrDefault(xmlEl, 'type', '').toLowerCase()) {
+                inp.checked = true;
+            } else {
+                inp.checked = false;
+            }
+            break;
+        case idPrefix + 'Edit_keyUsage':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.checked = false;
+                break;
+            case '(Specific)':
+                inp.checked = true;
+                break;
+            }
+            updateUpdateables();
+            break;
+        case idPrefix + 'Edit_key':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.value = '';
+                break;
+            case '(Specific)':
+                inp.value = '<%= FormUtils.bogusPassword %>';
+                break;
+            }
+            break;
+        case idPrefix + 'Edit_keyConfirm':
+            switch (getAttributeValueOrDefault(xmlEl, 'key', '')) {
+            case '(Default)':
+                inp.value = '';
+                break;
+            case '(Specific)':
+                inp.value = '<%= FormUtils.bogusPassword %>';
+                break;
+            }
+            break;
+        case idPrefix + 'Edit_timeout':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'timeout', 3);
+            if (0 == inp.value.indexOf('(')) {
+                inp.value = '';
+            }
+            break;
+        case idPrefix + 'Edit_retransmit':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'retries', 3);
+            if (0 == inp.value.indexOf('(')) {
+                inp.value = '';
+            }
+            break;
+        case idPrefix + 'Edit_enable':
+            if ('enabled' == getAttributeValueOrDefault(xmlEl, 'status', '')) {
+                inp.checked = true;
+            } else {
+                inp.checked = false;
+            }
+            break;
+        case idPrefix + 'Edit_ord':
+            inp.value = getAttributeValueOrDefault(xmlEl, 'ord', '0');
+            break;
+        }
+    }
+}
+
+function sendServerControl(opt) {
+    opt.name = 'control' + opt.name;
+    opt.form.submit();
+}
+
+// -->
+</script>
+
+<% self.beginPagelet() %>
+
+<form method="post" id="globalForm" action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Default TACACS+ Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['key-usage'].html(self, format='block') %>
+      <div class="indent" id="globalKeyDiv_div">
+        <table>
+          <%= dialogEntries['tacacsGlobal_key'].html(self) %>
+          <%= dialogEntries['tacacsGlobal_keyConfirm'].html(self) %>
+        </table>
+      </div>
+    </div>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['timeout'].html(self) %>
+        <%= nodeEntries['retransmit'].html(self) %>
+      </table>
+    </div>
+    <input type="hidden" name="_action_" value="setupSecurity_globalTacacs" />
+  </fieldset>
+  <%= formSubmitButtons(self) %>
+</form>
+
+<form method="post" id="tacacsServersForm"
+  action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupSecurity_tacacsServers" />
+<%
+tacacsTable = ajaxentrytable.AjaxEntryTable('tacacs',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=tacacsServers'),
+    titleText='TACACS+ Servers',
+    headerSpec=(
+        '',
+        'Server',
+        'Port',
+        'Type',
+        'Key',
+        ('Timeout', 'table_tacacs_timeout'),
+        ('Retries', 'table_tacacs_retries'),
+        'Status'),
+    rowSpec="""
+[   AjaxEntryTable.tdSelectCheckbox('ord', 'tacacs_'),
+    AjaxEntryTable.tdEdit('ord', 'ip'),
+    AjaxEntryTable.tdAttr('port'),
+    AjaxEntryTable.tdAttr('type'),
+    AjaxEntryTable.tdAttr('key'),
+    AjaxEntryTable.tdAttr('timeout', 'table_tacacs_timeout'),
+    AjaxEntryTable.tdAttr('retries', 'table_tacacs_retries'),
+    AjaxEntryTable.tdActiveSelect('status', 'Tacacs_', 'ord', [['enabled', 'Enabled'], ['disabled', 'Disabled']], 'sendServerControl(this)')
+]""",
+    emptyMessage='No TACACS+ servers.',
+    removeName='removeTacacs',
+    removeButtonText='Remove Selected',
+    removePrefix='tacacs_',
+    addButtonText='Add a TACACS+ Server',
+    addButtonName='addTacacs',
+    editButtonName='editTacacs')
+
+tacacsTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %(address)s
+    %(auth-port)s
+    <tr>
+      <td class="nodeEntry label">Authentication Type:</td>
+      <td class="nodeEntry">
+        %(auth-type)s
+      </td>
+    </tr>
+  </table>
+</div>
+<div class="midLevel">
+  %(keyUsage)s
+  <div class="indent" id="tacacsAddKeyDiv_div">
+    <table>
+      %(key)s
+      %(keyConfirm)s
+    </table>
+  </div>
+</div>
+<div class="midLevel">
+  <table>
+    %(timeout)s
+    %(retransmit)s
+  </table>
+</div>
+%(enable)s
+''' % {
+    'address': dialogEntries['serverAddress'].html(
+        self, namePrefix='tacacsAdd_'),
+    'auth-port': dialogEntries['serverAuthenticationPort'].html(
+        self, namePrefix='tacacsAdd_'),
+    'auth-type': dialogEntries['serverAuthenticationType'].html(
+        self, namePrefix='tacacsAdd_', value='pap', format='inline')
+               + '&emsp;&ensp;'
+               + dialogEntries['serverAuthenticationType'].html(
+        self, namePrefix='tacacsAdd_', value='ascii', format='inline'),
+    'keyUsage': dialogEntries['addServerKeyUsage'].html(
+        self, format='block'),
+    'key': dialogEntries['serverKey'].html(
+        self, namePrefix='tacacsAdd_'),
+    'keyConfirm': dialogEntries['serverKeyConfirm'].html(
+        self, namePrefix='tacacsAdd_'),
+    'timeout': dialogEntries['serverTimeout'].html(
+        self, namePrefix='tacacsAdd_'),
+    'retransmit': dialogEntries['serverRetransmit'].html(
+        self, namePrefix='tacacsAdd_'),
+    'enable': dialogEntries['serverEnable'].html(
+        self, format='block', namePrefix='tacacsAdd_')
+}
+
+tacacsTable.editDivContent = '''
+<input type="hidden" name="tacacsEdit_ord" />
+<div class="midLevel">
+  <table>
+    %(address)s
+    %(auth-port)s
+    <tr>
+      <td class="nodeEntry label">Authentication Type:</td>
+      <td class="nodeEntry">
+        %(auth-type)s
+      </td>
+    </tr>
+  </table>
+</div>
+<div class="midLevel">
+  %(keyUsage)s
+  <div class="indent" id="tacacsEditKeyDiv_div">
+    <table>
+      %(key)s
+      %(keyConfirm)s
+    </table>
+  </div>
+</div>
+<div class="midLevel">
+  <table>
+    %(timeout)s
+    %(retransmit)s
+  </table>
+</div>
+%(enable)s
+''' % {
+    'address': dialogEntries['serverAddress'].html(
+        self, namePrefix='tacacsEdit_'),
+    'auth-port': dialogEntries['serverAuthenticationPort'].html(
+        self, namePrefix='tacacsEdit_'),
+    'auth-type': dialogEntries['serverAuthenticationType'].html(
+        self, namePrefix='tacacsEdit_', value='pap', format='inline')
+               + '&emsp;&ensp;'
+               + dialogEntries['serverAuthenticationType'].html(
+        self, namePrefix='tacacsEdit_', value='ascii', format='inline'),
+    'keyUsage': dialogEntries['editServerKeyUsage'].html(
+        self, format='block'),
+    'key': dialogEntries['serverKey'].html(
+        self, namePrefix='tacacsEdit_'),
+    'keyConfirm': dialogEntries['serverKeyConfirm'].html(
+        self, namePrefix='tacacsEdit_'),
+    'timeout': dialogEntries['serverTimeout'].html(
+        self, namePrefix='tacacsEdit_'),
+    'retransmit': dialogEntries['serverRetransmit'].html(
+        self, namePrefix='tacacsEdit_'),
+    'enable': dialogEntries['serverEnable'].html(
+        self, format='block', namePrefix='tacacsEdit_')
+}
+%>
+    <%= tacacsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+// editEntry is called with the value of the attribute specified
+// in the tdEdit closure in the rowspec, in this case, 'ord'.
+tacacsTable.editEntry = function(serverOrd) {
+    var tacacsForm = document.getElementById('tacacsServersForm');
+    var tacacsXmlEl = this.getEntryElement('ord', serverOrd);
+    var editDivEl = document.getElementById('tacacsTable_editDiv');
+    if (!editDivEl || !tacacsXmlEl) return;
+    updateEditElement('tacacs', tacacsXmlEl, editDivEl);
+}
+// -->
+</script>

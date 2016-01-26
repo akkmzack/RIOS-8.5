@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: arp                                                     -->
+<!--   Module Root: /net/arp                                                -->
+<!--  Config. Root: /net/arp/config                                         -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_arp.c                      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/net/arp/config/myconfig</name>                           -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="arp">
+    <config-wildcard>
+        <name>/net/arp/config/interface/*</name>
+        <description>Inteface</description>
+        <value type="string"/>
+    </config-wildcard>
+
+    <config-wildcard>
+        <name>/net/arp/config/interface/*/ipv4/*</name>
+        <description>Per interface ARP entry IP address</description>
+        <value type="ipv4addr"/>
+        <commit-descriptor>
+            <check-func>md_interface_arp_check_addr</check-func>
+        </commit-descriptor>
+    </config-wildcard>
+
+    <config>
+        <name>/net/arp/config/interface/*/ipv4/*/macaddr</name>
+        <description>Per interface ARP entry MAC address</description>
+        <value type="macaddr802">00:00:00:00:00:00</value>
+    </config>
+
+    <state-wildcard>
+        <name>/net/arp/state/interface/*/ipv4/*</name>
+        <description>Per interface ARP entry IP address</description>
+        <value type="ipv4addr"/>
+        <get-func>md_arp_get_addr</get-func>
+        <get-func-arg>per-interface</get-func-arg>
+        <iterate-func>md_arp_iterate_addrs</iterate-func>
+        <iterate-func-arg>per-interface</iterate-func-arg>
+    </state-wildcard>
+
+    <state>
+        <name>/net/arp/state/interface/*/ipv4/*/macaddr</name>
+        <description>Per interface ARP entry MAC address</description>
+        <value type="macaddr802"/>
+        <get-func>md_arp_get_stats</get-func>
+        <get-func-arg>per-interface</get-func-arg>
+    </state>
+    
+</node-list>
+

@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# chkconfig: 345 99 99
+# description: load-debug loads debug binaries
+
+# Settings below should be in /etc/debug-binaries for flamebox builds.
+#HOST=releng
+#BUILD=tahiti-i386-flamebox-latest
+
+case "$1" in
+    start)
+	echo "Checking for debug binaries to download"
+	(
+	    if [ -f /etc/debug-binaries ]; then
+		. /etc/debug-binaries
+	    fi
+	    echo "HOST = $HOST"
+	    echo "BUILD = $BUILD"
+	    if [ "x$HOST" != x ]; then
+		count=0
+		while [ $count -lt 120 ]; do
+		    echo "Checking to see if $HOST is up"
+		    /bin/ping -c 3 $HOST
+		    pingstatus=$?
+		    if [ $pingstatus -eq 0 ]; then
+			break
+		    fi
+		    sleep 60
+		    count=`/usr/bin/expr $count + 1`
+		done
+		if [ $pingstatus -eq 0 ]; then
+		    echo "Downloading $BUILD debug binaries from $HOST"
+		    cd /var/tmp
+		    /usr/bin/wget -r --no-parent -A.gz -q http://$HOST/$BUILD/binaries-debug
+		    /usr/bin/wget -r --no-parent -A.tgz -q http://$HOST/$BUILD/binaries-debug
+		    /usr/bin/wget -r --no-parent -Asmp -q http://$HOST/$BUILD/binaries-debug
+		    /usr/bin/wget -r --no-parent -Auni -q http://$HOST/$BUILD/binaries-debug
+		    if [ -d /var/tmp/$HOST/$BUILD/binaries-debug ]; then
+			if [ -e /var/tmp/binaries-debug ]; then
+			    /bin/rm -rf /var/tmp/binaries-debug
+			fi
+			/bin/mv /var/tmp/$HOST/$BUILD/binaries-debug /var/tmp
+		    fi
+		    /bin/rm -rf /var/tmp/$HOST
+		    echo "Downloading valgrind from $HOST"
+		    /usr/bin/wget -q http://$HOST/$BUILD/valgrind/valgrind-`/bin/uname -i`.tgz
+		    ( cd / ; /bin/tar xvzf /var/tmp/valgrind-`/bin/uname -i`.tgz )
+		else
+		    echo "$HOST is not available to download debug binaries from"
+		fi
+	    fi
+	    touch / 2>/dev/null
+	    READ_ONLY_ROOT=$?
+	    [ $READ_ONLY_ROOT -ne 0 ] && /bin/mount -oremount,rw /
+	    /bin/rm -f /etc/rc.d/rc3.d/S99load-debug
+	    /bin/rm -f /etc/rc.d/rc4.d/S99load-debug
+	    /bin/rm -f /etc/rc.d/rc5.d/S99load-debug
+	    /bin/rm -f /etc/debug-binaries
+	    [ $READ_ONLY_ROOT -ne 0 ] && /bin/mount -oremount,ro /
+	) > /var/log/load-debug.log 2>&1 &
+	;;
+    *)
+    	;;
+esac

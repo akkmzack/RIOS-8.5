@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>In-Path Rules Overview</title>
+    <link rel="StyleSheet" href="css/in-path-rules.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="in-path-rules.05.1.html#322414">Chapter 3	Configuring In-Path Rules</a> : In-Path Rules Overview</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="322414">In-Path Rules Overview</a></div>
+      <div class="Body"><a name="322415">In-path rules are used only when a connection is </a><span style="font-style: italic">initiated</span>. Because connections are usually initiated by clients, in-path rules are configured for the initiating, or client-side Steelhead appliance. In-path rules determine Steelhead appliance behavior with SYN packets.</div>
+      <div class="Body"><a name="322425">In-path rules are an ordered list of fields a Steelhead appliance uses to match with SYN packet fields (for </a>example, source or destination subnet, IP address, VLAN, or TCP port). Each in-path rule has an <span style="font-style: italic">action</span> field. When a Steelhead appliance finds a matching in-path rule for a SYN packet, the Steelhead appliance treats the packet according to the action specified in the in-path rule. </div>
+      <div class="Body"><a name="322432">In-path rules are used only in these scenarios:</a></div>
+      <li class="Bullet"><a name="322433"> TCP SYN packet arrives on the LAN interface of physical in-path deployments. </a></li>
+      <li class="Bullet"><a name="322434"> TCP SYN packet arrives on the WAN0_0 interface of virtual in-path deployments. </a></li>
+      <div class="Body"><a name="322435">Both of these scenarios are associated with the first, or </a><span style="font-style: italic">initiating</span>, SYN packet of the connection. Because most connections are initiated by the client, you configure your in-path rules on the client-side Steelhead appliance. In-path rules have no effect on connections that are already established, regardless of whether the connections are being optimized.</div>
+      <div class="Body"><a name="322439">In-path rule configurations differ depending on the action: for example, both the fixed-target and the auto-</a>discovery actions allow you to choose what type of optimization is applied, what type of data reduction is used, what type of latency optimization is applied, and so on. </div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="364448">RiOS v7.0 and later includes fixed-target, packet-mode optimization in-path rules. The Steelhead appliance </a></span><span class="Bold" style="font-weight: normal">treats the packets for packet-mode optimization rules differently from the in-path rules described in this </span><span class="Bold" style="font-weight: normal">overview. For details, see </span><span class="xref" style="font-weight: normal"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'in-path-rules.05.2.html#328960', '');" title="In-Path Rules Overview">Creating In-Path Rules for Packet-Mode Optimization</a></span><span class="Bold" style="color: #000000; font-style: normal; font-weight: normal">.</span></div>
+      <div class="Body"><a name="404608">RiOS v8.5 and later expands packet-mode optimization to include TCPv4 and UDPv6 traffic. In addition, </a>RiOS enhances connection or flow reporting for packet-mode optimization. To optimize TCPv4 or UDPv6, the client-side and server-side Steelhead appliances must run RiOS v8.5.</div>
+      <div class="Body"><a name="404622">For details on IPv6 deployment options, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Body"><a name="328972">You can configure optional settings to support a variety of deployment needs, including:</a></div>
+      <li class="Bullet"><span class="Bold"><a name="328973">Optimization Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Optimize connections using scalable data reduction, compression, both, or none.</li>
+      <li class="Bullet"><span class="Bold"><a name="328975">VLAN Tags</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Apply a rule to a specific VLAN or all VLANs. </li>
+      <li class="Bullet"><span class="Bold"><a name="328976">Preoptimization Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Special handling required for Oracle Forms over SSL support.</li>
+      <li class="Bullet"><span class="Bold"><a name="328977">Latency Policies</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Set to normal, none, or HTTP to support HTTP traffic. Special handling required for Oracle Forms over SSL support.</li>
+      <li class="Bullet"><span class="Bold"><a name="328978">Neural Framing Requirements</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Specify never, always, TCP Hints, or Dynamic.</li>
+      <li class="Bullet"><span class="Bold"><a name="328979">WAN Visibility</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Preserve TCP/IP address or port information. </li>
+      <div class="Heading2"><a name="328960">Creating In-Path Rules for Packet-Mode Optimization</a></div>
+      <div class="Body"><a name="396506">RiOS </a><span class="Bold" style="font-weight: normal">performs packet-by-packet SDR bandwidth optimization on TCP and UDP flows over both IPv4 and </span><span class="Bold" style="font-weight: normal">IPv6, using fixed-target, packet-mode optimization in-path rules. This type of in-path rule optimizes </span><span class="Bold" style="font-weight: normal">bandwidth for applications over any transport protocol. </span></div>
+      <div class="Body"><a name="396537">Sometimes you might want to use the Steelhead appliance optimization to reduce the amount of traffic </a>traversing the WAN. Packet-mode optimization provides a simple approach where the Steelhead appliance looks at a packet, or small group of packets, and performs SDR and LZ on the data payload for data reduction. The host and Steelhead appliance do not create an individual TCP handshake, and the Steelhead appliance reduces payload for packets as the traffic flows through. </div>
+      <div class="Body"><a name="404632">The advantage of packet-mode optimization is that it is a universal method that applies data streamlining </a>to diverse protocols. The disadvantage is the lack of performance benefits from transport streamlining or application streamlining, because the Steelhead appliance does not proxy or perform intelligent application prediction.</div>
+      <div class="FigCap">
+        <span class="Bold_Helvetica">Figure&nbsp;3&#8209;1. </span><span class="Bold"><a name="404638">A Fixed-Target Packet-Mode Optimization Rule Creates an Inner TCPv4 or TCP v6 Channel Between the Steelhead </a></span><span class="Bold">Appliances</span><img class="Default" src="images/ipbladeoverview.gif" width="614" height="92" style="display: block; float: none; left: 0.0; top: 0.0" alt="" /> </div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="396428">In </a></span>RiOS v8.5<span class="Bold" style="font-weight: normal">, consider using the typical terminated TCP optimization to improve application latency </span><span class="Bold" style="font-weight: normal">instead of packet-mode for TCPv4 or TCPv6 traffic. </span>RiOS v8.5 includes TCP proxy-mode optimization for IPv6 traffic. To use terminated TCP optimization after upgrading from RiOS v8.0.x to v8.5, you must change any existing in-path rule used for packet-mode IPv4 or IPv6 optimization to a terminated optimization rule.</div>
+      <div class="Heading3"><span class="Bold"><a name="408469">Upgrade Consideration</a></span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408581">Upgrading from </a></span>RiOS<span class="Bold" style="font-weight: normal"> v8.0.x (or earlier) to v8.5 might require a configuration modification to deployments </span><span class="Bold" style="font-weight: normal">optimizing only the server-to-client direction of a TCPv6 connection using packet-mode. </span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408473">Consider a deployment running </a></span>RiOS<span class="Bold" style="font-weight: normal"> v8.0 with packet-mode optimization enabled on the client- and </span><span class="Bold" style="font-weight: normal">server-side </span>Steelhead appliance<span class="Bold" style="font-weight: normal">. The server-side </span>Steelhead appliance<span class="Bold" style="font-weight: normal"> is configured with server-to-client </span><span class="Bold" style="font-weight: normal">fixed-target packet-mode rules. As a result, any traffic flowing from the server to the client for connections </span><span class="Bold" style="font-weight: normal">that originated at the client receive packet-mode optimization.</span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408479">The packet-mode rules exist only on the server-side </a></span>Steelhead appliance<span class="Bold" style="font-weight: normal">. No other rules are configured on </span><span class="Bold" style="font-weight: normal">the client- or server-side </span>Steelhead appliance<span class="Bold" style="font-weight: normal">s.</span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408483">Because the client-side </a></span>Steelhead appliance<span class="Bold" style="font-weight: normal"> does not have fixed-target rules matching the client to server </span><span class="Bold" style="font-weight: normal">traffic, it passes it through according to the default TCPv6 rule. </span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408487">After upgrading the client- and server-side </a></span>Steelhead appliance<span class="Bold" style="font-weight: normal">s to RiOS v8.5 in this deployment scenario, </span><span class="Bold" style="font-weight: normal">connections originating from the client toward the server now receive terminated TCP optimization. This </span><span class="Bold" style="font-weight: normal">happens because RiOS v8.5 supports terminated optimization for TCPv6 and the connections originating </span><span class="Bold" style="font-weight: normal">from the client now match the default optimization (terminated-mode) rule on the client-side </span>Steelhead appliance<span class="Bold" style="font-weight: normal">. As a result, the server-to-client traffic of these connections also receives terminated TCP </span><span class="Bold" style="font-weight: normal">optimization.</span></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408495">To continue passing through the client-to-server traffic and optimizing the server-to-client traffic using </a></span><span class="Bold" style="font-weight: normal">packet-mode, as before the upgrade, you need to configure a pass-through in-path rule on the client-side </span>Steelhead appliance<span class="Bold" style="font-weight: normal">.</span></div>
+      <div class="Heading3"><a name="408608">Packet-Mode Optimization Rule Characteristics</a></div>
+      <div class="Body"><span class="Bold" style="font-weight: normal"><a name="408575">When you create a fixed-target packet-mode optimization rule, you define the inner channel characteristics </a></span><span class="Bold" style="font-weight: normal">using these controls: source and destination subnet, source destination port or port labels, and DSCP </span><span class="Bold" style="font-weight: normal">marking. </span></div>
+      <div class="Body"><a name="335538">Packet-mode optimization supports these topologies:</a></div>
+      <li class="Bullet"><a name="335558">Physical in-path</a></li>
+      <li class="Bullet"><a name="335569">Virtual in-path</a></li>
+      <li class="BulletSubBullet2"><a name="343513">WCCP/PBR or TCPv4, UDPv4</a></li>
+      <li class="BulletSubBullet2"><a name="343514">PBR for TCPv6, UDPv6</a></li>
+      <li class="Bullet"><a name="335576">Master and backup (both Steelhead appliances must be running RiOS v7.0 or later)</a></li>
+      <div class="Body"><a name="336062">Packet-mode optimization does not support these topologies:</a></div>
+      <li class="Bullet"><a name="336076">Out-of-path</a></li>
+      <li class="Bullet"><a name="336083">Serial cluster</a></li>
+      <li class="Bullet"><a name="336090">Interceptor integration</a></li>
+      <div class="Body"><a name="335611">For details, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceInpathRules.html#322503', '');" title="Configuring In-Path Rules">Configuring In-Path Rules</a></span>. For design considerations and best practices, see the <span class="book_title">Steelhead </span><span class="book_title">Appliance Deployment Guide</span>.</div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

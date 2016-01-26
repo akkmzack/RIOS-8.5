@@ -1,0 +1,141 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportNFSStatistics.psp
+## This is the template for the NFS Statistics report page.
+## Refactored to use common reports code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:NFSStatisticsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="NFSStatisticsPagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="getServerOptions">
+    options = []
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    servers = ProductGfxContext.fetchChildren(mgmt, '/rbt/sport/nfs/config/server/user', fields)
+    for server in servers:
+        addresses = ProductGfxContext.fetchChildren(mgmt, '/rbt/sport/nfs/config/server/user/%s/addr' % server, fields)
+        for address in addresses:
+            options.append((address, '%s (%s)' % (server, address)))
+    return options
+</psp:method>
+
+<psp:method name="prepare" params="reportOpts">
+    super(NFSStatisticsPagelet, self).prepare(reportOpts)
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    typeField = fields.get('restype', session.value('restype', 'all'))
+    self.updateGfxParams(reportOpts, {'restype': typeField})
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(NFSStatisticsPagelet, self).dialogEntries(reportOpts)
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "document.getElementById('%s').submit();" % controlFormId
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    serverField = fields.get('nfs_server', session.value('nfs_server', '0'))
+    ## server is the subclass for NFS reports
+    self.updateGfxParams(reportOpts, {'server': serverField})
+    serverOptions = [('All', 'All')] + self.getServerOptions()
+    typeField = fields.get('restype', session.value('restype', 'all'))
+    typeOptions = (('all', 'All'),
+                   ('local', 'Local'),
+                   ('remote', 'Remote'),
+                   ('delayed', 'Delayed'))
+    dialogEntries['nfs_server'] = FormUtils.NodeEntry(
+        name = 'nfs_server',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = serverOptions,
+        value = serverField,
+        )
+    dialogEntries['restype'] = FormUtils.NodeEntry(
+        name = 'restype',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = typeOptions,
+        value = typeField,
+        )
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'nfsCallsForm',
+    'reportSpecs': {
+        'nfs': {
+            'tableName': 'nfsCallsTable',
+            'gfxId': 'nfsCallsOld',
+            'gfxDisplayId': 'nfsCallsGraphImg'
+        }
+    }
+}
+nfsCallsTable = ajaxentrytable.AjaxEntryTable('nfsCalls',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about NFS Statistics.')
+
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+hideServer = reportOpts.get('hideServer')
+%>
+
+<div id="nfsCallsGraphDiv" class="graphDiv">
+  <img id="nfsCallsGraphImg" class="graphImg"
+    alt="NFS Statistics Graph" />
+</div>
+
+<form id="nfsCallsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+<% if not hideServer: { %>
+          <th>Server:</th>
+<% } %>
+          <th>Response:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+<% if not hideServer: { %>
+          <%= dialogEntries['nfs_server'].html(self, format='horiz') %>
+<% } %>
+          <%= dialogEntries['restype'].html(self, format='horiz') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= nfsCallsTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+<%
+%>
+
+<% self.endPagelet() %>
+

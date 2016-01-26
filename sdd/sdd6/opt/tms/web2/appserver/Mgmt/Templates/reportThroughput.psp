@@ -1,0 +1,112 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportThroughput.psp
+## This is the template for the Throughput report page.
+## Refactored to use common reports code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:ThroughputPagelet" %>
+<%@page extends="ThroughputPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'throughputForm',
+    'reportSpecs': {
+        'thl': {
+            'tableName': 'throughputLanTable',
+            'gfxId': 'throughputLan',
+            'gfxDisplayId': 'throughputLanGraphImg',
+            'order' : 1,
+         },
+        'thw': {
+            'tableName': 'throughputWanTable',
+            'gfxId': 'throughputWan',
+            'gfxDisplayId': 'throughputWanGraphImg',
+            'order' : 2,
+         }
+    }
+}
+throughputLanTable = ajaxentrytable.AjaxEntryTable('throughputLan',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about LAN Throughput.')
+throughputWanTable = ajaxentrytable.AjaxEntryTable('throughputWan',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about WAN Throughput.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+singleApplianceSelected = reportOpts['singleApplianceSelected']
+%>
+
+<div id="throughputLanGraphDiv" class="graphDiv">
+  <img id="throughputLanGraphImg" class="graphImg"
+    alt="LAN Throughput Graph" />
+</div>
+
+<%= throughputLanTable.html(self, cssClass="midLevel") %>
+<% if not singleApplianceSelected: { %>
+<p class="slightlyDimmed">
+	Note: Peak and 95th percentile statistics are not reported if more than one Steelhead (or a group) is selected.
+</p>
+<% } %>
+<div id="throughputWanGraphDiv" class="graphDiv">
+  <img id="throughputWanGraphImg" class="graphImg"
+    alt="WAN Throughput Graph" />
+</div>
+
+<form id="throughputForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Traffic:</th>
+          <th>Application:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['dir'].html(self, format='horiz') %>
+          <%= reportOpts['appCol'] %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+<%= throughputWanTable.html(self, cssClass="midLevel") %>
+<% if not singleApplianceSelected: { %>
+<p class="slightlyDimmed">
+	Note: Peak and 95th percentile statistics are not reported if more than one Steelhead (or a group) is selected.
+</p>
+<% } %>
+  <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+

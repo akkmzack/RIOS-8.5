@@ -1,0 +1,336 @@
+<%
+# Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+# Author: Don Tillman, Robin Schaufler
+#
+# Login page
+#
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, cgi, os, urlparse, Logging, OSUtils, RVBDUtils" %>
+
+<psp:method name="pageIsReadable">
+    return True
+</psp:method>
+
+<psp:method name="getReason" params="request">
+    reason = request.field('reason', '')
+    if 'logout' == reason:
+        return '<p class="warning">You have successfully logged out.</p>'
+    elif 'idle' == reason:
+        return '<p class="warning">You have been logged out due to inactivity.</p>'
+    elif 'admission-control' == reason:
+        return '<p class="warning">The web console is unavailable. Too many users are logged in.</p>'
+    elif 'bad-login' == reason:
+        return '<p class="warning">User with the given password is not recognized: You must provide a valid account name and password.</p>'
+    elif 'internal-error' == reason:
+        return '<p class="warning">An internal failure in the authentication mechanism occurred.  Please contact customer support.</p>'
+    elif 'config-database' == reason:
+        return '<p class="warning">Unable to connect to configuration database.</p>'
+    elif 'backend' == reason:
+        return '<p class="warning">User has no backend capabilities.</p>'
+    elif 'reboot' == reason:
+        return '<p class="warning">Appliance rebooting...</p>'
+    elif 'shutdown' == reason:
+        return '<p class="warning">Appliance shutting down...</p>'
+    elif 'lost-reason' == reason:
+        return ''
+    elif reason.startswith('expired-'):
+        user = reason[len('expired-') : ]
+        self.response().sendRedirect('/mgmt/login?p=passwordExpired&account=%s' % (cgi.escape(user)))
+    else:
+        return ''
+</psp:method>
+
+<psp:method name="getIssue">
+    try:
+        issues = file('/etc/issue.net').read()
+        if issues:
+            issues = '<p class="announcement">%s</p>' % cgi.escape(issues)
+    except:
+        issues = ''
+    return issues
+</psp:method>
+
+<psp:method name="getRequestDestination" params="request">
+    reqDest = request.field('dest', '/mgmt/gui?p=home')
+    if not reqDest.startswith('/mgmt/gui'):
+        OSUtils.log(Logging.LOG_NOTICE,
+            '%s looks suspicious, redirect to the home page on login.'
+            % reqDest)
+        reqDest = '/mgmt/gui?p=home'
+    return cgi.escape(reqDest, quote=True)
+</psp:method>
+
+<psp:method name="getLoginUser" params="request">
+    loginUser = request.field('username', None)
+    if not loginUser:
+        try:  # file might not exist, see bug 101667
+            loginUser = open('/var/opt/rbt/default_login').readline()
+        except:
+            loginUser = ''
+    return loginUser
+</psp:method>
+
+<%
+
+# logout reason
+reason = self.getReason(req)
+
+# login issues
+issues = self.getIssue()
+
+# adjust the request destination
+reqDest = self.getRequestDestination(req)
+
+# login user
+loginUser = self.getLoginUser(req)
+%>
+
+<div id="header">
+  <div class="centerColumn">
+    <div class="headerBanner <%= RVBDUtils.bannerClass() %>">
+    </div>
+  </div>
+</div>
+
+<div class="centerColumn">
+  <div class="contentFrame loginFrame">
+    <div class="contentMargin">
+
+      <h1>Management Console for <%= OSUtils.hostname() %></h1>
+      <%= reason %>
+      <%= issues %>
+
+      <form id="loginForm" action="<%= reqDest %>" method="post">
+        <div class="topLevel">
+          <table>
+            <tr>
+              <td class="nodeEntry"><label class="label">Username:</label></td>
+              <td class="nodeEntry"><input type="text" class="text enterKeySubmits" name="loginUser" value="<%= FormUtils.escapeAttr(loginUser) %>" disabled="disabled" /></td>
+            </tr>
+            <tr>
+              <td class="nodeEntry"><label class="label">Password:</label></td>
+              <td class="nodeEntry"><input type="password" class="password enterKeySubmits" name="loginPassword" disabled="disabled" /></td>
+            </tr>
+          </table>
+          <input type="hidden" id="browser" name="browser" value="" />
+        </div>
+
+        <div class="submitButtons">
+          <input type="submit" name="loginButton" value="Log In" disabled="disabled" />
+        </div>
+      </form>
+
+      <noscript>
+        <p class="warning">
+          Error: JavaScript is required but is not enabled in this
+          browser.
+        </p>
+      </noscript>
+
+      <p id="cookieError" class="hidden warning">
+        Error: Cookies are required but are not enabled in this
+        browser.
+      </p>
+
+      <p id="browserWarning" class="hidden">
+        Note: The Management Console supports Microsoft Internet Explorer
+        7/8 and Mozilla Firefox 17 ESR.  Your browser may not be compatible.
+      </p>
+
+      <p id="licenseMessage" class="legalese">
+        The software included on or with this product is owned by
+        Riverbed Technology, Inc. and/or its licensors and any use of
+        this product is subject to the end user license agreement
+        located at <a href="http://www.riverbed.com/license/">riverbed.com/license</a>.
+        Any unauthorized use, reproduction or distribution is strictly
+        prohibited.
+      </p>
+
+    </div>
+  </div>
+
+  <%@ include  file="footer.psp" %>
+
+</div>
+
+<script type="text/javascript">
+
+// <![CDATA[
+
+Y.on('domready', function() {
+
+    // Fix for bug 59609.
+    Y.Cookie.remove('_SID_', { path: '/' });
+
+    // Test the cookies to see if they work
+    Y.Cookie.set('cookieTest', '');
+    var cookiesEnabled = Y.Cookie.exists('cookieTest');
+    if (cookiesEnabled) {
+        Y.Cookie.remove('cookieTest');
+    }
+
+    // determine whether this browser is supported
+    var supportedBrowser = false;
+    var browser = detectBrowserType();
+
+    if ((browser == 'ie7') || (browser == 'ie8') || (browser == 'ff17')) {
+        supportedBrowser = true;
+    }
+
+    // show the browser warning if unsupported
+    if (!supportedBrowser) {
+        Y.one('#browserWarning').removeClass('hidden');
+    }
+
+    // Pass the browser type along in the POST request.
+    $('browser').value = browser;
+
+    // check to see if cookies are enabled; if so, enable the form
+    if (cookiesEnabled) {
+        document.forms['loginForm'].elements['loginUser'].disabled = false;
+        document.forms['loginForm'].elements['loginPassword'].disabled = false;
+        document.forms['loginForm'].elements['loginButton'].disabled = false;
+
+        // if user field is empty, focus on that
+        if (document.forms['loginForm'].elements['loginUser'].value == '') {
+            document.forms['loginForm'].elements['loginUser'].focus();
+        } else {
+            document.forms['loginForm'].elements['loginPassword'].focus();
+        }
+    } else {
+        Y.one('#cookieError').removeClass('hidden');
+    }
+});
+
+/**
+ * Detect the browser the user is running.  If it's a browser we don't care
+ * about, report it as 'other'.
+ *
+ * @return A semi-descriptive string of the browser.
+ */
+function detectBrowserType() {
+    var uaString = navigator.userAgent;
+    var firefox = (uaString.search(/Firefox/) != -1);
+    var safari = (uaString.search(/Safari/) != -1);
+
+    // Firefox
+    if ((Y.UA.gecko >= 18 && Y.UA.gecko < 19) && firefox) {
+        return 'ff18';
+    } else if ((Y.UA.gecko >= 17 && Y.UA.gecko < 18) && firefox) {
+        return 'ff17';
+    } else if ((Y.UA.gecko >= 16 && Y.UA.gecko < 17) && firefox) {
+        return 'ff16';
+    } else if ((Y.UA.gecko >= 15 && Y.UA.gecko < 16) && firefox) {
+        return 'ff15';
+    } else if ((Y.UA.gecko >= 14 && Y.UA.gecko < 15) && firefox) {
+        return 'ff14';
+    } else if ((Y.UA.gecko >= 13 && Y.UA.gecko < 14) && firefox) {
+        return 'ff13';
+    } else if ((Y.UA.gecko >= 12 && Y.UA.gecko < 13) && firefox) {
+        return 'ff12';
+    } else if ((Y.UA.gecko >= 11 && Y.UA.gecko < 12) && firefox) {
+        return 'ff11';
+    } else if ((Y.UA.gecko >= 10 && Y.UA.gecko < 11) && firefox) {
+        return 'ff10';
+    } else if ((Y.UA.gecko >= 9 && Y.UA.gecko < 10) && firefox) {
+        return 'ff9';
+    } else if ((Y.UA.gecko >= 8 && Y.UA.gecko < 9) && firefox) {
+        return 'ff8';
+    } else if ((Y.UA.gecko >= 7 && Y.UA.gecko < 8) && firefox) {
+        return 'ff7';
+    } else if ((Y.UA.gecko >= 6 && Y.UA.gecko < 7) && firefox) {
+        return 'ff6';
+    } else if ((Y.UA.gecko >= 5 && Y.UA.gecko < 6) && firefox) {
+        return 'ff5';
+    } else if ((Y.UA.gecko >= 2 && Y.UA.gecko < 5) && firefox) {
+        return 'ff4';
+    } else if ((Y.UA.gecko == 1.92) && firefox) {
+        return 'ff36';
+    } else if ((Y.UA.gecko == 1.91) && firefox) {
+        return 'ff35';
+    } else if ((Y.UA.gecko == 1.90) && firefox) {
+        return 'ff3';
+    } else if ((Y.UA.gecko >= 1.81 && Y.UA.gecko < 1.90) && firefox) {
+        return 'ff2';
+    } else if ((Y.UA.gecko > 0) && firefox) {
+        return 'ff-other';
+
+    // Chrome
+    } else if ((Y.UA.chrome >= 24) && (Y.UA.chrome < 25)) {
+        return 'chrome24';
+    } else if ((Y.UA.chrome >= 23) && (Y.UA.chrome < 24)) {
+        return 'chrome23';
+    } else if ((Y.UA.chrome >= 22) && (Y.UA.chrome < 23)) {
+        return 'chrome22';
+    } else if ((Y.UA.chrome >= 21) && (Y.UA.chrome < 22)) {
+        return 'chrome21';
+    } else if ((Y.UA.chrome >= 20) && (Y.UA.chrome < 21)) {
+        return 'chrome20';
+    } else if ((Y.UA.chrome >= 19) && (Y.UA.chrome < 20)) {
+        return 'chrome19';
+    } else if ((Y.UA.chrome >= 18) && (Y.UA.chrome < 19)) {
+        return 'chrome18';
+    } else if ((Y.UA.chrome >= 17) && (Y.UA.chrome < 18)) {
+        return 'chrome17';
+    } else if ((Y.UA.chrome >= 16) && (Y.UA.chrome < 17)) {
+        return 'chrome16';
+    } else if ((Y.UA.chrome >= 15) && (Y.UA.chrome < 16)) {
+        return 'chrome15';
+    } else if ((Y.UA.chrome >= 14) && (Y.UA.chrome < 15)) {
+        return 'chrome14';
+    } else if ((Y.UA.chrome >= 13) && (Y.UA.chrome < 14)) {
+        return 'chrome13';
+    } else if ((Y.UA.chrome >= 12) && (Y.UA.chrome < 13)) {
+        return 'chrome12';
+    } else if ((Y.UA.chrome >= 11) && (Y.UA.chrome < 12)) {
+        return 'chrome11';
+    } else if ((Y.UA.chrome >= 10) && (Y.UA.chrome < 11)) {
+        return 'chrome10';
+    } else if ((Y.UA.chrome >= 9) && (Y.UA.chrome < 10)) {
+        return 'chrome9';
+    } else if ((Y.UA.chrome >= 8) && (Y.UA.chrome < 9)) {
+        return 'chrome8';
+    } else if ((Y.UA.chrome >= 7) && (Y.UA.chrome < 8)) {
+        return 'chrome7';
+    } else if ((Y.UA.chrome >= 6) && (Y.UA.chrome < 7)) {
+        return 'chrome6';
+    } else if ((Y.UA.chrome >= 5) && (Y.UA.chrome < 6)) {
+        return 'chrome5';
+    } else if ((Y.UA.chrome >= 4) && (Y.UA.chrome < 5)) {
+        return 'chrome4';
+    } else if (Y.UA.chrome > 0) {
+        return 'chrome-other';
+
+    // Safari
+    } else if (safari && (uaString.search(/Version\/5/) != -1)) {
+        return 'safari5';
+    } else if (safari && (uaString.search(/Version\/4/) != -1)) {
+        return 'safari4';
+    } else if (safari) {
+        return 'safari-other';
+
+    // IE
+    } else if (Y.UA.ie == 10) {
+        return 'ie10';
+    } else if (Y.UA.ie == 9) {
+        return 'ie9';
+    } else if (Y.UA.ie == 8) {
+        return 'ie8';
+    } else if (Y.UA.ie == 7) {
+        return 'ie7';
+    } else if (Y.UA.ie == 6) {
+        return 'ie6';
+    } else if (Y.UA.ie > 0) {
+        return 'ie-other';
+
+    // Other
+    } else {
+        return 'other';
+    }
+}
+
+// ]]>
+
+</script>

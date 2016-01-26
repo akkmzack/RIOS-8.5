@@ -1,0 +1,597 @@
+/*
+ * styles-ie6.css
+ * Support for IE6 CSS bugs and departures goes here.
+ * Author: Robin Schaufler
+ */
+
+/*
+ * Implement :hover and :visited pseudo-elements for any element in IE6,
+ * not just <a> elements.
+ * Could be used in the future to implement :before and :after pseudo-elements
+ * and properties such as min-width, min-height.
+ * Doesn't seem to be working in gui context.
+ */
+body {behavior: url(/css-ie6.htc);}
+
+body {
+  padding-bottom: 20px;
+}
+
+p.announcement, .rawText {
+  white-space: pre;
+}
+
+img { behavior: url(/img.htc); }
+select, option { behavior: url(/option.htc); }
+
+div#username a:link, div#username a:visited {
+  color: white;
+}
+
+.main {
+  text-align: center;
+}
+/* MS IE way of containing floats */
+* html .horizontal,
+* html h3.legend,
+* html contained-float {
+  height: 1%;
+}
+/* MS IE ignores :after. */
+.main {
+  clear: both;
+}
+
+/* prevents footer from being too tall */
+div#footer {
+  font-size: 0px;
+  line-height: 0px;
+}
+
+/*
+ * Without a border the menu bar overlaps the white border between the
+ * header and the page contents.  This creates an unsightly gap around
+ * the menu bar, but oh well...
+ */
+div#menuBar {
+  border: 1px solid #27293D;
+}
+
+/*
+ * Without this the cursor doesn't turn into a hand when it's placed
+ * over a status icon link.
+ */
+.headerDynamic a.icon {
+  cursor: hand;
+}
+
+/*
+ * If we don't give the DIV some sort of background (a color or an
+ * image) the mouse seems to "see through" it and hit things on the
+ * page under the menu.  This prevents the 30px buffer from working
+ * reliably and causes intermittent problems where the cascading menus
+ * disappear when you're mousing over them.
+ */
+div.mainNav .navmenu_1 div {
+  background: transparent url(/images/bgfix.gif);
+}
+
+div.mainNav .navmenu_1 ul,
+div.mainNav .navmenu_1 div,
+div.mainNav .navmenu_1 {
+  margin-top: 0px;
+  width: auto;
+}
+div.mainNav .navmenu_1 li {
+  margin: 0px;
+  padding: 0px;
+  width: 165px;
+}
+div.mainNav .navmenu_1 a {
+  margin: 0px;
+  width: 100%;
+}
+
+/*
+ * Deal with the IE6 problem with multiple class selectors.  All menu
+ * items will have a background image but they'll be shifted off the
+ * screen.  The cur_link selector will put them back.
+ */
+div.mainNav a span {
+  background-position: 4000px 4000px;
+  background-repeat: no-repeat;
+}
+
+/*
+ * I have no idea why but pull-right menus don't work at all without
+ * this...
+ */
+div.mainNav .navmenu_1 li:link,
+div.mainNav .navmenu_1 li:visited,
+div.mainNav .navmenu_1 li:hover {
+  background: transparent url(/images/bgfix.gif);
+}
+
+/*
+ * ...and they don't work reliably without this.  The menus disappear
+ * when you move the mouse around if this is omitted.
+ */
+div.mainNav .navmenu_1 li a {
+  background: transparent url(/images/bgfix.gif);
+}
+
+/*
+ * To pull-down on hover, replace navpick_0 with navitem_0:hover,
+ * and disable the corresponding menu.js click handler.
+ */
+div.mainNav li.navpick_0 .navmenu_1 {
+  left: -39px;
+}
+
+/*
+ * The extra DIVs in cascading level 1+ menus cause an extra line to
+ * appear below the menu item.  I have no idea why.  Work around this
+ * by setting the LI font size and line height to 0 and putting it
+ * back in the A.
+ *
+ * The font size and line height trick here also fix the nav rule
+ * problem detailed in styles-ie7.css.
+ */
+div.mainNav li {
+  font-size: 0px;
+  line-height: 0px;
+}
+div.mainNav li a {
+  font-size: 11px;
+  line-height: normal;
+}
+
+/*
+ * We need some changes to the nav rule margins to position it
+ * properly (with a pixel of space above and below).  Not sure what
+ * causes this.
+ *
+ * This rule is more specific than the corresponding ones in style.css
+ * and style-ie7.css.  This is because we need to override the width
+ * that is set elsewhere.
+ */
+div.mainNav .navmenu_1 .navRule {
+  width: 180px;
+  margin: -1px 0px 1px 0px;
+}
+
+/*
+ * The main stylesheet sets "bottom: 0px".  IE6 doesn't like that so
+ * we set "top" here instead.  This is less good because the copyright
+ * notice will grow downwards if the font size is increased.
+ *
+ * For some reason left is screwed up too.
+ */
+div#rios div#copyright {
+  left: 64px;
+  top: 22px;
+}
+
+a#onlineHelpLink {
+  position: relative;
+  top: -1px;
+}
+
+/*
+ * IE6 will allocate no space in the menu DIV if all of the LIs are
+ * floated.  We write a blank LI and apply this style to it.  Make
+ * sure the padding matches the menu item in the main stylesheet.
+ */
+.ajaxEntryTable_menuBar li.nofloatIE6 {
+  padding: 3px 0px 3px 0px;
+}
+
+/*
+ * IE6 doesn't understand child selectors.
+ */
+.ajaxEntryTable_table thead tr th,
+.ajaxEntryTable_table tbody tr td {
+  background-color: white;
+  border-left: solid 1px #E3E3E3;
+  border-right: solid 1px #E3E3E3;
+  padding: 3px 8px 3px 8px;
+}
+.ajaxEntryTable_table tbody tr.ajaxEntryTable_evenRow td {
+  background-color: #EFF2F7;
+  border-left-color: #D5D7DC;
+  border-right-color: #D5D7DC;
+}
+.ajaxEntryTable_table thead tr th {
+  border-bottom: 1px solid #536281;
+  font-weight: bold;
+  vertical-align: bottom;
+}
+
+.ajaxEntryTable_tableDiv {
+  /*
+   * IE6 Peek-a-boo bug fix. See bug 58762.
+   * NOTE: Do not add "position: relative;" here. (That is another fix for the
+   * peek-a-boo bug, but will cause the tables to disappear if you resize the window.)
+   */
+  display: inline-block;
+}
+
+.ajaxEntryTable_table img.editCloseIcon {
+  width: 10px;
+  height: 10px;
+  padding-left: 4px;
+  vertical-align: middle;
+}
+
+.ajaxEntryTable .ajaxEntryTable_menuItem a.button {
+  background-color: #EFF2F7;
+  background-position: center left;
+  background-repeat: no-repeat;
+  border: 1px solid #9BAFCF;
+  margin: 0px 2px 0px 0px;
+  padding: 2px 6px 2px 6px;
+  color: black;
+  text-decoration: none;
+}
+
+.ajaxEntryTable .ajaxEntryTable_menuItem a.button:hover {
+  background-color: #9BAFCF;
+}
+
+/* Dim the text when the button is disabled. */
+.ajaxEntryTable .ajaxEntryTable_menuItem a.disabled {
+  color: rgb(143, 145, 148);
+}
+
+/* Don't darken the background upon hover if the button is disabled. */
+.ajaxEntryTable .ajaxEntryTable_menuItem a.disabled:hover {
+  background-color: #EFF2F7;
+  cursor: default;
+}
+
+/*
+ * Change the text color to match the icons when the button is
+ * disabled.
+ */
+.ajaxEntryTable .disabled {
+  color: rgb(143, 145, 148);
+}
+
+.ajaxEntryTable_table tbody tr td.alarmUnknown {
+  color: #000;
+}
+.ajaxEntryTable_table tbody tr td.alarmTriggered {
+  background-color: #ff0000;
+  border: 1px solid #FF8080;
+  color: #ffffff;
+}
+.ajaxEntryTable_table tbody tr td.alarmDisabled {
+  color: #000;
+}
+.ajaxEntryTable_table tbody tr td.alarmOK {
+  color: green;
+}
+.ajaxEntryTable_table tbody tr td.alarmTriggered a {
+  text-decoration: underline;
+}
+.ajaxEntryTable_table tbody tr td.alarmTriggered a:link,
+.ajaxEntryTable_table tbody tr td.alarmTriggered a:visited {
+  color: #ffffff;
+}
+.ajaxEntryTable_table tbody tr td.alarmTriggered a:hover {
+  color: #ffcc00;
+}
+
+/* For the new alarmd alarms */
+.ajaxEntryTable_table tbody tr td div.triggerMessage {
+  text-align: left;
+  width: 360px;
+  margin: 10px 10px 10px auto;
+}
+
+input.disabled {
+  display: inline;
+}
+select.combo {
+  display: none;
+}
+input.combo {
+  border: 1px solid #889;
+  padding: 2px;
+  position: static;
+  width: 142px;
+}
+.floatGraphDivLeftmost {
+  width: 360px;
+}
+.floatGraphDivLeftmost .ajaxEntryTable {
+  width: 320px;
+}
+.floatGraphDiv {
+  width: 374px;
+}
+.floatGraphDiv .graphDiv {
+  width: 354px;
+  padding: 10px 0px 3px;
+}
+.floatGraphDiv .graphDiv img {
+  width: 354px;
+  height: 260px;
+}
+#logViewForm input.combo {
+  width: 570px;
+}
+#samplerForm input.combo,
+#filterByRE input.combo {
+  width: 250px;
+}
+
+/*
+ * Checkboxes have some extra padding on IE that we can't seem to get
+ * rid of.  Modify the button position here to compensate.
+ */
+#groupsTable_table .ajaxEntryTable_reorderCheckboxWrapper button { top: 4px; }
+
+/*
+ * IE doesn't do "child of" rule notation.
+ */
+
+/*
+ * diagnosticAlarmsSH
+ */
+table#alarmsTable_table div#connectionForwardingTable_main {
+  margin: 10px 0px;
+  width: 480px;
+}
+#alarmsTable_table thead tr th.alarmName,
+#alarmsTable_table tbody tr td.alarmName {
+  border-right: none;
+}
+/* Prefer width: 90px; but need percentage for IE. */
+#alarmsTable_table thead tr th.alarmStatus,
+#alarmsTable_table tbody tr td.alarmStatus {
+  border-left: none;
+  width: 16%;
+}
+/*
+ * OK
+ */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowOK td.alarmStatus {
+  color: green;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowOK td.alarmName {
+  background-color: #EFF2F7;
+  border-left-color: #D5D7DC;
+  border-right: none;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowOK td.alarmStatus {
+  background-color: #EFF2F7;
+  border-left: none;
+  border-right-color: #D5D7DC;
+  color: green;
+}
+tr.alarmsTable_evenTriggeredRowOK,
+tr.alarmsTable_oddTriggeredRowOK {
+  display: none;
+}
+/*
+ * SAMPLING - second level state wildcard is missing.
+ */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowSAMPLING td.alarmStatus {
+  color: #555555;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowSAMPLING td.alarmName {
+  background-color: #EFF2F7;
+  border-left-color: #D5D7DC;
+  border-right: none;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowSAMPLING td.alarmStatus {
+  background-color: #EFF2F7;
+  border-left: none;
+  border-right-color: #D5D7DC;
+  color: #484848;
+}
+tr.alarmsTable_evenTriggeredRowSAMPLING,
+tr.alarmsTable_oddTriggeredRowSAMPLING {
+  display: none;
+}
+/*
+ * DISABLED - config enable node is false
+ */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowDISABLED td.alarmStatus {
+  color: #000;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowDISABLED td.alarmName {
+  background-color: #EFF2F7;
+  border-left-color: #D5D7DC;
+  border-right: none;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowDISABLED td.alarmStatus {
+  background-color: #EFF2F7;
+  border-left: none;
+  border-right-color: #D5D7DC;
+  color: #000;
+}
+tr.alarmsTable_evenTriggeredRowDISABLED,
+tr.alarmsTable_oddTriggeredRowDISABLED {
+  display: none;
+}
+/*
+ * UNAVAILABLE - first level state wildcard is missing, ie. process is down
+ */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowUNAVAILABLE td.alarmStatus {
+  color: #ea681d;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowUNAVAILABLE td.alarmName {
+  background-color: #EFF2F7;
+  border-left-color: #D5D7DC;
+  border-right: none;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowUNAVAILABLE td.alarmStatus {
+  background-color: #EFF2F7;
+  border-left: none;
+  border-right-color: #D5D7DC;
+  color: #ea681d;
+}
+tr.alarmsTable_evenTriggeredRowUNAVAILABLE,
+tr.alarmsTable_oddTriggeredRowUNAVAILABLE {
+  display: none;
+}
+
+/***
+ * TRIGGERED
+ *
+ * The Name - Status row of a triggered alarm has a red border on
+ * top and sides, and the message row continues the red border on
+ * sides and bottom. The two rows blend into one pink box, the same color
+ * as the Validator popup.
+ *
+ * Have to combine td borders and inner div borders  because of pixel
+ * rendering errors in Firefox and Safari.
+ ***
+ */
+/* Red "borders" */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td.alarmName,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td.alarmName {
+  border-left: solid 1px #FF0000;
+  border-top: solid 2px #FF0000;
+  padding: 0px;
+}
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td.alarmStatus,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td.alarmStatus {
+  border-right: solid 1px #FF0000;
+  border-top: solid 2px #FF0000;
+  font-weight: bold;
+  height: 100%;
+  padding: 0px;
+}
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td {
+  border-bottom: solid 2px #FF0000;
+  border-left: solid 1px #FF0000;
+  border-right: solid 1px #FF0000;
+  padding: 0px;
+}
+/* Alternating shades of pink interiors */
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td,
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td {
+  background-color: #fce0e0;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td {
+  background-color: #FAD0D0;
+}
+/* Pink interior padding and heavier side borders */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td.alarmName div,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td.alarmName div {
+  border-left: solid 1px #FF0000;
+  padding: 1px 8px 1px 7px;
+}
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td.alarmStatus div,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td.alarmStatus div {
+  border-right: solid 1px #FF0000;
+  padding: 1px 7px 0px 8px;
+}
+/* Cinch up pixel nick between divs */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td div,
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td div {
+  margin-bottom: -1px;
+}
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div {
+  border-left: solid 1px #FF0000;
+  border-right: solid 1px #FF0000;
+  padding: 1px 16% 1px 3em;
+}
+/* Tighten spacing between triggered paragraphs */
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div p,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div p {
+  margin-bottom: .3em;
+  margin-top: .3em;
+}
+/* Underline links in triggered text */
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div a,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div a {
+  text-decoration: underline;
+}
+/* Beautify links in triggered text */
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div a:link,
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div a:visited,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div a:link,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div a:visited {
+  color: #0000BB;
+  text-decoration: underline;
+}
+/* Triggered status text is bold red */
+#alarmsTable_table tbody tr.alarmsTable_oddStatusRowTRIGGERED td.alarmStatus {
+  color: #DD0000;
+}
+#alarmsTable_table tbody tr.alarmsTable_evenStatusRowTRIGGERED td.alarmStatus div {
+  color: #CC0000;
+}
+#alarmsTable_table tbody tr.alarmsTable_oddTriggeredRowTRIGGERED td div form div,
+#alarmsTable_table tbody tr.alarmsTable_evenTriggeredRowTRIGGERED td div form div {
+  border: 0px none;
+  margin: -4px 0px -4px 0px;
+  padding: 0px 0px 0px 2em;
+}
+
+
+/* IE6 doesn't handle transparent PNGs well so we'll use GIFs with no
+ * shadows instead. */
+div.syntaxPopup div.border {
+  background-image: url(/images/syntax_hint_border.gif);
+}
+div.syntaxPopupError div.border {
+  background-image: url(/images/syntax_error_border.gif);
+}
+div.syntaxPopup div.arrow {
+  background-image: url(/images/syntax_hint_arrow.gif);
+}
+div.syntaxPopupError div.arrow {
+  background-image: url(/images/syntax_error_arrow.gif);
+}
+
+/* IE6 doesn't support max-width. */
+div.syntaxPopup div.content {
+  width: 30em;
+}
+
+/* IE6 doesn't support max-width so we'll use an explicit width
+ * for tooltips instead. */
+.yui3-tooltip-content {
+  width: 40em;
+}
+
+/*
+ * IE6 doesn't understand first-child on:
+ *   div.tabControl div.grayBorder div.tabRow a
+ */
+div.tabControl div.grayBorder div.tabRow {
+  border-left: 1px solid #9BAFCF;
+}
+
+/*
+ * IE6 renders the CMC's viewport (grey frame) to policy pages in a very glitchy manner.
+ * Remove the padding around the frame to go back to normal.
+ */
+#policyFrame {
+  padding: 0;
+}
+/*
+ * IE6 doesn't fill in the selector div with the bg color. Only a border can cause the
+ * fill to come back in. Add an invisible border (that is, border == bg).
+ */
+#policyFrame #policySelector {
+  border: 1px solid #d9d2ca;
+}
+
+/*
+ * Health Check: IE6 incorrectly does overflow: hidden.
+ * Margin would get added to containing div.
+ * http://fplanque.com/dev/xhtml-css/css-fixing-overflow-hidden-in-ie-ie6-win
+ * Force a width on container element to correct behavior.
+ */
+table.troubleshooting .testWrapperInner {
+  width: 698px; /* 720px table width - 20px L+R padding - 2px L+R border */
+}

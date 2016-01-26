@@ -1,0 +1,44 @@
+#!/bin/sh
+# Copyright 2008 CACE Technologies, Inc. All rights reserved.
+
+PILOT_RUN_DIRECTORY=`dirname $0`
+cd "$PILOT_RUN_DIRECTORY"
+
+BIN_DIRECTORY=`pwd`
+PILOT_ROOT_DIRECTORY=$BIN_DIRECTORY/..
+DEP_DIRECTORY=$PILOT_ROOT_DIRECTORY/dep:$PILOT_ROOT_DIRECTORY/dep/lib
+
+#print some information only if pilot isn't run as daemon
+if [ "$1" != "--daemon" ]; then 
+	echo
+	echo "*************************************************************************************"
+	echo " Pilot root directory $PILOT_ROOT_DIRECTORY"
+	echo " Pilot bin directory $BIN_DIRECTORY"
+	echo " Pilot dependencies directory $DEP_DIRECTORY"
+	echo "*************************************************************************************"
+	echo
+fi
+cd $BIN_DIRECTORY
+
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$DEP_DIRECTORY:$BIN_DIRECTORY:/usr/lib
+
+#check if we are on Solaris
+platform=`uname -s`
+if [ "$platform"  = "SunOS" ]; then
+        echo "Running on Solaris 10"
+        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/csw/lib:/usr/sfw/lib:/usr/local/lib:/opt/mysql/mysql/lib/"
+elif [ "$platform"  = "Darwin" ]; then
+        echo "Running on Darwin"
+        DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH
+        export DYLD_LIBRARY_PATH
+fi
+
+#checks that rawshark can be executed
+if [ -f $BIN_DIRECTORY/rawshark ] ; then
+        chmod 755 $BIN_DIRECTORY/rawshark                                        
+fi
+
+
+export LD_LIBRARY_PATH
+
+exec $BIN_DIRECTORY/PilotServer $*

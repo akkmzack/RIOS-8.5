@@ -1,0 +1,29 @@
+#! /bin/bash
+#
+# internal_startup
+#
+# chkconfig: 2345 17 84
+# description: Internal startup script that is run between mdinit and pm.
+
+# See how we were called.
+case "$1" in
+  start)
+        if [ -x /var/opt/tms/init_script ]; then
+            /var/opt/tms/init_script start
+        fi
+        ;;
+  stop)
+        if [ -x /var/opt/tms/init_script ]; then
+            /var/opt/tms/init_script stop
+        fi
+        ;;
+  restart|reload)
+	$0 stop
+	$0 start
+	;;
+  *)
+        echo $"Usage: $0 {start|stop|restart|reload}"
+        exit 1
+esac
+
+exit 0

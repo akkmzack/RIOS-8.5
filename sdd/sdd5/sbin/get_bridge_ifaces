@@ -1,0 +1,32 @@
+#!/usr/bin/python
+#
+# This script goes through and returns a string containing
+# the bridge interfaces on this appliance.
+#
+# Valid types (argument #1) are: 'lan', 'wan', and 'inpath'.
+#
+
+import sys, os, glob
+
+if len(sys.argv) == 1:
+    types = ('inpath', )
+else:
+    types = sys.argv[1:]
+
+all_ifs = []
+fp = open('/proc/net/dev', 'r')
+for line in fp:
+    i = line.find(':')
+    if i == -1:
+        continue
+    ifname = line[:i]
+    for t in types:
+        if ifname.startswith(t):
+            all_ifs.append(ifname)
+fp.close()
+
+#make sure the returned interfaces are in alphabetical order
+all_ifs.sort()
+
+print ' '.join(all_ifs)
+

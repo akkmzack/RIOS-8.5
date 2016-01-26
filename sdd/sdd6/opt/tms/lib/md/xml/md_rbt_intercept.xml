@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_intercept                                           -->
+<!--   Module Root: /rbt/sport/intercept                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/cpp                     -->
+<!--                                     /md_rbt_intercept.cc               -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/intercept/config/myconfig</name>               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_intercept">
+     <config>
+        <name>/rbt/sport/intercept/config/resume_kickoff</name>
+        <description>Kickoff passthrough connections on resume</description>
+        <value type="bool">false</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/vlan_discover/enable</name>
+        <description>VLAN discovery</description>
+        <value type="bool">true</value>
+        <sysctl-key-association>
+            <sysctl-key>/proc/sys/eal/vlan_discover</sysctl-key>
+            <sysctl-flag>use-procfs</sysctl-flag>
+        </sysctl-key-association>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/probe_filter_detect</name>
+        <description>In-path probe filtering detection</description>
+        <value type="bool">true</value>
+        <sysctl-key-association>
+            <sysctl-key>/proc/sys/nbt/probe_filtering_detection</sysctl-key>
+            <sysctl-flag>use-procfs</sysctl-flag>
+        </sysctl-key-association>
+     </config>
+
+     <config>
+         <name>/rbt/sport/intercept/config/neighbor/enable</name>
+         <description>Configure asymmetric routing settings</description>
+         <value type="bool">false</value>
+         <role-primitive permission="read-write">/role_primitive/system_setup/advanced_networking/connection_forwarding</role-primitive>
+         <commit-descriptor>
+             <apply-func>md_rbt_intercept_neighbor_enable</apply-func>
+         </commit-descriptor>
+     </config>
+
+     <config>
+         <name>/rbt/sport/intercept/config/neighbor/remote_capac_timeout</name>
+         <description>Capacity purge timeout in hours</description>
+         <value type="uint32" min="1" max="720">12</value>
+     </config>
+
+     <config-wildcard>
+        <name>/rbt/sport/intercept/config/ifaces/inpath/*/static_mac/*</name>
+        <description>Ethernet relay table MAC addresses</description>
+        <value type="macaddr802"/>
+     </config-wildcard>
+
+     <config>
+        <name>/rbt/sport/intercept/config/ifaces/inpath/*/static_mac/*/vlan</name>
+        <description>VLAN ID for Ethernet-relay table entry</description>
+        <value type="uint16" min="0" max="4095">0</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/ifaces/inpath/*/static_mac/*/device_type</name>
+        <description>Device type for Ethernet-relay table entry</description>
+        <value type="string">""</value>
+        <value-choices>
+            <choice>lan</choice>
+            <choice>wan</choice>
+        </value-choices>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/neighbor/own_thread</name>
+        <description>Running connection forwarding on a dedicated thread</description>
+        <value type="bool">false</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/ipblade/tunentry_timeout</name>
+        <description>IP Blade tunnel entry cache expire time in seconds</description>
+        <value type="uint32">180</value>
+     </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/neighbor/syn_retransmit_count</name>
+        <description>Number of TCP retries</description>
+        <value type="uint8" min="0" max="5">0</value>
+     </config>
+
+    <config>
+        <name>/rbt/sport/intercept/config/transparency/fw_reset_probe</name>
+        <description>Transparency reset probe</description>
+        <value type="bool">false</value>
+        <sysctl-key-association>
+            <sysctl-key>nbt.transparency_fw_rst_probe</sysctl-key>
+        </sysctl-key-association>
+    </config>
+
+    <config>
+        <name>/rbt/sport/intercept/config/cdp/initial_delay</name>
+        <description>CDP Initial Delay</description>
+        <value type="uint32" min="5">60</value>
+    </config>
+
+     <config>
+        <name>/rbt/sport/intercept/config/simplified/learn_peer_sr_entries</name>
+        <description>Learning peer SR entries from probes</description>
+        <value type="bool">true</value>
+     </config>
+
+
+</node-list>

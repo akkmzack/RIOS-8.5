@@ -1,0 +1,75 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupCachingDNS',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/dns_event']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+
+    // The chart div should take up as much height as possible.
+    Y.one('#timeSeriesChart').setStyle(
+        'height', RBT.Reports2.availableHeight() + 'px');
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Rate (hits/sec or misses/sec)';
+    highstockOptions.plotOptions.area.fillOpacity = 1.0;
+    highstockOptions.series = [
+        {
+            name: 'Miss Rate',
+            type: 'area',
+            stacking: 'normal',
+            color: RBT.Reports2.RED
+        },
+        {
+            name: 'Hit Rate',
+            type: 'area',
+            stacking: 'normal',
+            color: RBT.Reports2.BLUE
+        }
+    ];
+
+    // Make the navigator shadow the second series (Hit Rate).
+    highstockOptions.navigator.baseSeries = 1;
+    highstockOptions.navigator.series.color = highstockOptions.series[1].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[1].color;
+    highstockOptions.navigator.series.type = 'area';
+    highstockOptions.navigator.series.fillOpacity = 1.0;
+
+    // Create the chart!
+    var chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportDnsHits") %>',
+        dataFormatterFn: dataFormatter,
+        options: highstockOptions,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: ['Hit Rate', 'Miss Rate']
+    });
+});
+
+function dataFormatter(value, seriesName) {
+    var suffix = (seriesName === 'Hit Rate') ? ' hits/sec' : ' misses/sec';
+    return RBT.Reports2.addThousandsSeparators(Math.round(value)) + suffix;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

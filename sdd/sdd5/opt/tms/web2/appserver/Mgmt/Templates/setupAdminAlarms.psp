@@ -1,0 +1,638 @@
+<%
+## Copyright 2006-2011, Riverbed Technology, Inc., All rights reserved.
+##
+## setupAdminAlarms.psp
+## Enables various alarms for all products.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="RVBDUtils, FormUtils, FormUtils:NodeEntryAlarm, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupAdministrationSMTP', 'diagnosticAlarms', 'setupAdminEmailCMC')
+%>
+
+<psp:method name="css">
+    return '''
+fieldset {
+    width: 750px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    # Alarms read state from "/alarm/state/alarm/...".
+    # And the server side writes to "/alarm/config/alarm/...".
+
+    # Our (rather clever) way of getting around this is creating something
+    # called a NodeEntryAlarm.  What happens is we set the path to the config
+    # node, which we have read/write privileges to.  Then, when we populate
+    # the list of checkboxes, we get a list of state nodes.  Technically, we
+    # have access to state nodes, but if we ask for permission it's denied.
+    # This bypasses that whole issue.  This bug is in the RBM backend, being
+    # tracked by bug 94729.
+
+    fields = self.request().fields()
+    policyName, pathPrefix, policy = Nodes.cmcDecodeNodeMode(fields)
+    mgmt = self.session().value('mgmt')
+
+    # Create the normal alarm tree for this appliance.
+    def createDefaultAlarmTree():
+        def getTopLevelAlarmNames():
+            children = Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/health/aggregates') or ''
+            return children.split(',')
+        def getAlarmIdVariants(alarmId):
+            return (alarmId, '', alarmId)
+        return createAlarmTree(getTopLevelAlarmNames, getAlarmIdVariants)
+
+    # For CMC managed alarms, create an alarm tree from the per-appliance state nodes.
+    # For a given product, managed alarms are the same for all instances of the product.
+    # Thus we only need to look at the first appliance whose ready state is true to get
+    # the alarm list for that appliance's product type.
+    # The entire alarm list is thence the union of the product alarms over all products.
+    if RVBDUtils.isCMC():
+        import cmc
+        def createCMCManagedAlarmsTree():
+            def getShortName(alarmId):
+                # Return everything in alarmId after the fourth colon, e.g.,
+                # 'app:sh:V70PR00004e49:cmc:duplex_state:primary' -> 'duplex_state:primary'
+                return ':'.join(alarmId.split(':')[4:])
+            def getTopLevelManagedAlarmNames():
+                applianceAlarms = {}
+                for product, longName in cmc.productList:
+                    readyPaths = mgmt.getPattern(pathPrefix + '/cmc/state/appliance/%s/*/ready' % product) or {}
+                    for path, isReady in readyPaths.iteritems():
+                        if isReady == 'true':
+                            serial = path.split('/')[5]
+                            childPath = pathPrefix + '/alarm/state/alarm/app:%s:%s/aggregates' % (product, serial)
+                            children = Nodes.present(mgmt, childPath)
+                            if children:
+                                for child in children.split(','):
+                                    applianceAlarms[getShortName(child)] = child
+                            break
+                return applianceAlarms.values()
+            def getManagedAlarmIdVariants(alarmId):
+                shortName = getShortName(alarmId)
+                writePath = '/alarm/config/alarm/app:*:*:*:%s/enabled' % shortName
+                codedShortName = 'APP_%s' % shortName
+                return (shortName, writePath, codedShortName)
+            return createAlarmTree(getTopLevelManagedAlarmNames, getManagedAlarmIdVariants)
+
+    # createAlarmTree() is a "factory" function for producing a non-instantiated alarm tree.
+    # By "non-instantiated", we mean that no actual alarm objects are produced;
+    # rather, the flat alarms obtained from the alarm daemon (alarmd) contain
+    # an 'aggregates' field, which is a CSV string of the names of its children.
+    # We use that to build the alarm tree structure.  That structure is used by
+    # createAlarmNodes() to create the live alarm objects, and by layoutAlarmTree()
+    # to drive the creation of the HTML.
+    #
+    # The two inputs to this function are themselves both functions:
+    #
+    # getTopLevelAlarmsFn
+    #   A function with no arguments.
+    #   Its contract is to return a list of strings of top-level alarm ids.
+    #
+    # getVariantsFn
+    #   A function that takes an alarmId as its arg and returns a triple containing:
+    #   0 - the default display name
+    #       For normal alarms, we return the alarmId.
+    #       For managed alarms, we return the substring following the third colon in the alarmId.
+    #   1 - the write-path of the alarm
+    #       If empty, the write-path defaults to '/alarm/config/alarm/%s/enabled' % escaped_alarmId
+    #       Normal alarms use the default.
+    #       Managed alarms substitute wildcards for some of the path components.
+    #   2 - the key to be used to index this alarm in the alarm tree
+    #       Normally this is just the alarmId.
+    #       For managed alarms, this is the default display name (#0 above) appended to 'APP_'.
+    #       This convention collapses the per-appliance alarms down into a single collection.
+    #
+    # The output of this function is a key-value array.  The top level keys are
+    # generated from the top-level alarm IDs.  Each key indexes another array,
+    # which contains the following keys and values:
+    #
+    # 'label' - a string, which will become the label for the UI's checkbox for the alarm.
+    # 'configurable' - a boolean, meaning whether the checkbox can be changed by the user.
+    # 'readPath' - the read-path node for the alarm ('/alarm/state/alarm/%s/enabled' % escaped_alarmId)
+    # 'writePath' - the write-path node for the alarm (see above)
+    # 'tooltip' - the alarm's description ('/alarm/state/alarm/%s/description' % escaped_alarmId),
+    #    if any, to be shown as a tooltip.
+    # 'children' - an array whose keys are generated from ids of the alarm's children;
+    #    the corresponding values are arrays containing the five keys mentioned here.
+    #    If there are no children, the array is empty.
+    #
+    # Actual sets of functions for normal alarms and appliance alarms already exist.
+    # See the local functions inside createDefaultAlarmTree() and createCMCManagedAlarmsTree().
+    #
+    def createAlarmTree(getTopLevelAlarmsFn, getVariantsFn):
+        tree = {}
+        for alarmId in getTopLevelAlarmsFn():
+            addAlarmBranch(tree, alarmId, getVariantsFn)
+        return tree
+
+    # Does the actual work of adding a complete alarm branch to the tree, using recursion.
+    # Hidden alarms are ignored.
+    #
+    def addAlarmBranch(tree, alarmId, getVariantsFn):
+
+        (defaultDisplayName, writePath, alarmKey) = getVariantsFn(alarmId)
+        alarmName = alarmId.replace('/', '\\/')
+
+        # Skip hidden alarms
+        if 'true' == Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/%s/hidden' % alarmName):
+            return
+
+        if RVBDUtils.isIB() and ':id:' in alarmId:
+            # If this is an interceptor, then  skip instance alarms because
+            # they are not configurable at the child level, only the parent
+            # level. This is a special condition due to the overwhelming amount
+            # of alarms in vlan segregation.
+            return
+
+
+        tree[alarmKey] = {}
+
+        label = Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/%s/display_name' % alarmName, defaultDisplayName)
+        tree[alarmKey]['label'] = label
+
+        tree[alarmKey]['configurable'] = \
+            'true' == Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/%s/disable_allowed' % alarmName)
+
+        # No need to add pathPrefix here. The NodeEntryAlarm object created
+        # using tree will add the correct prefix when reading/setting nodes.
+        tree[alarmKey]['readPath'] = '/alarm/state/alarm/%s/enabled' % alarmName
+        tree[alarmKey]['writePath'] = writePath or ('/alarm/config/alarm/%s/enabled' % alarmName)
+
+        tree[alarmKey]['tooltip'] = Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/%s/description' % alarmName, None)
+
+        tree[alarmKey]['children'] = {}
+
+        children = Nodes.present(mgmt, pathPrefix + '/alarm/state/alarm/%s/aggregates' % alarmName)
+        if children:
+            for childId in children.split(','):
+                addAlarmBranch(tree[alarmKey]['children'], childId, getVariantsFn)
+
+    # With the alarm tree as input, create all the alarm nodeEntry objects.
+    def createAlarmNodes(tree, alarmNodes={}):
+        for alarmId, entry in tree.iteritems():
+            alarmNodes[alarmId] = NodeEntryAlarm(
+                readPath=entry['readPath'],
+                path=entry['writePath'],
+                type='bool',
+                widget='checkboxLeft',
+                widgetClass=entry['configurable'] and 'configurable' or '',
+                action='checkboxPropagateSuppressedStateDownwards(this, true);',
+                tooltip=entry['tooltip'],
+                label=entry['label'])
+            createAlarmNodes(entry['children'], alarmNodes)
+        return alarmNodes
+
+    # Create special nodeEntry objects for temperature and CPU load settings.
+    def createSpecialAlarmNodes(tree):
+        nodes={}
+        if 'temperature' in tree:
+            nodes['warning_temp_error'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/warning_temp/error_threshold',
+                path='/alarm/config/alarm/warning_temp/error_threshold',
+                type='uint16',
+                widgetClass='small',
+                label='Rising Threshold',
+                units='&deg;C')
+            nodes['warning_temp_clear'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/warning_temp/clear_threshold',
+                path='/alarm/config/alarm/warning_temp/clear_threshold',
+                type='uint16',
+                widgetClass='small',
+                label='Reset Threshold',
+                units='&deg;C')
+        if 'cpu_util_indiv' in tree:
+            # For CMC policy nodes, read and set cpu:*:util
+            # For nodes to configure the appliance itself, read cpu:0:util, set cpu:*:util
+            nodes['cpu_error'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/cpu:%s:util/error_threshold' % (policy and '*' or '0'),
+                path='/alarm/config/alarm/cpu:*:util/error_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Rising Threshold',
+                units='%',
+                validate=('intInRange', '[0, 100]'))
+            nodes['cpu_clear'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/cpu:%s:util/clear_threshold' % (policy and '*' or '0'),
+                path='/alarm/config/alarm/cpu:*:util/clear_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Reset Threshold',
+                units='%',
+                validate=('intInRange', '[0, 100]'))
+
+        nodes['cpuList'] = FormUtils.NodeEntry(
+                path='/system/cpu/indiv')
+
+        # virt_cpu_util_indiv and esxi_memory_overcommitted are sub-alarms of
+        # the VSP alarm, so we check to see if 'vsp' is in the alarm tree.
+        if 'vsp' in tree:
+            # Find the first CPU that handles virtualization.
+            if Nodes.permission(mgmt, '/system/cpu/indiv') in ('read', 'write'):
+                cpuDetails = Nodes.getTreeifiedSubtree(mgmt, '/system/cpu/indiv')
+                virtCpu = ''
+                for cpu in cpuDetails:
+                    if 'virt' in cpuDetails[cpu] and cpuDetails[cpu]['virt'] == 'true':
+                        virtCpu = cpu
+                        break
+                # CMC always shows the union of all the alarms for all the appliances;
+                # Hence, for CMC always create virtual cpu nodes.
+                if policy or virtCpu:
+                    nodes['virt_cpu_clear'] = NodeEntryAlarm(
+                        readPath='/alarm/state/alarm/virt_cpu:%s:util/clear_threshold' % (policy and '*' or virtCpu),
+                        path='/alarm/config/alarm/virt_cpu:*:util/clear_threshold',
+                        type='uint32',
+                        widgetClass='small',
+                        label='Reset Threshold',
+                        units='%',
+                        validate=('intInRange', '[0, 100]'))
+                    nodes['virt_cpu_error'] = NodeEntryAlarm(
+                        readPath='/alarm/state/alarm/virt_cpu:%s:util/error_threshold' % (policy and '*' or virtCpu),
+                        path='/alarm/config/alarm/virt_cpu:*:util/error_threshold',
+                        type='uint32',
+                        widgetClass='small',
+                        label='Rising Threshold',
+                        units='%',
+                        validate=('intInRange', '[0, 100]'))
+
+            nodes['esxi_memory_error'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/esxi_memory_overcommitted/error_threshold',
+                path='/alarm/config/alarm/esxi_memory_overcommitted/error_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Rising Threshold',
+                units='MB')
+            nodes['esxi_memory_clear'] = NodeEntryAlarm(
+                readPath='/alarm/state/alarm/esxi_memory_overcommitted/clear_threshold',
+                path='/alarm/config/alarm/esxi_memory_overcommitted/clear_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Reset Threshold',
+                units='MB')
+        return nodes
+
+    # Create special nodeEntry objects for alarms related to endpoint.
+    def createSpecialEndPointAlarmNodes(tree, thresholdAlarms):
+        nodes = {}
+        for alarm in thresholdAlarms:
+            if 'endpoint' in tree and 'children' in tree['endpoint'] and alarm in tree['endpoint']['children']:
+                nodes['%s_error' % alarm] = NodeEntryAlarm(
+                    readPath='/alarm/state/alarm/%s/error_threshold' % alarm,
+                    path='/alarm/config/alarm/%s/error_threshold' % alarm,
+                    type='int64',
+                    widgetClass='small',
+                    label='Rising Threshold',
+                    units='')
+                nodes['%s_clear' % alarm] = NodeEntryAlarm(
+                    readPath='/alarm/state/alarm/%s/clear_threshold' % alarm,
+                    path='/alarm/config/alarm/%s/clear_threshold' % alarm,
+                    type='int64',
+                    widgetClass='small',
+                    label='Reset Threshold',
+                    units='')
+        return nodes
+
+    # Create all the alarm nodeEntries, indexed by alarm name in the 'allNodeEntries' array.
+    self.alarmTree = createDefaultAlarmTree()
+    allNodeEntries = createAlarmNodes(self.alarmTree)
+    allNodeEntries.update(createSpecialAlarmNodes(self.alarmTree))
+    if RVBDUtils.isGW():
+        self.endPointAlarms = ['ep_datastore', 'ep_fs_full', 'ep_nfs', 'ep_service', 'ep_genid_error', 'ep_ssl_error','ep_firewall', 'ep_version']
+        allNodeEntries.update(createSpecialEndPointAlarmNodes(self.alarmTree, self.endPointAlarms))
+    if RVBDUtils.isCMC() and not policy:
+        self.managedAlarmsTree = createCMCManagedAlarmsTree()
+        allNodeEntries.update(createAlarmNodes(self.managedAlarmsTree))
+    return allNodeEntries
+
+</psp:method>
+
+<psp:method name="dialogEntries">
+
+    return {
+        'peer': FormUtils.NodeEntry(
+                name='peer',
+                label='Ignore Peer',
+                widgetClass='wide3',
+                validate='validatePeer'),
+        'peerComment': FormUtils.NodeEntry(
+                name='peerComment',
+                label='Comment',
+                widgetClass='wide3'),
+    }
+
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policy = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+if RVBDUtils.isCMC() and not policy: {
+    legend = 'Enable CMC Alarms'
+}
+else: {
+    legend = 'Enable Alarms'
+}
+
+self.beginPagelet()
+
+if not policy and 'running' != Nodes.present(mgmt, '/pm/monitor/process/alarmd/state'): {
+    self.writeln('<p class="warning">Alarm configuration is only available when the alarm process is running.</p>')
+}
+else: {
+%>
+
+<%
+# Generate the HTML for an individual alarm.
+# If the alarm has children, generate the HTML for them, too.
+# The HTML string is the return value.
+#
+# Structure:
+#
+# Each nodeEntry is embedded in a DIV of class "alarmChild".
+#
+# Alarm detail nodeEntries, if any, are embedded in a DIV of class "alarmDetails",
+# and are indented relative to the owning "alarmChild" DIV.
+#
+# Child alarms are contained in an "alarmChildren" DIV,
+# which is also indented relative to the enclosing DIV.
+#
+def htmlAlarm(alarmId, childTree): {
+    html = ''
+    html += '<div class="alarmChild">'
+    node = nodeEntries[alarmId]
+    html += node.html(self)
+
+    # Handle alarm details.  If we add any more of them, probably best
+    # to do an array lookup to get the HTML instead of hard-coding it.
+    if 'cpu_util_indiv' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['cpu_error'].html(self),
+             nodeEntries['cpu_clear'].html(self))
+    }
+    if 'warning_temp' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['warning_temp_error'].html(self),
+             nodeEntries['warning_temp_clear'].html(self))
+    }
+    if RVBDUtils.isGW(): {
+        if alarmId in self.endPointAlarms: {
+            html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+                (nodeEntries['%s_error' % alarmId].html(self),
+                 nodeEntries['%s_clear' % alarmId].html(self))
+        }
+    }
+
+    if 'APP_unmanaged_peer' == alarmId: {
+        # Get list of peers to ignore
+        peerNodes = Nodes.getMgmtSetEntries(self.session().value('mgmt'),
+                                              '/cmc/alarm/ignored_peer')
+        # Since this is a collection if ip addresses, subnets
+        # and hostname, simply use alphanumeric compare
+        ignoredPeers = []
+        for key in sorted(peerNodes.keys(), cmp=FormUtils.alphanumericCompare): {
+            ignoredPeers.append((key.replace('\\/', '/'),
+                                peerNodes[key]['comment']))
+        }
+        # add the html
+        dialogEntries = self.dialogEntries()
+        html += '<div class="alarmDetails indent">%s</div>' % \
+                FormUtils.createDynamicList(self,
+                    'ignoredPeers',
+                    'Add <span class="popupTitle" title="Suppress the alarm for peers that are known to be unmanaged.">Unmanaged Peer Exception</span>',
+                    [
+                        dialogEntries['peer'],
+                        dialogEntries['peerComment'],
+                    ],
+                    ignoredPeers)
+    }
+
+    if 'virt_cpu_util_indiv' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['virt_cpu_error'].html(self),
+             nodeEntries['virt_cpu_clear'].html(self))
+    }
+
+    if 'esxi_memory_overcommitted' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['esxi_memory_error'].html(self),
+             nodeEntries['esxi_memory_clear'].html(self))
+    }
+
+    if childTree: {
+        keys = childTree.keys()
+        keys.sort(FormUtils.alphanumericCompare, key=lambda k: nodeEntries[k].label)
+        html += '<div class="alarmChildren indent">'
+        for childId in keys: {
+            html += htmlAlarm(childId, childTree[childId]['children'])
+        }
+        html += '</div>'
+    }
+    html += '</div>'
+    return html
+}
+
+# Here we perform a structured, alphabetical rendering of the alarms tree into HTML.
+# An empty alarms tree presents the second argument, messageIfEmpty, to the user.
+#
+def layoutAlarmTree(tree, messageIfEmpty): {
+    if tree: {
+        keys = tree.keys()
+        keys.sort(FormUtils.alphanumericCompare, key=lambda k: nodeEntries[k].label)
+        html = ''
+        for alarmId in keys: {
+            html += htmlAlarm(alarmId, tree[alarmId]['children'])
+        }
+        self.writeln(html)
+    } else: {
+        self.writeln("<p>%s</p>" % messageIfEmpty)
+    }
+}
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="alarmForm">
+  <div>
+    <fieldset>
+      <legend><%= legend %></legend>
+      <div class="midLevel">
+        <% layoutAlarmTree(self.alarmTree, 'No alarms to display.') %>
+      </div>
+    </fieldset>
+<%
+# Appliance alarms managed by the CMC
+if RVBDUtils.isCMC() and not policy: {
+%>
+    <fieldset>
+      <legend>CMC Managed Appliance Alarms</legend>
+      <div class="midLevel">
+        <% layoutAlarmTree(self.managedAlarmsTree, 'CMC Managed Appliance Alarms can only be configured if you have registered and connected appliances.') %>
+      </div>
+    </fieldset>
+<%
+}
+%>
+    <input type="hidden" name="_action_" value="setAlarmConfig" />
+    <%= FormUtils.formSubmitButtons(self) %>
+  </div>
+</form>
+
+<%
+}
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// A NodeList of all top level alarm checkboxes
+function topLevelCheckboxes() {
+    return Y.one('#alarmForm').
+        all('fieldset > .midLevel > .alarmChild > .nodeEntry > input');
+}
+
+// A Nodelist of a checkbox's immediate children.
+function checkboxChildren(checkbox) {
+    return checkbox.ancestor('.alarmChild').
+        all('> .alarmChildren > .alarmChild > .nodeEntry > input');
+}
+
+// Is the alarm associated with this checkbox configurable?
+function isConfigurable(checkbox) {
+    return checkbox.hasClass('configurable');
+}
+
+// Set configurability for an alarm's checkbox.
+// This is used at load-time to propagate non-configurability upwards.
+function setConfigurable(checkbox, val) {
+    if (val) {
+        checkbox.addClass('configurable');
+    } else {
+        checkbox.removeClass('configurable');
+    }
+}
+
+// Get the NodeEntry parent of a checkbox.
+function getNodeEntry(checkbox) {
+    return checkbox.ancestor('.nodeEntry');
+}
+
+// Enable/disable the "details" of an alarm.  Details are nodeEntries
+// that are related to an alarm but are not, per se, its children.
+function enableDetails(checkbox, val) {
+    var details = checkbox.ancestor('.alarmChild').one('> .alarmDetails');
+    if (details) {
+        enableElements(details, val);
+    }
+}
+
+// When the checkbox of an alarm is unchecked, all its descendants are disabled.
+// When it is checked, its immediate children are enabled, but their descendants
+// depend on their parents for their state, in the same manner.
+//
+// Non-configurable alarms are never enabled.
+//
+// This function serves as the 'action' function for all alarm nodeEntries
+// (but not for alarmDetails nodeEntries).  It is also run for each checkbox
+// during load time.
+//
+function checkboxPropagateSuppressedStateDownwards(chkbox, allAncestorsChecked) {
+    var checkbox = Y.one(chkbox);
+    var configurable = isConfigurable(checkbox);
+    var checked = checkbox.get('checked');
+    enableElements(getNodeEntry(checkbox), configurable && allAncestorsChecked);
+    enableDetails(checkbox, checked && configurable && allAncestorsChecked);
+    allAncestorsChecked = allAncestorsChecked && checked;
+    var children = checkboxChildren(checkbox);
+    for (var i = 0; i < children.size(); i++) {
+        var child = children.item(i);
+        var childChecked = child.get('checked');
+        checkboxPropagateSuppressedStateDownwards(child, allAncestorsChecked);
+    }
+}
+
+// Search an alarm for a non-configurable descendant.
+// If one is found, set all its ancestors as non-configurable, and disable them.
+function checkboxPropagateNonconfigurableChildrenUpwards(checkbox) {
+    if (!isConfigurable(checkbox)) {
+        return true;
+    }
+    var children = checkboxChildren(checkbox);
+    for (var i = 0; i < children.size(); i++) {
+        var nonconfigurable = checkboxPropagateNonconfigurableChildrenUpwards(children.item(i));
+        if (nonconfigurable) {
+            setConfigurable(checkbox, false);
+            enableElements(getNodeEntry(checkbox), false);
+            return true;
+        }
+    }
+    return false;
+}
+
+// For each top-level alarm, search for a non-configurable descendant.
+// If one is found, set all its ancestors as non-configurable.
+// This is a load-time-only function.
+function propagateNonconfigurableAlarmsUpwards() {
+    var topCheckboxes = topLevelCheckboxes();
+    for (var i = 0; i < topCheckboxes.size(); i++) {
+        checkboxPropagateNonconfigurableChildrenUpwards(topCheckboxes.item(i));
+    }
+}
+
+// Propagate the "suppressed" state of all top-level alarms to their descendants.
+// This is a load-time-only function.
+function propagateSuppressedAlarmsDownwards() {
+    var topCheckboxes = topLevelCheckboxes();
+    for (var i = 0; i < topCheckboxes.size(); i++) {
+        checkboxPropagateSuppressedStateDownwards(topCheckboxes.item(i), true);
+    }
+}
+
+/**
+ * Validation for a peer, which could be :
+ *   hostname
+ *   IPv4 Address
+ *   IPv4 Address with prefix
+ *   IPv6 Address
+ *   IPv6 Address with prefix
+ * Whitespace is trimmed.
+ *
+ * @param {String} val
+ *   The value to validate.
+ *
+ */
+function validatePeer(val) {
+
+    var errMsg = 'A hostname, IP address, or subnet (in CIDR form) is required.';
+
+    try {
+        // most common case, IPv4 address or hostname
+        RBT.Validator.Syntax.hostnameOrIp(val);
+    } catch (e) {
+        try {
+            // check if it is an IPv6 addr
+            RBT.Validator.Syntax.ipv6addr(val);
+        } catch (e) {
+            try {
+                // check if it is an IP subnet
+                RBT.Validator.Syntax.ipv4or6subnet(val);
+            } catch (e) {
+                throw errMsg;
+            }
+        }
+    }
+}
+
+// Load-time stuff
+onloadScript += " propagateNonconfigurableAlarmsUpwards();";
+onloadScript += " propagateSuppressedAlarmsDownwards();";
+
+// ]]>
+</script>

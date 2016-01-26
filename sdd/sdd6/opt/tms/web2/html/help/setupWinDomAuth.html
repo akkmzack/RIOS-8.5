@@ -1,0 +1,1319 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Windows Domain Authentication</title>
+    <link rel="StyleSheet" href="css/optimization.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="optimization.05.01.html#284558">Chapter 3	Configuring Optimization Features</a> : Windows Domain Authentication</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="284558">Windows Domain Authentication</a></div>
+      <div class="Body"><a name="409122">This section describes how to configure a Steelhead appliance</a> to optimize in an environment where there are:</div>
+      <li class="Bullet"><a name="409555">Microsoft Windows file servers using signed SMB or signed SMB2 for file sharing to Microsoft </a>Windows clients.</li>
+      <li class="Bullet"><a name="409572">Microsoft Exchange servers providing an encrypted MAPI communication to Microsoft Outlook </a>clients.</li>
+      <li class="Bullet"><a name="409579">Microsoft Internet Information Services (IIS) Web servers running HTTP or HTTP-based Web </a>applications such as SharePoint 2007 or BPOS-D.</li>
+      <div class="Body"><a name="409562">The procedures include how to set up a user account that is trusted to delegate for secure protocols on target </a>servers and add delegate or replication users to a Windows domain. </div>
+      <div class="Body"><a name="305123">Follow the procedures in this section after joining a Windows domain and enabling the SMB Signing, HTTP, </a>or MAPI optimization features. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396241', '');" title="Configuring Inbound QoS">Creating Inbound QoS Classes</a></span>, <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSMB2.html#251677', '');" title="Optimizing SMB2">Configuring SMB Signing</a></span>, <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization">Configuring MAPI Optimization</a></span>, or <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsHTTP.html#252066', '');" title="Configuring HTTP Optimization">Configuring HTTP Optimization</a></span>.</div>
+      <div class="Body"><a name="408538">Optimization in a secure Windows environment has changed with each release of the RiOS software. If you </a>are running a version of RiOS software earlier than v5.5, consult the appropriate documentation for that software release.</div>
+      <div class="Body"><a name="412798">RiOS v7.0 and later features a set of domain health status commands that serve as a troubleshooting tool to </a>identify, diagnose, and report possible problems with a Steelhead appliance within a Windows domain environment. For details, see the <span class="book_title">Riverbed Command-Line Interface Reference Manual</span> and the <span class="book_title">Riverbed </span><span class="book_title">Deployment Guide</span>.</div>
+      <div class="Body"><a name="408514">The following table describes authentication methods for clients with Steelheads running RiOS v6.0 and </a>later.</div>
+      <table class="RegularTable" style="text-align: left; width: 467.12016pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 59.99472pt">
+            <div class="CellHeading"><a name="506732">Client OS</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 104.59368pt">
+            <div class="CellHeading"><a name="506734">Authentication </a>Method</div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 91.20096pt">
+            <div class="CellHeading"><a name="506739">RiOS v6.0/6.5</a></div>
+            <div class="CellHeading"><a name="506740">(Delegation)</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 104.058pt">
+            <div class="CellHeading"><a name="506745">RiOS v7.0</a></div>
+            <div class="CellHeading"><a name="506746">(Kerberos) </a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 107.2728pt">
+            <div class="CellHeading"><a name="506751">RiOS v7.0</a></div>
+            <div class="CellHeading"><a name="506755">(Steelhead Joined As </a>a BDC or RODC)</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506757">XP/Vista</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506759">Password </a>authentication/NTLM</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506761">Optimized </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506763">Optimized</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506765">Optimized </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506767">Windows 7</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506769">Password </a>authentication/NTLM</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506771">Optimized in </a>delegation mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506773">Optimized in </a>delegation mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506775">Optimized</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506777">XP/Vista</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506779">Negotiate </a>authentication/Simple And Protected Negotiate (SPNEGO)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506781">Optimized using </a>NTLM</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506783">Optimized using </a>Kerberos</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506785">Optimized using NTLM</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506787">Windows 7</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506789">Negotiate </a>authentication/SPNEGO</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506791">Optimized using </a>NTLM in delegation mode</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506793">Optimized using </a>Kerberos</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506795">Optimized using NTLM </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506797">Any client</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506799">Kerberos</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506801">Passthrough</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506803">Optimized</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506805">Passthrough</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="408563">RiOS v7.0 and later supports end-to-end Kerberos authentication for the following secure protocols:</a></div>
+      <li class="BulletSubBullet2"><a name="407676">SMB signing </a></li>
+      <li class="BulletSubBullet2"><a name="407644">SMB2 signing </a></li>
+      <li class="BulletSubBullet2"><a name="407645">Encrypted MAPI/Outlook Anywhere </a></li>
+      <li class="BulletSubBullet2"><a name="407406">HTTP </a></li>
+      <div class="Body"><a name="441711">RiOS v7.0 and later protects authentication credentials for delegate and replication users by storing them in </a>the Steelhead secure vault. The secure vault contains sensitive information about your Steelhead appliance configuration. </div>
+      <div class="Body"><a name="441715">To migrate previously configured authentication credentials to the secure vault after upgrading to RiOS </a>v7.0 or later from v6.5.x or earlier, unlock the secure vault and then enter the following CLI command at the system prompt:</div>
+      <div class="Code"><a name="441716">protocol domain-auth migrate</a></div>
+      <div class="Body"><a name="441720">For details, see the </a><span class="book_title">Riverbed Command-Line Interface Reference Manual</span>.</div>
+      <li class="Bullet"><a name="287346">RiOS v6.1 and later supports constrained delegation for users that are in domains trusted by the </a>server's domain. </li>
+      <li class="Bullet"><a name="407354">RiOS v6.1 and later supports Windows 7 clients, Windows 2008 R2 servers, and Windows 2008 R2 </a>domains (in both native and mixed-mode environments). If you are upgrading from RiOS v6.1 to v6.5 or later, you might already have a delegate user and be joined to a domain. If so, enabling SMB2 signing using NTLM will work when enabled with no additional configuration.</li>
+      <li class="Bullet"><a name="407424">In RiOS v6.0 and later, transparent authentication replaces the delegation trust authentication for SMB </a>signing, eliminating the need to set up delegate users. However, in RiOS v6.5 and earlier, any Windows 7 clients requiring SMB signing or encrypted MAPI optimization must use delegation trust authentication. Windows 7 clients using Kerberos authentication are supported through the RiOS Kerberos authentication feature in RiOS v7.0 and later. Any Windows 7 clients using NTLM can be optimized either through delegation trust authentication, or if the Steelhead appliance is joined as a BDC or RODC, through transparent mode authentication. </li>
+      <div class="Body"><a name="416665">The following procedures are </a><span style="font-style: italic">required</span> before enabling RiOS SMB1 signing, SMB2 signing, and Encrypted MAPI for Windows 7 clients with RiOS v6.1. Windows 7 clients with RiOS v7.0 and later can use Kerberos authentication for maximum security. Kerberos authentication does not require delegation mode configuration, but you must configure both NTLM authentication (either transparent mode or delegation mode) along with Kerberos authentication (if desired). See <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#409363', '');" title="Windows Domain Authentication">Configuring Replication Users (Kerberos)</a></span>.</div>
+      <div class="Heading2"><a name="298902">Delegation </a></div>
+      <div class="Body"><a name="354375">Delegation mode in RiOS v5.5 or later requires that you manually grant the user access to delegate. A </a>delegate user is required in each of the domains where a server is going to be optimized.</div>
+      <div class="HeadingProcedure"><a name="299696"> To set up the domain controller </a></div>
+      <li class="Bullet"><a name="299691">In Windows, create a user in the domain controller responsible for the domain of which the CIFS or </a>MAPI server is a member. Choose Active Directory Users and Computers &gt; Domain Name &gt; Users and create the user (for example, with the name <span style="font-style: italic">delegate_user</span>). Alternatively, you can select an existing user.</li>
+      <div class="Indent1"><a name="315063">The next step is to create a Service Principal Name for the delegate user.</a></div>
+      <div class="HeadingProcedure"><a name="314997">To create the Service Principal Name (SPN)</a></div>
+      <li class="Bullet"><a name="506439">In Windows, create an SPN for the user using the setspn.exe command-line tool. The Windows Server </a>2003 SP1 Support Tools product CD includes this tool or you can download it from the Microsoft Download Center. With Windows Server 2008 or later, the setspn.exe tool is installed by default. The SPN:</li>
+      <li class="BulletSubBullet2"><a name="506440">must be unique because the DC assigns the Kerberos ticket for it. </a></li>
+      <li class="BulletSubBullet2"><a name="506441">cannot be used by another service. </a></li>
+      <li class="BulletSubBullet2"><a name="506442">cannot be cifs/&lt;hostname of domain controller&gt;, or mapi/&lt;hostname of domain controller&gt;, </a>which are used by the CIFS and MAPI services.</li>
+      <div class="Indent1"><a name="506443">To access the setspn.exe tool, open a command window on the domain controller. Then enter the </a>command to add an SPN for the delegate user: for example </div>
+      <div class="CodeIndent1"><a name="506444"> c:\&gt; setspn.exe -A cifs/delegate delegate_user</a></div>
+      <div class="Indent1"><a name="506445">where</a></div>
+      <div class="CodeIndent1"><a name="506446"> -A</a></div>
+      <div class="Indent1"><a name="506447">adds the specified SPN to the specified account </a></div>
+      <div class="CodeIndent1"><a name="506448">cifs/delegate </a></div>
+      <div class="Indent1"><a name="506449">is the name of the SPN, and</a></div>
+      <div class="CodeIndent1"><a name="506450">delegate_user </a></div>
+      <div class="Indent1"><a name="506451">is the name of the delegate user account.</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="506452">For details on SPN, go to</a><br /><a href="http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx" target="external_window"> </a><a href="http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx" target="external_window">http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx</a></div>
+      <div class="Body"><a name="284439">The next step is to grant the user access to delegate for the CIFS or MAPI service in Windows. You must </a>perform the following procedure for every server on which you want to enable RiOS SMB signing or Encrypted MAPI. </div>
+      <div class="HeadingProcedure"><a name="284443">To grant the user access to delegate</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="284444">Open Active Directory Users and Computers, and select the Delegate User &gt; Properties &gt; Delegation </a>tab. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="284445">If the Delegation tab does not appear, raise the Windows domain functionality to the Windows 2003 level or </a>higher and create a Service Principal Name for the delegate user.</div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284446">Select Trust this user for delegation to specified services only and Use any authentication protocol.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284451">Click </a><span style="font-weight: bold">Add</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284456">Click Users or Computers.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284457">In the Select Users or Computers dialog box, enter the CIFS or MAPI server as the local hostname and </a>click <span style="font-weight: bold">OK</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284462">In the Add Services dialog box, select either the CIFS or exchangeMDB service (MAPI) type for </a>delegation and click <span style="font-weight: bold">OK</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="284470">After you have performed steps 1 through 6 for every server on which you want to enable RiOS SMB </a>signing or Encrypted MAPI, the next step is to add delegate users to the server-side Steelhead appliance. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="422685">For automatic delegation mode, you do not need to perform steps 1 through 6 for all servers but you must still </a>configure one CIFS or exchangeMDB service, as this is required by the Active Directory interface. Also continue with the Steelhead delegate user configuration steps that follow.</div>
+      <div class="HeadingProcedure"><a name="284477">To add NTLM delegate users on the Steelhead appliance</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="284481">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; Windows Domain Auth to </a>display the Windows Domain Auth page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284486">Under NTLM Users with Delegation Rights, complete the configuration as described in the following </a>table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="506274">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="506276">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506278">Add a New User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506280">Displays the controls to add a user with trusted delegation rights to a domain. </a></div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="506281">You can only add one delegate user per domain. A delegate user is required in </a>each of the domains where a server is going to be optimized.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506283">Active Directory </a>Domain Name</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506285">Specify the delegation domain in which you want to make the delegate user a trusted </a>member, for example</div>
+            <div class="Code"><a name="506286">SIGNING.TEST</a></div>
+            <div class="Code"><a name="506287">&nbsp;</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="506288">You cannot specify a single-label domain name (a name without anything after the </a>dot), as in riverbed instead of riverbed.com.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506290">Username</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506292">Specify the delegate user name. The maximum length is 20 characters. The username </a>cannot contain any of the following characters:</div>
+            <div class="CellBody"><a name="506293"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="506294">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506296">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506298">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506300">Password Confirm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506302">Confirm the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506304">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506306">Adds the user.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284523">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="325355">To set up manual delegation (specifying each server allowed to delegate), continue to the next procedure. </a></div>
+      <div class="Body"><a name="325373">To set up auto-delegation (automatic server detection), see </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#379164', '');" title="Windows Domain Authentication">Auto-Delegation Mode</a></span>. </div>
+      <div class="HeadingProcedure"><a name="284969">To specify manual delegation mode and allowed servers using NTLM</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="284641">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; Windows Domain Auth to </a>display the Windows Domain Auth page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284704">Under NTLM, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="506313">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="506315">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506317">Delegation Mode: </a>Manual</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506319">Select to enable transparent authentication using NTLM and provide more control to </a>specify the exact servers to perform optimization for. When you select this mode, you must specify each server on which to delegate and sign for each domain using the Delegate-Only and Delegate-All-Except controls. </div>
+            <div class="CellBody"><a name="506323">This is the default setting in RiOS v6.0 and later. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506325">Delegation Mode: Auto </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506327">Select to enable delegate user authentication and automatically discover the servers on </a>which to delegate and sign. This eliminates the need to set up the servers on which to delegate and sign for each domain. This mode requires additional configuration. For details, see Auto-Delegation mode.</div>
+            <div class="CellBody"><a name="506328">A delegate user is required in each of the domains where a server is going to be </a>optimized.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506330">Allow delegated </a>authentication to these servers (Delegate-Only)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506332">Click to intercept the connections destined for the servers in this list. By default, this </a>setting is enabled. Specify the file server IP addresses for SMB signed or MAPI encrypted traffic in the text box, separated by commas. </div>
+            <div class="CellTip">
+              <span class="Bold">Tip: </span><a name="506333">You can switch between the Delegate-Only and Delegate-All-Except controls without </a>losing the list of IP addresses for the control. Only one list is active at a time.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506335">Allow delegated </a>authentication to all servers except the following (Delegate-All-Except)</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody" style="margin-bottom: 5.5pt"><a name="506337">Click to intercept all of the connections except those destined for the servers in this list. </a>Specify the file server IP addresses that do <span style="font-style: italic">not</span> require SMB signing or MAPI encryption in the text box, separated by commas. By default, this setting is disabled. Only the file servers that do <span style="font-style: italic">not</span> appear in the list are signed or encrypted. </div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="506338">You must register any servers not on this list with the domain controller or be using </a>Auto-Delegation Mode.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284682">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284524">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="284895">If you change the delegation mode, you must restart the optimization service. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="301761">A delegate user with access to the CIFS and exchangeMDB (MAPI) service does not have log on privileges.</a></div>
+      <div class="Heading2"><a name="379164">Auto-Delegation Mode </a></div>
+      <div class="Body"><a name="301921">Delegation mode in RiOS v6.1 and later automatically updates the delegate user in Active Directory with </a>delegation rights to servers. The service updates the user in real-time, eliminating the need to grant the user access to delegate on every server. Auto-delegation mode also updates the server IP address if it changes. </div>
+      <div class="Body"><a name="324878">This section describes how to grant special privileges to the delegate user so they have automatic delegation </a>rights to servers. The first step is to create a Delegate User with a Service Principal Name (SPN). The procedure to create a delegate user with an SPN is the same for both Windows DC R2 2003 and Windows DC R2 2008. Next, you must grant the delegate user the right to delegate on the domain controller. Because the procedures to grant the delegate user rights on the DC is different for Windows DC R2 2003 and Windows DC R2 2008, the procedures to do so are separate. Next, you must grant the user access to delegate for the CIFS or MAPI service in Windows for at least one server.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="301981">A delegate user that is an Administrator already has the correct delegation rights for auto-delegation mode. </a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="354524">A delegate user is required in each of the domains where a server is going to be optimized.</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="323143">If you update the password for the delegate user in Active Directory, you must also update the account </a>information on the Steelhead appliance. To do this, delete the old account and add a new one with the updated password.</div>
+      <div class="HeadingProcedure"><a name="315081">To create a delegate user with an SPN</a></div>
+      <li class="Bullet"><a name="506460">In Windows, create an SPN for the user using the setspn.exe command-line tool. The Windows Server </a>2003 SP1 Support Tools product CD includes this tool or you can download it from the Microsoft Download Center. With Windows Server 2008 or later, the setspn.exe tool is installed by default. The SPN:</li>
+      <li class="BulletSubBullet2"><a name="506461">must be unique because the DC assigns the Kerberos ticket for it. </a></li>
+      <li class="BulletSubBullet2"><a name="506462">cannot be used by another service. </a></li>
+      <li class="BulletSubBullet2"><a name="506463">cannot be cifs/&lt;hostname of domain controller&gt;, or mapi/&lt;hostname of domain controller&gt;, </a>which are used by the CIFS and MAPI services.</li>
+      <div class="Indent1"><a name="506464">To access the setspn.exe tool, open a command window on the domain controller. Then enter the </a>command to add an SPN for the delegate user: for example </div>
+      <div class="CodeIndent1"><a name="506465"> c:\&gt; setspn.exe -A cifs/delegate delegate_user</a></div>
+      <div class="Indent1"><a name="506466">where</a></div>
+      <div class="CodeIndent1"><a name="506467"> -A</a></div>
+      <div class="Indent1"><a name="506468">adds the specified SPN to the specified account </a></div>
+      <div class="CodeIndent1"><a name="506469">cifs/delegate </a></div>
+      <div class="Indent1"><a name="506470">is the name of the SPN, and</a></div>
+      <div class="CodeIndent1"><a name="506471">delegate_user </a></div>
+      <div class="Indent1"><a name="506472">is the name of the delegate user account.</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="506473">For details on SPN, go to</a><br /><a href="http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx" target="external_window"> </a><a href="http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx" target="external_window">http://msdn.microsoft.com/en-us/library/ms677949%28VS.85%29.aspx</a></div>
+      <div class="Body"><a name="460067"><br /></a></div>
+      <div class="HeadingProcedure"><a name="422901">To grant the delegate user rights in the Controlling Security Group Policy Object (GPO) for Windows </a>DC R2 2008</div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="323775">Choose Start &gt; Administrative Tools &gt; Group Policy Management to display the Group Policy </a>Management viewer.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323777">Locate the Domain Controller Security Policy and choose Edit to display the Group Policy Management </a>editor.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323783">Choose Computer Configuration &gt; Policies &gt; Windows Settings &gt; Security Settings &gt; Local Policies &gt; </a>User Rights Assignment. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323788">In the right pane, Under Policy, right-click Enable computer and user accounts to be trusted for </a>delegation policy. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323789">Click </a><span class="Bold">Add</span> to display the Add User or Group dialog box.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323794">Specify the delegate user name and click </a><span style="font-weight: bold">OK</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323795">Click </a><span style="font-weight: bold">OK</span> to close the Group Policy Management editor. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="324987">Now that the delegate user has rights in the Windows 2008 GPO, you must grant the delegate user more </a>privileges to use auto-delegation mode. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#323810', '');" title="Windows Domain Authentication">To grant the delegate user rights to modify the msDS-AllowedToDelegateTo Active Directory attribute on itself</a></span>.</div>
+      <div class="HeadingProcedure"><a name="324988">To grant the delegate user rights in the Controlling Security Group Policy Object (GPO) in Windows </a>2003</div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="323797">Choose Start &gt; Administrative Tools &gt; Domain Controller Security Policy.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="323798">The GPO viewer appears.</a></div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323799">Choose Security Settings &gt; Local Policies &gt; User Rights Assignment. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323800">Right-click </a><span class="Bold" style="font-weight: normal">Enable computer and user accounts to be trusted for delegation policy</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323805">Click </a><span class="Bold">Properties</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323806">Specify the delegate user name.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323807">Click </a><span style="font-weight: bold">OK</span> to add the user name.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323808">Close the Group Policy Management editor.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323809">Click </a><span style="font-weight: bold">OK</span> to close the Group Policy Management viewer.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="325054">Now that the delegate user has rights in the Windows 2008 GPO, the next step is to grant the user access to </a>delegate for the CIFS or MAPI service in Windows. You must perform the procedure for at least one server on which you want to enable RiOS SMB signing or Encrypted MAPI. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#284443', '');" title="Windows Domain Authentication">To grant the user access to delegate</a></span>.</div>
+      <div class="Body"><a name="422963">After granting the user access to delegate for at least one server, you must grant the delegate user more </a>privileges to use auto-delegation mode. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#323810', '');" title="Windows Domain Authentication">To grant the delegate user rights to modify the msDS-AllowedToDelegateTo Active Directory attribute on itself</a></span>.</div>
+      <div class="HeadingProcedure"><a name="323810">To grant the delegate user rights to modify the msDS-AllowedToDelegateTo Active Directory </a>attribute on itself </div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="323811">Open the ADSI Edit utility</a>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323812">Choose Start &gt; Run, and open adsiedit.msc.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323813">Select Default naming context &gt; </a><span class="Emphasis">Domain DN</span> &gt; CN=Users &gt; CN=&lt;Delegate User&gt;. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323814">Right-click CN=&lt;Delegate User</a><span style="font-style: italic">&gt; </span>and select Properties. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323815">Select the Security tab, select Advanced, then click </a><span class="Bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323816">Specify the delegate user name and click </a><span class="Bold">OK</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323817">Select the Properties tab in the Permission Entry dialog box. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323818">Select the Allow check box next to the following: </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <li class="BulletSubBullet2"><a name="323819">Read msDS-AllowedToDelegateTo </a></li>
+      <li class="BulletSubBullet2"><a name="323820">Write msDS-AllowedToDelegateTo </a></li>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">9.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323827">Click </a><span style="font-weight: bold">OK</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">10.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="325164">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; Windows Domain Auth to </a>display the Windows Domain Auth page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">11.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="325165">Under NTLM, select Auto-Delegation Mode.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">12.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323833">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">13.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323834">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">14.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="323835">Click </a><span style="font-weight: bold">Restart</span> to restart the optimization service. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="324126">Troubleshooting Delegate Users</a></div>
+      <div class="Body"><a name="284528">This section provides information on troubleshooting the delegate user set up, if necessary.</a></div>
+      <li class="Bullet"><a name="284529">When the CIFS or exchangeMDB service (MAPI) cannot obtain a delegate user&#8217;s credentials, the </a>following message appears: </li>
+      <div class="CodeIndent1"><span style="font-family: &quot;Courier New&quot;"><a name="284530">kinit: krb5_get_init_creds: Clients credentials have been revoked</a></span> </div>
+      <div class="Indent1"><a name="284531">This message indicates that Login Denied is set for the delegate user for the entire day. To verify when </a>the delegate user has permission to log in, select the Account tab in the Delegate User Properties dialog box and click Logon Hours.</div>
+      <li class="Bullet"><a name="298780">When the CIFS or exchangeMDB service cannot obtain permissions to access certain required user </a>account attributes, the following message appears: </li>
+      <div class="CodeIndent1"><span class="CODE"><a name="298801">kgetcred: krb5_get_creds: Client (</a></span><span class="Hyperlink">delegate@SIGNING.TEST</span><span class="CODE">) unknown</span><span style="font-family: &quot;Times New Roman&quot;; font-size: 12.0pt"> </span></div>
+      <div class="Indent1"><a name="298808">Add the delegate user to the Windows Authorization Access group. For details, see</a></div>
+      <div class="Indent1"><span class="Hyperlink" style="font-family: &quot;Microsoft Sans Serif&quot;; font-size: 10.0pt"><a href="http://support.microsoft.com/kb/331951" target="external_window" name="298839">http://support.microsoft.com/kb/331951</a></span>  </div>
+      <li class="Bullet"><a name="284532">For details on constrained delegation, see</a><br /><br /><span class="Hyperlink" style="font-family: &quot;Microsoft Sans Serif&quot;; font-size: 10.0pt"><a href="http://technet.microsoft.com/en-us/library/cc739587(WS.10).aspx" target="external_window">http://technet.microsoft.com/en-us/library/cc739587(WS.10).aspx</a></span></li>
+      <div class="Heading2"><a name="409363">Configuring Replication Users (Kerberos)</a></div>
+      <div class="Body"><a name="409367">Kerberos end-to-end authentication in RiOS v7.0 and later relies on Active Directory replication to obtain </a>machine credentials for any servers that require secure protocol optimization. The RiOS replication mechanism requires a domain user with AD replication privileges, and involves the same AD protocols used by Windows domain controllers. The following procedures explain how to configure replication to use Kerberos authentication for the following features:</div>
+      <li class="Bullet"><a name="409368">SMB signing</a></li>
+      <li class="Bullet"><a name="409369">SMB2 signing</a></li>
+      <li class="Bullet"><a name="409370">Encrypted MAPI and encrypted Outlook Anywhere</a></li>
+      <li class="Bullet"><a name="409371">HTTP or HTTP-based traffic</a></li>
+      <div class="HeadingProcedure"><a name="409375">To add Kerberos replication users on the Steelhead appliance</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="409379">On the server-side Steelhead appliance, choose Configure &gt; Optimization &gt; Windows Domain Auth to </a>display the Windows Domain Auth page.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="409392">RiOS v7.0 and later stores authentication credentials for delegate and replication users in the secure vault. </a>To unlock the secure vault, choose Configure &gt; Security &gt; Secure Vault and click <span style="font-weight: bold">Unlock Secure Vault</span>. </div>
+      <div class="Body"><a name="441627">To migrate previously configured authentication credentials to the secure vault after upgrading to RiOS </a>v7.0 or later from v6.5.x or earlier, enter the following CLI command at the system prompt:</div>
+      <div class="Code"><a name="441636">protocol domain-auth migrate</a></div>
+      <div class="Body"><a name="441602">For details, see the </a><span class="book_title">Riverbed Command-Line Interface Reference Manual</span>.</div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409473">Under Kerberos Replication Users, complete the configuration as described in the following table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 469.12608pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 105.90696pt">
+            <div class="CellHeading"><a name="506481">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 363.21912pt">
+            <div class="CellHeading"><a name="506483">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506485">Add a New User</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506487">Displays the controls to add a user with replication privileges to a domain. </a></div>
+            <div class="CellBody"><a name="506488">You can add one replication user per forest. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506490">Active Directory </a>Domain Name</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506492">Specify the AD domain in which you want to make the replication user a trusted </a>member, for example</div>
+            <div class="Code"><a name="506493">SIGNING.TEST</a></div>
+            <div class="CellBody"><a name="506494">&nbsp;</a></div>
+            <div class="CellBody"><a name="506498">The Steelhead appliance replicates accounts from this domain.</a></div>
+            <div class="CellBody"><a name="506499">To facilitate configuration, you can use wildcards in the domain name; for example, </a>*.nbttech.com.</div>
+            <div class="CellBody"><a name="506500">You cannot specify a single-label domain name (a name without anything after the dot), </a>as in riverbed instead of riverbed.com.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506502">User Domain</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506504">Specify the domain the user belongs to, if different from the Active Directory domain </a>name. Riverbed recommends that you configure the user domain as close to the root as possible.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506509">Username</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506511">Specify the replication user name. The user must have privileges to change the replicate </a>directory. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupWinDomAuth.html#409478', '');" title="Windows Domain Authentication">Granting Replication User Privileges on the DC</a></span>. </div>
+            <div class="CellBody"><a name="506515">The user name can be an administrator. A replicate user that is an administrator already </a>has the necessary replication privileges.</div>
+            <div class="CellBody"><a name="506516">The maximum user name length is 20 characters. The user name cannot contain any of </a>the following characters:</div>
+            <div class="CellBody"><a name="506517"> / \ [ ] : ; | = , + * ? &lt; &gt; @ "</a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="506518">The system translates the user name into uppercase to match the registered server </a>realm information.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506520">Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506522">Specify the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506524">Password Confirm</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506526">Confirm the user account password.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506528">Enable RODC </a>Password Replication Policy Support</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506530">Optionally, allow replication of the server&#8217;s account credentials when a domain controller </a>is configured as a read-only domain controller (RODC). RODC password replication policy (PRP) is only supported in Windows 2008 and later domains.</div>
+            <div class="CellBody"><a name="506533">An RODC serves as a cache for user and computer accounts performing authentication </a>locally. The PRP is essentially a set rules describing which accounts the RODC is allowed to replicate. </div>
+            <div class="CellBody"><a name="506538">When PRP is enabled, the Steelhead only replicates accounts that it is allowed to as </a>determined by PRP settings for the domain. When a user account is not cached locally, the RODC forwards the authentication to a writeable domain controller which does the authentication. If you allow the users password to be cached, then the RODC pulls that through a replication request. After the user is authenticated, the RODC caches the user password and handles any subsequent logins locally.</div>
+            <div class="CellBody"><a name="506539">Enabling an RODC password replication policy (PRP) requires additional configuration </a>in Windows:</div>
+            <li class="CellBullet"><a name="506540">Configure the replication user on the DC.</a></li>
+            <li class="CellBullet"><a name="506541">Check the domain functional level.</a></li>
+            <li class="CellBullet"><a name="506542">Configure PRP support on the DC.</a></li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506544">DC Name</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506546">Specify the Windows 2008 or later DC name, which is required when enabling RODC </a>PRP support.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506548">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="506550">Adds the user.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409475">Click </a><span class="Bold">Apply</span> to apply your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Body"><a name="409476">The following sections describe additional procedures necessary to configure RODC PRP support.</a></div>
+      <div class="Heading2"><a name="409478">Granting Replication User Privileges on the DC</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="409479">In Windows, open Active Directory Users and Computers and choose Start &gt; Administrative Tools &gt; </a>Active Directory Users and Computers.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409480">Select the domain name, right-click, and select Delegate Control.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409481">Select one or more users to whom you want to delegate control, and click </a><span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409482">Click </a><span style="font-weight: bold">Next</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409483">Select Create a custom task to delegate and click </a><span style="font-weight: bold">Next</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409484">Select This folder, existing objects in this folder, and creation of new objects in this folder. Click </a><span style="font-weight: bold">Next</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409485">Select General &gt; Replicate Directory Changes.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">8.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409486">Select Replicate Directory Changes All and click </a><span style="font-weight: bold">Next</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">9.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409487">Click </a><span style="font-weight: bold">Finish</span> if the correct groups and users appear with the permissions Replicating Directory Changes and Replicate Directory Changes All.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading2"><a name="409726">Verifying the Domain Functional Level</a></div>
+      <div class="Body"><a name="409488">Verify that the current domain functional level is Windows 2008. See </a><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsSMB2.html#262604', '');" title="Optimizing SMB2">Verifying the Domain Functional Level and Host Settings</a></span>.</div>
+      <div class="Heading2"><a name="409493">Configuring PRP on the DC</a></div>
+      <div class="Body"><a name="409737">The final step in configuring replication users is to add users to either the allowed RODC password </a>replication group or the denied RODC password replication group. </div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="409495">Choose Start &gt; Administrative Tools &gt; Active Directory Users and Computers, select the domain name, </a>right-click, and select Users.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409496">Select either the Allowed RODC Password Replication Group or the Denied RODC Password </a>Replication Group, select the members, and click <span style="font-weight: bold">Add</span>. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="409497">Click </a><span style="font-weight: bold">OK</span>.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="284922">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'optimization.05.11.html#330324', '');" title="Configuring CIFS Optimization" name="284926">Configuring CIFS Optimization</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupServiceProtocolsMAPI.html#252789', '');" title="Configuring MAPI Optimization" name="285143">Configuring MAPI Optimization</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupAdvNet_inboundQos.html#396241', '');" title="Configuring Inbound QoS" name="284930">Creating Inbound QoS Classes</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'reportConnections.html#296976', '');" title="Viewing Current Connections" name="284934">Viewing Current Connections</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

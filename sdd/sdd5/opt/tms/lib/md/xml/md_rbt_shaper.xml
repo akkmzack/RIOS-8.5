@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2011 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--                                                                        -->
+<!--   Module Name: rbt_shaper                                              -->
+<!--   Module Root: /rbt/qos/shaper                                         -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_shaper.c         -->
+
+<node-list module="rbt_shaper">
+    <!-- State nodes for HFSC configuration -->
+    <state>
+        <name>/rbt/hfsc/state/global/interface/*/burst_size</name>
+        <description>QoS burst size</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_burst_size</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/interface/*/burst_size</name>
+        <description>QoS burst size</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_burst_size</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/global/rrtcp_exists</name>
+        <description>There is at least one rrtcp QoS class</description>
+        <value type="bool"/>
+        <get-func>mrs_get_rrtcp_exists</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/qos/state/outbound/qos_wan_bw_err</name>
+        <description>Outbound QoS WAN BW Configuration Status</description>
+        <value type="bool"/>
+        <get-func>mrs_get_ob_qos_wan_bw_status</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/qos/state/outbound/qos_wan_bw_err_verbose</name>
+        <description>Outbound QoS WAN BW Configuration Status (Verbose)</description>
+        <value type="string"/>
+        <get-func>mrs_get_ob_qos_wan_bw_status_verbose</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/qos/state/inbound/qos_wan_bw_err</name>
+        <description>Inbound QoS WAN BW Configuration Status</description>
+        <value type="bool"/>
+        <get-func>mrs_get_inb_qos_wan_bw_status</get-func>
+    </state>
+
+    <state>
+        <name>/rbt/qos/state/inbound/qos_wan_bw_err_verbose</name>
+        <description>Inbound QoS WAN BW Configuration Status (Verbose)</description>
+        <value type="string"/>
+        <get-func>mrs_get_inb_qos_wan_bw_status_verbose</get-func>
+    </state>
+
+    <!-- Real time Service Curve -->
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/rt/d0</name>
+        <description>QoS d0</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_d0</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/rt/d0</name>
+        <description>QoS d0</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_d0</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/rt/dsec</name>
+        <description>QoS dsec</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_dsec</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/rt/dsec</name>
+        <description>QoS dsec</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_dsec</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/rt/m1</name>
+        <description>QoS m1 rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m1</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/rt/m1</name>
+        <description>QoS m1 rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m1</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/rt/m1_convex</name>
+        <description>QoS m1 rate without convex curve adjustment</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m1</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/rt/m1_convex</name>
+        <description>QoS m1 rate without convex curve adjustment</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m1</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/rt/m2</name>
+        <description>QoS m2 rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m2</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/rt/m2</name>
+        <description>QoS m2 rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_m2</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <!-- Link sharing service curve -->
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/ls/d0</name>
+        <description>QoS d0</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_d0</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/ls/d0</name>
+        <description>QoS d0</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_d0</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/ls/dsec</name>
+        <description>QoS dsec</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_dsec</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/ls/dsec</name>
+        <description>QoS dsec</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_dsec</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/ls/m1</name>
+        <description>QoS link sharing m1</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_ls_rate</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/ls/m1</name>
+        <description>QoS link sharing m1</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_ls_rate</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/ls/m2</name>
+        <description>QoS link sharing m2</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_ls_rate</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/ls/m2</name>
+        <description>QoS link sharing m2</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_class_ls_rate</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <!-- Upper limit service curve -->
+    <state>
+        <name>/rbt/hfsc/state/class/*/params/interface/*/sc/ul/rate</name>
+        <description>QoS upper limit rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_ul</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/*/interface/*/sc/ul/rate</name>
+        <description>QoS upper limit rate</description>
+        <value type="float32"/>
+        <get-func>mrs_get_class_ul</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <!-- M2 summation cache state -->
+     <state-wildcard>
+        <name>/rbt/hfsc/state/class/summation/cache/*</name>
+        <description>QoS class summation cache</description>
+        <value type="string"/>
+        <role-primitive permissions="read-only">/role_primitive/system_setup/advanced_networking/qos/classification</role-primitive>
+        <get-func>mrs_get_iterate_node</get-func>
+        <iterate-func>mrs_iterate_summation_cache_nodes</iterate-func>
+        <iterate-func-arg>outbound</iterate-func-arg>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/hfsc/state/class/summation/cache/*/*</name>
+        <description>QoS class summation priorities</description>
+        <value type="string"/>
+        <get-func>mrs_get_iterate_node</get-func>
+        <iterate-func>mrs_iterate_priority_nodes</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/hfsc/state/class/summation/cache/*/*/m2</name>
+        <description>QoS class summation value</description>
+        <value type="float32"/>
+        <get-func>mrs_get_summation_cache_value</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/hfsc/state/class/summation/cache/*/*/num_classes</name>
+        <description>QoS number of child classes for each priority</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_summation_cache_value</get-func>
+        <get-func-arg>outbound</get-func-arg>
+    </state>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/class/summation/cache/*</name>
+        <description>QoS class summation cache</description>
+        <value type="string"/>
+        <role-primitive permissions="read-only">/role_primitive/system_setup/advanced_networking/qos/classification</role-primitive>
+        <get-func>mrs_get_iterate_node</get-func>
+        <iterate-func>mrs_iterate_summation_cache_nodes</iterate-func>
+        <iterate-func-arg>inbound</iterate-func-arg>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/class/summation/cache/*/*</name>
+        <description>QoS class summation priorities</description>
+        <value type="string"/>
+        <get-func>mrs_get_iterate_node</get-func>
+        <iterate-func>mrs_iterate_priority_nodes</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/summation/cache/*/*/m2</name>
+        <description>QoS class summation value</description>
+        <value type="float32"/>
+        <get-func>mrs_get_summation_cache_value</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <state>
+        <name>/rbt/qos/inbound/state/class/summation/cache/*/*/num_classes</name>
+        <description>QoS number of child classes for each priority</description>
+        <value type="uint32"/>
+        <get-func>mrs_get_summation_cache_value</get-func>
+        <get-func-arg>inbound</get-func-arg>
+    </state>
+
+    <!-- Actions -->
+    <action>
+        <name>/rbt/qos/shaper/disable</name>
+        <description>Update HFSC settings</description>
+        <action-func>mrs_action_hfsc_disable</action-func>
+        <parameter type="string">iface</parameter>
+        <parameter type="string">direction</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/shaper/enable</name>
+        <description>Update HFSC settings</description>
+        <action-func>mrs_action_hfsc_enable</action-func>
+        <parameter type="string">type</parameter>
+        <parameter type="string">direction</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/shaper/update</name>
+        <description>Update HFSC settings</description>
+        <action-func>mrs_action_update_hfsc_settings</action-func>
+        <parameter type="string">type</parameter>
+        <parameter type="string">direction</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/shaper/po/update</name>
+        <description>Update HFSC Packet Order Queue settings</description>
+        <action-func>mrs_action_update_hfsc_po_settings</action-func>
+        <parameter type="string">type</parameter>
+        <parameter type="string">iface</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/shaper/qos_marking_changed</name>
+	<description>Enable/Disable marking</description>
+	<action-func>mrs_action_enable_disable_marking</action-func>
+	<parameter type="string">iface</parameter>
+	<parameter type="bool">enabled</parameter>
+    </action>
+
+</node-list>

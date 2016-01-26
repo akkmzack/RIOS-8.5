@@ -1,0 +1,188 @@
+<%
+## Copyright 2008, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## reportRSPVNIIO.psp
+## This is the template for the RSP VNI IO report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="sys, time, iph:iph, FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet, GfxUtils, RVBDUtils, rsp" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'StatsAction': FormUtils.NodeEntry(
+            path='/stats/actions/generate_report/rsp',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    return GfxUtils.periodEntries(self.session(), self.request().fields())
+</psp:method>
+
+<%
+
+session = self.session()
+mgmt = session.value('mgmt')
+fields = self.request().fields()
+self.relatedPages = ('setupRSPPackages',)
+rspPublicName = rsp.publicName()
+
+# Options
+vniField = fields.get('vni', session.value('vni', 'none'))
+dataField = fields.get('data', session.value('data', 'bytes'))
+refreshField = fields.get('refresh', session.value('refresh', '0'))
+dialogEntries = self.dialogEntries()
+lbField = dialogEntries['lb'].value
+ubField = dialogEntries['ub'].value
+perField = dialogEntries['per'].value
+
+# When we switch to stretchy reports, initialize imgsrc to bgfix.gif.
+# imgsrc = '/images/bgfix.gif'
+# width field should match css for .graphDiv img width
+imgsrc = '/mgmt/gfx?p=rspVNIIO&amp;w=640&amp;h=220&amp;ub=%s&amp;lb=%s&amp;per=%s&amp;vni=%s&amp;data=%s&amp;req=rspvniio&amp;ct=' % (
+ubField.replace(' ', '+'), lbField.replace(' ', '+'), perField,
+vniField, dataField)
+imgsrc = FormUtils.escapeForJsString(imgsrc)
+ajaxurl = '/mgmt/xmldata?p=graphTableXML&req=rspvniio&ct='
+
+vniOptions = [('none', 'Select VNI...')]
+vnis = mgmt.getChildren('/rbt/rsp2/state/vni/opt')
+for vni in sorted(vnis, FormUtils.alphanumericCompare): {
+  vni_id = mgmt.get('/rbt/rsp2/state/vni/opt/%s/stats_id' % (vni))
+  vniOptions.append((vni_id, vni))
+}
+
+refreshoptions = (('0',  'Off'),
+                  ('10000', '10 Seconds'),
+                  ('30000', '30 Seconds'),
+                  ('60000', '60 Seconds'))
+
+dataOptions = (('bytes',   'Bytes'),
+               ('packets', 'Packets'))
+%>
+<script type="text/javascript">
+<!--
+var updateDate = new Date();
+var ct = updateDate.getTime();
+<%
+if vniField != 'none': {
+%>
+onloadScript += "fetchReport('rspVNIIOGraphImg', '<%= imgsrc %>' + ct, 'rspVNIIOOptimizationTable', '<%= ajaxurl %>' + ct); ";
+<%
+}
+%>
+nonConfigForms.push('rspVNIIOForm');
+var pertoboundsJS = <%= GfxUtils.timeRanges(dialogEntries['now']) %>;
+
+<%
+if refreshField != '0' and vniField != 'none': {
+%>
+function updateReport() {
+    var updateDate = new Date();
+    var ct = updateDate.getTime();
+    fetchReport('rspVNIIOGraphImg', '<%= imgsrc %>' + ct, 'rspVNIIOOptimizationTable', '<%= ajaxurl %>' + ct);
+}
+window.setInterval("updateReport();", <%= int(refreshField) %>);
+<%
+}
+%>
+//-->
+</script>
+
+<% self.beginPagelet() %>
+
+<div id="rspVNIIOGraphDiv" class="graphDiv">
+<%
+if vniField != 'none': {
+%>
+  <img id="rspVNIIOGraphImg" class="graphImg"
+    alt="<%= rspPublicName %> VNI IO Graph" />
+<%
+} else: {
+%>
+<fieldset>
+  <div class="midLevel">
+    Please select a VNI below to view this report.
+  </div>
+</fieldset>
+<%
+}
+%>
+</div>
+
+<form id="rspVNIIOForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+  <input type="hidden" name="_action_" value="report"/>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th>VNI:</th>
+          <th>Data:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <td>
+            <select name="vni"
+              onchange="(document.getElementById('rspVNIIOForm').submit());" >
+              <%= FormUtils.selectOptions(vniOptions, vniField) %>
+            </select>
+          </td>
+          <td>
+            <select name="data"
+              onchange="(document.getElementById('rspVNIIOForm').submit());" >
+              <%= FormUtils.selectOptions(dataOptions, dataField) %>
+            </select>
+          </td>
+          <td>
+            <select name="refresh"
+              onchange="(document.getElementById('rspVNIIOForm').submit());" >
+              <%= FormUtils.selectOptions(refreshoptions, refreshField) %>
+            </select>
+          </td>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</form>
+<%
+rspVNIIOOptimizationTable = ajaxentrytable.AjaxEntryTable('rspVNIIOOptimization',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about %s VNI IO.' % rspPublicName)
+%>
+
+<%
+if vniField != 'none': {
+%>
+
+<%= rspVNIIOOptimizationTable.html(self, cssClass="midLevel") %>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>
+

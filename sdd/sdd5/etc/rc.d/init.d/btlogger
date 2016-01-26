@@ -1,0 +1,62 @@
+#!/bin/bash
+#
+# btlogger        Starts btlogger.sh
+#
+#
+# chkconfig: 2345 60 40
+# description: Log the backtrace of sport repeatedly.
+### BEGIN INIT INFO
+# Provides: $btlogger
+### END INIT INFO
+
+# Source function library.
+. /etc/init.d/functions
+
+[ -f /sbin/btlogger.sh ] || exit 0
+
+RETVAL=0
+
+umask 077
+
+start() {
+ 	echo -n $"Starting btlogger: "
+	btlogger.sh >/dev/null 2>&1 < /dev/null &
+	RETVAL=$?
+	echo
+	return $RETVAL
+}	
+stop() {
+	echo -n $"Shutting down btlogger: "
+	killproc btlogger.sh
+	echo
+	RETVAL=$?
+	return $RETVAL
+}
+rhstatus() {
+	status btlogger.sh
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  status)
+  	rhstatus
+	;;
+  restart|reload)
+  	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|restart}"
+	exit 1
+esac
+
+exit $?
+

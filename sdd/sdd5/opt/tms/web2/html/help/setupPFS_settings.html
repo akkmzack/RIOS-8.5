@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring PFS</title>
+    <link rel="StyleSheet" href="css/branch-services_cx.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="branch-services_cx.07.01.html#282886">Chapter 5	Configuring Branch Services</a> : Configuring PFS</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="282886">Configuring PFS</a></div>
+      <div class="Body"><a name="282889">You can enable and configure PFS support in the Configure &gt; Branch Services &gt; PFS Settings page. </a></div>
+      <div class="Body"><a name="282893">PFS is an integrated virtual file server that allows you to store copies of files on the Steelhead appliance with </a>Windows file access, creating several options for transmitting data between remote offices and centralized locations with improved performance. Data is configured into file shares and the shares are periodically synchronized transparently in the background, over the optimized connection of the Steelhead appliance. PFS leverages the integrated disk capacity of the Steelhead appliance to store file-based data in a format that allows it to be retrieved by NAS clients.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="282906">Do not configure both RSP and PFS on the same Steelhead appliance. Riverbed does not support this </a>configuration because PFS has no disk boundaries and can overwrite the space allocated to RSP. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="288430">PFS is supported on Steelhead appliance models 150, 250, 520, 550, 1010, 1020, 1050, 1520, 2010, 2011, 2020, 2050, </a>2510, 2511, 3010, 3020, 3030, 3510, 3520, and 5010. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="288437">Steelhead appliance xx20 models do not support RiOS v7.0 and later releases.</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="288441">PFS is not supported on Steelhead appliance CX </a><span style="font-style: italic">xx</span>55 models.</div>
+      <div class="Body"><span style="font-size: 9.0pt"><a name="286722"><img class="Default" src="images/icon_CSH.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" />  <img class="Default" src="images/icon_VSH_3.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" /> </a></span>CSH and<span style="font-size: 9.0pt"> </span>Virtual Steelhead<span style="font-size: 9.0pt"> </span>appliances do not support PFS<span style="font-size: 9.0pt">.</span></div>
+      <div class="Heading2"><a name="286726">When to Use PFS</a></div>
+      <div class="Body"><a name="282929">Before you configure PFS, evaluate whether it is suitable for your network needs. Advantages of using PFS </a>are:</div>
+      <li class="Bullet"><span class="Bold"><a name="282930">LAN access to data residing across the WAN</a></span> - File access performance is improved between central and remote locations. PFS creates an integrated file server, enabling clients to access data directly from the proxy filer on the LAN as opposed to the WAN. In the background, data on the proxy filer is transparently synchronized with data from the origin-file server over the WAN.</li>
+      <li class="Bullet"><span class="Bold"><a name="282931">Continuous access to files in the event of WAN disruption</a></span> - PFS supports disconnected operations. In the event of a network disruption that prevents access over the WAN to the origin-file server, files can still be accessed on the local Steelhead appliance.</li>
+      <li class="Bullet"><span class="Bold"><a name="282935">Simple Branch Infrastructure and Backup Architectures</a></span> - PFS consolidates file servers and local tape backup from the branch office into the data center. PFS reduces the number and the size of backup windows running in complex backup architectures.</li>
+      <li class="Bullet"><span class="Bold"><a name="282936">Automatic Content Distribution</a></span> - PFS automatically distributes new and changed content throughout a network.</li>
+      <div class="Body"><a name="282940">If any of these advantages can benefit your environment, then enabling PFS in the Steelhead appliance is </a>appropriate.</div>
+      <div class="Body"><a name="282941">However, PFS requires preidentification of files and is not appropriate in environments where there is </a>concurrent read-write access to data from multiple sites:</div>
+      <li class="Bullet"><span class="Bold"><a name="282942">Preidentification of PFS files</a></span> - PFS requires that files accessed over the WAN are identified in advance. If the data set accessed by the remote users is larger than the specified capacity of your Steelhead appliance model, or if it cannot be identified in advance, then you must have end-users access the origin-file server directly through the Steelhead appliance without PFS. (This configuration is also known as Global mode.)</li>
+      <li class="Bullet"><span class="Bold"><a name="282949">Concurrent Read-Write Data Access from Multiple Sites</a></span> - In a network environment where users from multiple branch offices update a common set of centralized files and records over the WAN, the Steelhead appliance without PFS is the most appropriate solution because file locking is directed between the client and the server. The Steelhead appliance always consults the origin-file server in response to a client request; it never provides a proxy response or data from its data store without consulting the origin-file server.</li>
+      <div class="Heading2"><a name="282957">PFS Prerequisites and Tips</a></div>
+      <div class="Body"><a name="282958">This section describes prerequisites and tips for using PFS:</a></div>
+      <li class="Bullet"><a name="282962">Before you enable PFS, configure the Steelhead appliance to use NTP to synchronize the time. To use </a>PFS, the Steelhead appliance and domain controller (DC) clocks must be synchronized. For details on setting the date and time in the Steelhead appliance, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupHostSettings.html#203918', '');" title="Modifying General Host Settings">Modifying General Host Settings</a></span>.</li>
+      <li class="Bullet"><a name="282980">The PFS Steelhead appliance must run the same version of the Steelhead appliance software as the </a>server-side Steelhead appliance. </li>
+      <li class="Bullet"><a name="282988">PFS traffic to and from the Steelhead appliance travels through the primary interface. PFS requires that </a>the primary interface is connected to the same switch as the LAN interface. </li>
+      <li class="Bullet"><a name="282989">The PFS share and origin-server share names cannot contain Unicode characters.</a></li>
+      <div class="Heading2"><a name="282991">Upgrading Version 2 PFS Shares</a></div>
+      <div class="Body"><a name="282995">By default, when you configure PFS shares with Steelhead appliance software v3.x, you create Version 3 PFS </a>shares. PFS shares configured with Steelhead appliance software RiOS v2.x are Version 2 shares. Version 2 shares are not upgraded when you upgrade Steelhead appliance software.</div>
+      <div class="Body"><a name="283008">If you have shares created with RiOS v2.x software, you must upgrade them to Version 3 shares in the </a>Management Console. If you upgrade any Version 2 shares, you must upgrade all of them. After you have upgraded shares to Version 3, you must only create Version 3 shares. </div>
+      <div class="Body"><a name="283012">If you do not upgrade your Version 2 shares:</a></div>
+      <li class="Bullet"><a name="283013">you must not create Version 3 shares.</a></li>
+      <li class="Bullet"><a name="283018">you must install and start the RCU on the origin-file server or on a separate Windows host with </a>write&#8209;access to the data PFS uses. The account that starts the RCU must have write permission to the folder on the origin-file server that contains the data PFS uses. You can download the RCU from the Riverbed Support site at https://support.riverbed.com. </li>
+      <div class="Indent1"><a name="283037">In RiOS v3.x or later, you do not need to install the RCU service on the server for synchronization </a>purposes. All RCU functionality has been moved to the Steelhead appliance. </div>
+      <li class="Bullet"><a name="283044">you must configure domain, not workgroup, settings. Domain mode supports Version 2 PFS shares but </a>Workgroup mode does not.</li>
+      <div class="Heading2"><a name="283047">Domain and Local Workgroup Settings</a></div>
+      <div class="Body"><a name="283051">When you configure your PFS Steelhead appliance, set either domain or local workgroup settings. For </a>details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_inboundQos.html#396241', '');" title="Configuring Inbound QoS">Creating Inbound QoS Classes</a></span>.</div>
+      <div class="Heading2"><a name="283056">PFS Share Operating Modes</a></div>
+      <div class="Body"><a name="283060">PFS provides Windows file service in the Steelhead appliance at a remote site. When you configure PFS, you </a>specify an operating mode for each individual file share on the Steelhead appliance. The proxy-file server can export data volumes in Local mode, Broadcast mode, and Stand-Alone mode. After the Steelhead appliance receives the initial copy of the data and ACLs, shares can be made available to local clients. In Broadcast and Local mode only, shares on the Steelhead appliance are periodically synchronized with the origin-file server at intervals you specify, or manually if you choose. During the synchronization process, the Steelhead appliance optimizes this traffic across the WAN.</div>
+      <li class="Bullet"><span class="Bold"><a name="283075">Broadcast Mode</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Use Broadcast mode for environments seeking to broadcast a set of read&#8209;only files to many users at different sites. Broadcast mode quickly transmits a read-only copy of the files from the origin-file server to your remote offices.</li>
+      <li class="Bullet"><span class="Bold"><a name="283078">Local Mode</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Use Local mode for environments that need to efficiently and transparently copy data created at a remote site to a central data center, perhaps where tape archival resources are available to back up the data. Local mode enables read-write access at remote offices to update files on the origin-file server.</li>
+      <li class="Bullet"><span class="Bold"><a name="283081">Stand-Alone Mode</a></span><span class="Bold" style="font-size: 9.0pt; font-weight: normal"> - </span>Use Stand-Alone mode for network environments where it is more effective to maintain a separate copy of files that are accessed locally by the clients at the remote site. The PFS share also creates more storage space.</li>
+      <div class="Indent1"><a name="289400">The PFS share on the Steelhead appliance is a one-time, working copy of data copied from the origin-</a>file server. You can specify a remote path to a directory on the origin-file server, creating a copy at the branch office. Users at the branch office can read from or write to stand-alone shares, but there is no synchronization back to the origin-file server because a stand-alone share is an initial and one-time-only synchronization.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="288382">If you set up a PFS share on a NetApp filer, the filer allows all users access regardless of the permissions set </a>on the NetApp share: for example, if you set &#8220;No Access&#8221; for a user for a share, the NetApp filer does not translate it into the appropriate ACL (Access Control List) entry on the folder. When a PFS share is created from this origin share, the user is allowed access to the share because there is not a deny entry present in the ACL</div>
+      <div class="Heading2"><a name="283091">Lock Files</a></div>
+      <div class="Body"><a name="283092">When you configure a Version 3 Local mode share or any Version 2 share (except a Stand-Alone share in </a>which you do not specify a remote path to a directory on the origin-file server), a text file (._rbt_share_lock. txt) keeps track of which Steelhead appliance owns the share created on the origin-file server. Do not remove this file. If you remove the ._rbt_share_lock. txt<span class="Bold"> </span>file on the origin-file server, PFS does not function properly. (Version 3 Broadcast and Stand-Alone shares do not create this file.) </div>
+      <div class="Body"><a name="283099">For details on PFS and when to enable it, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Body"><a name="283100">Enabling PFS support is </a><span class="Emphasis">optional</span>. </div>
+      <div class="HeadingProcedure"><a name="283105">To enable PFS on the client-side Steelhead appliance</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="283109">For the server-side Steelhead appliance, you need only verify that it is intercepting and optimizing connections. </a>No configuration is required for the server-side Steelhead appliance. </div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="283113">Choose Configure &gt; Branch Services &gt; PFS Settings to display the PFS Settings page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283118">Under Proxy File Service, complete the configuration as described in this table.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.67392pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 141.03936pt">
+            <div class="CellHeading"><a name="283121">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 327.63456pt">
+            <div class="CellHeading"><a name="283123">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283125">Enable/Disable</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283127">Enables or disables PFS to improve performance by deferring current requests </a>or permitting certain operations even if WAN connectivity is disrupted. You must enable PFS before you configure it. After you enable PFS, the page expands to display Domain and Local Workgroup controls. </div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="283131">You must restart the Steelhead appliance each time you enable or disable </a>PFS.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283133">Start</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283135">Starts the PFS service.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283137">Stop</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283139">Appears when PFS is started. Stops the PFS service.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283141">To configure PFS in Local Workgroup mode, select Configure &gt; Networking &gt; Windows Domain.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="283142">Under Domain/Local Workgroup Settings, click </a><span class="Bold">Local Workgroup Settings</span> and complete the configuration as described in <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDomain.html#763467', '');" title="Joining a Windows Domain or Workgroup">Domain and Local Workgroup Settings</a></span>.</div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283146">To configure PFS in domain mode, select Configure &gt; Networking &gt; Windows Domain.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Indent1"><a name="283147">Under Domain/Local Workgroup Settings, click </a><span class="Bold">Domain Settings</span> and complete the configuration as described in <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupPFS_settings.html#283047', '');" title="Configuring PFS">Domain and Local Workgroup Settings</a></span>.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="283153">For troubleshooting errors while joining a Windows domain, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceDomain.html#281967', '');" title="Joining a Windows Domain or Workgroup">Troubleshooting a Domain Join Failure</a></span>.</div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283155">To configure other PFS settings, under Other PFS Settings, complete the configuration as described in </a>this table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.67392pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 141.03936pt">
+            <div class="CellHeading"><a name="283159">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 327.63456pt">
+            <div class="CellHeading"><a name="283161">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283163">Security Signature Settings</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283165">Select one of these options from the drop-down list:</a></div>
+            <li class="CellBullet"><span class="Bold"><a name="283166">Enabled</a></span><span class="Bold" style="font-weight: normal"> - </span>This setting supports any type of security signature setting requested by the client machine.</li>
+            <li class="CellBullet"><span class="Bold"><a name="283167">Disabled</a></span><span class="Bold" style="font-weight: normal"> - </span>This is the default setting. In this setting, PFS does not support clients with security signatures set to Required.</li>
+            <li class="CellBullet"><span class="Bold"><a name="283168">Required</a></span><span class="Bold" style="font-weight: normal"> - I</span>n this setting, PFS supports clients with security signatures set to Enabled or Required.</li>
+            <div class="CellBody"><a name="283171">For details on SMB signing and security signatures, see the </a><span class="book_title">Steelhead Appliance </span><span class="book_title">Installation and Configuration Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283174">Idle Connection Timeout</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283176">Specify the number of minutes after which idle connections are timed-out. If </a>there is no read or write activity on a mapped PFS share on a client machine, then the TCP connection times out according to the value set and the client has to remap the share.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283178">Local Admin Password/</a>Confirm</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="283180">Specify and confirm the local administrator password.</a></div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">6.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283182">Click </a><span style="font-weight: bold">Apply</span> to apply your settings to the running configuration. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">7.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="283183">Click </a><span style="font-weight: bold">Save</span> to save your settings permanently. </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="283184">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupHostSettings.html#203918', '');" title="Modifying General Host Settings" name="287827">Modifying General Host Settings</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupPFS_shares.html#283207', '');" title="Adding PFS Shares" name="286502">Adding PFS Shares</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_inboundQos.html#396241', '');" title="Configuring Inbound QoS" name="286510">Creating Inbound QoS Classes</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

@@ -1,0 +1,553 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc.  All rights reserverd.
+##
+## SRDF page.
+##
+## There is a global enable/disable option for both FCIP and SRDF, as
+## well as a list of ports that FCIP/SRDF optimization applies
+## to. SRDF's default port is 1748, FCIP's default port is 3225.
+##
+## In addition, there are rules for the DIF setting depending on the
+## source and destination IP address of the traffic. These are
+## displayed in the AET.
+##
+## Currently there are two pages for FCIP and SRDF, even though they
+## are identical. This is to allow for any separate changes to be made
+## in the future.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('reportSRDFOverview',) %>
+
+<psp:method name="css">
+    return '''
+/* Default AET widths can be too small for wide tables. */
+#srdfOptRulesTable_main {
+    width: 580px;
+}
+/* Top-justify the symm id and checkbox for easier reading when there are multiple group exceptions */
+#srdfSymmsTable_tableDiv td {
+    vertical-align: top;
+}
+/* Bottom-justify the multi-line dynamic list headers. */
+#srdfSymmsTable_editDiv th,
+#srdfSymmsTable_addDiv th {
+    vertical-align: bottom;
+}
+/* Hints are normally set over a few pixels
+ * because they're to the right of a nodeEntry,
+ * but this hint is above a dynamic list.
+ */
+p.hint {
+    padding-left: 0;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableSRDF': NodeEntry(
+            path='/rbt/sport/srdf/config/global/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SRDF',
+            enableDiv='portsContainer'),
+        'ports': NodeEntry(
+            name='ports',
+            widgetClass='wide2',
+            label='SRDF Ports',
+            validate='uint16_csv'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries" params="mgmt, pathPrefix">
+    srdf_srcIP = \
+        {'widgetClass': 'wide1',
+         'label': 'Source IP',
+         'validate': 'validateStorageProtocolRuleIP'}
+    srdf_dstIP = \
+        {'widgetClass': 'wide1',
+         'label': 'Destination IP',
+         'validate': 'validateStorageProtocolRuleIP'}
+    srdf_dif = \
+        {'widget': 'checkboxLeft',
+         'label': 'Enable DIF',
+         'value': 'true'}
+    srdf_difBlockSize = \
+        {'value': '512',
+         'widgetClass': 'small',
+         'units': 'bytes',
+         'validate': ('intInRange', '[0, 65536]'),
+         'label': 'DIF Data Block Size'}
+    srdf_symm_id = \
+        {'label': 'Symm ID',
+         'widget': 'text',
+         'validate': 'name'}
+    srdf_symm_srcIPs = \
+        {'label': 'Source IPs',
+         'validate': ('ipv4addr_list', '[RBT.Validator.Syntax.DELIMITER_NEWLINE]'),
+         'cols': '50',
+         'widget': 'textarea'}
+    srdf_optRule_num = \
+        {'widgetClass': 'small',
+         'validate': ('intInRange', '[0, 255]'),
+         'label': 'RDF<br/>Group'}
+    srdf_optRule_policy = \
+        {'selectOptions': (('sdr-default', 'SDR-Default'), ('lz-only', 'LZ-Only'), ('none', 'None')),
+         'value': 'sdr-default',
+         'label': 'Data<br/>Reduction<br/>Policy'}
+    srdf_optRule_desc = \
+        {'widgetClass': 'wide3pt5',
+         'label': '<br/>Description'}
+
+    return {
+        'add_srcIP':
+            NodeEntry(name='add_srcIP', **srdf_srcIP),
+        'add_dstIP':
+            NodeEntry(name='add_dstIP', **srdf_dstIP),
+        'add_dif':
+            NodeEntry(name='add_dif', **srdf_dif),
+        'add_difBlockSize':
+            NodeEntry(name='add_difBlockSize', **srdf_difBlockSize),
+
+        'edit_srcIP':
+            NodeEntry(name='edit_srcIP', **srdf_srcIP),
+        'edit_dstIP':
+            NodeEntry(name='edit_dstIP', **srdf_dstIP),
+        'edit_dif':
+            NodeEntry(name='edit_dif', **srdf_dif),
+        'edit_difBlockSize':
+            NodeEntry(name='edit_difBlockSize', **srdf_difBlockSize),
+
+        'add_symm_id':
+            NodeEntry(name='add_symm_id', **srdf_symm_id),
+        'add_symm_srcIPs':
+            NodeEntry(name='add_symm_srcIPs', **srdf_symm_srcIPs),
+
+        'edit_symm_id':
+            NodeEntry(name='edit_symm_id', **srdf_symm_id),
+        'edit_symm_srcIPs':
+            NodeEntry(name='edit_symm_srcIPs', **srdf_symm_srcIPs),
+
+        'add_optRule_num':
+            NodeEntry(name='add_optRule_num', **srdf_optRule_num),
+        'add_optRule_policy':
+            NodeEntry(name='add_optRule_policy', **srdf_optRule_policy),
+        'add_optRule_desc':
+            NodeEntry(name='add_optRule_desc', **srdf_optRule_desc),
+
+        'edit_optRule_num':
+            NodeEntry(name='edit_optRule_num', **srdf_optRule_num),
+        'edit_optRule_policy':
+            NodeEntry(name='edit_optRule_policy', **srdf_optRule_policy),
+        'edit_optRule_desc':
+            NodeEntry(name='edit_optRule_desc', **srdf_optRule_desc),
+        'symmSelect': NodeEntry(name='symmSelect',
+            label='Symmetrix ID',
+            selectOptions=sorted(Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/srdf/symm/config/id'))),
+    }
+</psp:method>
+
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(mgmt, pathPrefix)
+
+ports = Nodes.getWordList(mgmt,
+                          pathPrefix + '/rbt/sport/srdf/config/global/port',
+                          FormUtils.alphanumericCompare)
+nodeEntries['ports'].value = ports
+
+# If there are no symm ids, then show the "cannot add group policy" message.
+if not len(Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/srdf/symm/config/id')): {
+    self.addPageletJavascript(' Y.one("#addGroupHasSymmDiv").addClass("hidden"); ')
+}
+else: {
+    self.addPageletJavascript(' Y.one("#addGroupNoSymmDiv").addClass("hidden"); ')
+}
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>SRDF Settings</legend>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSrdf" />
+    <div class="midLevel">
+      <%= nodeEntries['enableSRDF'].html(self) %>
+      <div id="portsContainer" class="indent">
+        <%= nodeEntries['ports'].html(self, format='inline') %>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+
+# Rules table
+srdfRulesTable = ajaxentrytable.AjaxEntryTable('srdfRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=srdfRules'),
+    titleText='Rules',
+    headerSpec=('', ('Source IP', '', "sortAttrib('srcIP')"),
+                    ('Destination IP', '', "sortAttrib('dstIP')"),
+                    ('DIF Enabled', '', "sortAttrib('difEnabled')"),
+                    ('DIF Data Block Size (bytes)', '', "sortAttrib('difDataBlockSize')")),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRule_', '0.0.0.0,0.0.0.0'),
+ AjaxEntryTable.tdEdit('id', 'srcIP'),
+ AjaxEntryTable.tdAttr('dstIP'),
+ AjaxEntryTable.tdAttr('difEnabled'),
+ AjaxEntryTable.tdAttr('difDataBlockSize')]""",
+    emptyMessage='No rules.',
+    addButtonText='Add a New Rule',
+    addButtonName='addRule',
+    removeButtonText='Remove Selected Rules',
+    removeName='removeRules',
+    editButtonName='editRule')
+
+srdfRulesTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %(srcip)s
+    %(dstip)s
+  </table>
+</div>
+<div class="midLevel">
+  %(dif)s
+  <div class="indent" id="addSrdf_DIFBlockSizeDiv">
+    <table>
+      %(difsize)s
+    </table>
+  </div>
+</div>
+''' % {'srcip':   dialogEntries['add_srcIP'].html(self),
+       'dstip':   dialogEntries['add_dstIP'].html(self),
+       'dif':     dialogEntries['add_dif'].html(self, format='block'),
+       'difsize': dialogEntries['add_difBlockSize'].html(self)}
+
+srdfRulesTable.editDivContent = '''
+<input type="hidden" name="edit_id" value="" />
+<div class="midLevel">
+  <table>
+    %(srcip)s
+    %(dstip)s
+  </table>
+</div>
+<div class="midLevel">
+  %(dif)s
+  <div class="indent" id="editSrdf_DIFBlockSizeDiv">
+    <table>
+      %(difsize)s
+    </table>
+  </div>
+</div>
+''' % {'srcip':   dialogEntries['edit_srcIP'].html(self),
+       'dstip':   dialogEntries['edit_dstIP'].html(self),
+       'dif':     dialogEntries['edit_dif'].html(self, format='block'),
+       'difsize': dialogEntries['edit_difBlockSize'].html(self)}
+
+# Symmetrix IDs table
+srdfSymmsTable = ajaxentrytable.AjaxEntryTable('srdfSymms',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=srdfSymms'),
+    titleText='Symmetrix IDs and Group Override Policies',
+    headerSpec=('', ('ID', '', "sortAttrib('id')"),
+                    ('IP Addresses', ''),
+                    ('Group Policy', ''),
+                    ('Group Description', '')),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedSymmId_'),
+ AjaxEntryTable.tdAttrTreeEdit('id', 'id'),
+ AjaxEntryTable.tdAttr('srcIPs'),
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdBlank()]""",
+    rowESpec="""
+['srdfOptRule',
+ AjaxEntryTable.tdSelectCheckbox('numandsymm', 'selectedOptRule_'),
+ AjaxEntryTable.tdEdit('num','num'),
+ AjaxEntryTable.tdBlank(),
+ AjaxEntryTable.tdAttr('policy_pretty'),
+ AjaxEntryTable.tdAttr('desc')]""",
+    emptyMessage='No Symm IDs.',
+    addButtonText='Add a Symm ID or Group Policy',
+    addButtonName='addSymmOrRule',
+    removeButtonText='Remove Selected Symm IDs and Group Policies',
+    removeName='removeSymmOrRule',
+    editButtonName='editSymmOrRule')
+
+srdfSymmsTable.addDivContent = '''
+<div id="qosTabControl" class="tabControl">
+  <div class="grayBorder midLevel">
+    %(radioTabs)s
+    <div id="addSymmDiv" class="midLevel">
+      <input type="hidden" name="add_symm" />
+      <table>
+        %(symmid)s
+        %(srcips)s
+      </table>
+    </div>
+
+    <div id="addRuleDiv" class="midLevel">
+      <div id="addGroupNoSymmDiv">
+        A Symmetrix ID must be added before a new Group Policy can be added.
+      </div>
+      <div id="addGroupHasSymmDiv">
+        <input type="hidden" name="add_optRule" />
+        <p class="hint">
+           This rule will override the in-path data reduction policy.
+        </p>
+        <table>
+          %(ruleNum)s
+          %(symmSelect)s
+          %(rulePolicy)s
+          %(ruleDesc)s
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+''' % {'radioTabs': FormUtils.radioTabControl(self,
+                              'srdfTabs',
+                              ('symms', 'Add a Symmetrix ID', 'addSymmDiv'),
+                              ('rules', 'Add a Group Policy', 'addRuleDiv')),
+       'symmid': dialogEntries['add_symm_id'].html(self),
+       'srcips': dialogEntries['add_symm_srcIPs'].html(self),
+       'ruleNum': dialogEntries['add_optRule_num'].html(self),
+       'symmSelect': dialogEntries['symmSelect'].html(self), #drop down list of available symm ids
+       'rulePolicy': dialogEntries['add_optRule_policy'].html(self),
+       'ruleDesc': dialogEntries['add_optRule_desc'].html(self)
+}
+
+srdfSymmsTable.editDivContent = '''
+<input type="hidden" name="editSymmOrRule" />
+<input type="hidden" name="edit_symm_id" value="" />
+<div id="editSymmDiv" class="midLevel">
+  <input type="hidden" name="edit_symm" />
+  <table>
+    %(srcips)s
+  </table>
+</div>
+<div id="editRulesDiv" class="midLevel">
+  <input type="hidden" name="edit_optRule" />
+  <input type="hidden" name="prev_ruleNum" value="" />
+  <p class="hint">
+    This rule will override the in-path data reduction policy.
+  </p>
+  <table>
+    %(ruleNum)s
+    %(rulePolicy)s
+    %(ruleDesc)s
+  </table>
+</div>
+''' % {
+       'srcips': dialogEntries['edit_symm_srcIPs'].html(self),
+       'ruleNum': dialogEntries['edit_optRule_num'].html(self),
+       'rulePolicy': dialogEntries['edit_optRule_policy'].html(self),
+       'ruleDesc': dialogEntries['edit_optRule_desc'].html(self)
+      }
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="srdfSymmsForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSrdfSymmId" />
+    <%= srdfSymmsTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="srdfRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsSrdf" />
+    <%= srdfRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+function uint16_csv(val) {
+    var valueList = val.split(',');
+
+    // We do not care if there is extra whitespace, the backend can handle it.
+    for (var i = 0; i < valueList.length; i++) {
+        valueList[i] = valueList[i].trim();
+    }
+
+    if (valueList.length == 0) {
+        throw 'Must contain at least 1 port number.';
+    }
+
+    for (var i = 0; i < valueList.length; i++) {
+        if (!valueList[i].match(/^\d+$/) ||
+                (parseInt(valueList[i], 10) == 0) ||
+                !(parseInt(valueList[i], 10) < (1 << 16))) {
+            throw 'Comma separated integers between 1 and 65535 required.';
+        }
+    }
+}
+
+// Validates against numeric ipv4 addresses or the string "All"
+function validateStorageProtocolRuleIP(val, element) {
+    element = Y.Node.getDOMNode(element);
+    // The special "All" ip addresses are only valid for
+    // the fields of the "All" rule, which should be disabled.
+    if (element.value == 'All' && element.disabled) {
+        return;
+    }
+
+    // The src and dst IP addresses must be different.
+    // Set up for the big condition:
+    var form = element.form;
+    var isIPField_add   = ((element == form.add_srcIP)  || (element == form.add_dstIP));
+    var isIPField_edit  = ((element == form.edit_srcIP) || (element == form.edit_dstIP));
+    var isSameIP_add    = (form.add_srcIP.value == form.add_dstIP.value);
+    var isSameIP_edit   = (form.edit_srcIP.value == form.edit_dstIP.value);
+    var isNotBlank_add  = (form.add_srcIP.value != '');
+    var isNotBlank_edit = (form.edit_srcIP.value != '');
+    var isInvalid_add   = (isIPField_add && isSameIP_add && isNotBlank_add);
+    var isInvalid_edit  = (isIPField_edit && isSameIP_edit && isNotBlank_edit);
+
+    // run the validator on the other IP field
+    if (element == document.activeElement) {
+        if (element == form.add_srcIP) {
+            RBT.Validator.validateField(form.add_dstIP);
+        }
+        else if (element == form.add_dstIP) {
+            RBT.Validator.validateField(form.add_srcIP);
+        }
+        else if (element == form.edit_srcIP) {
+            RBT.Validator.validateField(form.edit_dstIP);
+        }
+        else {
+            RBT.Validator.validateField(form.edit_srcIP);
+        }
+    }
+
+    // The actual check (makes use of the above variables):
+    if (isInvalid_add || isInvalid_edit) {
+        throw 'Source and destination IP addresses must be different.';
+    }
+
+    // Otherwise, do a normal ipv4addr validation.
+    RBT.Validator.Syntax.ipv4addr(val, Y.one(element));
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// The default "All" rule cannot have its source and destination IP addresses
+// modified, so we disable them here.
+srdfRulesTable.updateHook = function() {
+    var formEl = $('srdfRulesForm');
+
+    var isEditMode = this.editMode == 'edit';
+    var isSrcAll = formEl.edit_srcIP.value == 'All';
+    var isDstAll = formEl.edit_dstIP.value == 'All';
+    if (isEditMode && isSrcAll && isDstAll) {
+        enableElements(formEl.edit_srcIP, false);
+        enableElements(formEl.edit_dstIP, false);
+    }
+}
+
+// editEntry is called with the value of the attribute specified
+// in the tdEdit closure in the rowspec, in this case, 'id'.
+srdfRulesTable.editEntry = function(id) {
+    var el = this.getEntryElement('id', id);
+    var idParts = id.split(',');
+    var srcIP = idParts[0];
+    var dstIP = idParts[1];
+
+    var formEl = $('srdfRulesForm');
+    setFormValue(formEl, 'edit_id', id);
+
+    if (srcIP == '0.0.0.0' && dstIP == '0.0.0.0') {
+        // "All" looks better than "0.0.0.0" in the form.
+        formEl.edit_srcIP.value = 'All';
+        formEl.edit_dstIP.value = 'All';
+
+        // Also, dim the labels next to the fields.
+        var srcLabelId = Y.one(formEl.edit_srcIP).get('id');
+        Y.one('label[for=' + srcLabelId + ']').addClass('dimmed');
+        var dstLabelId = Y.one(formEl.edit_dstIP).get('id');
+        Y.one('label[for=' + dstLabelId + ']').addClass('dimmed');
+    }
+    else {
+        // These fields are disabled for the default "All" rule, but should be
+        // enabled for all other rules.
+        enableElements(formEl.edit_srcIP, true);
+        enableElements(formEl.edit_dstIP, true);
+        formEl.edit_srcIP.value = srcIP;
+        formEl.edit_dstIP.value = dstIP;
+
+        // Also, un-dim the labels next to the fields.
+        var srcLabelId = Y.one(formEl.edit_srcIP).get('id');
+        Y.one('label[for=' + srcLabelId + ']').removeClass('dimmed');
+        var dstLabelId = Y.one(formEl.edit_dstIP).get('id');
+        Y.one('label[for=' + dstLabelId + ']').removeClass('dimmed');
+    }
+    formEl.edit_dif.checked = el.getAttribute('difEnabled') == 'Enabled';
+    formEl.edit_difBlockSize.value = el.getAttribute('difDataBlockSize').replace(' bytes', '');
+}
+
+srdfSymmsTable.updateHook = function() {
+    var el = srdfSymmsTable.editXMLElement;
+
+    if (el !== null) {
+        // show either the symm form or rules form based on which kind
+        // of entity we're editing
+        enableElements('editSymmDiv',  el.tagName == 'srdfSymm'  ? true : 'hide');
+        enableElements('editRulesDiv', el.tagName == 'srdfOptRule' ? true : 'hide');
+
+        var formEl = $('srdfSymmsForm');
+        formEl.editSymmOrRule.value = el.tagName
+    }
+}
+
+// When we activate the Symm ID's edit pane, copy the Symm ID's XML data into it.
+srdfSymmsTable.editEntry = function(id) {
+
+    // This is the XML data.
+    var data = this.editXMLElement;
+
+    // the owning form
+    var form = $('srdfSymmsForm');
+
+    var isRuleDiv = data.tagName == 'srdfOptRule';
+
+    if (isRuleDiv) {
+        // The symmId is hidden, but we still need it on the Python side.
+        setFormValue(form, 'edit_symm_id', data.getAttribute('symmid'));
+        // Saving the original rule number to simplify editing
+        setFormValue(form, 'prev_ruleNum', data.getAttribute('num'));
+
+        setFormValue(form, 'edit_optRule_num', data.getAttribute('num'));
+        setFormValue(form, 'edit_optRule_policy', data.getAttribute('policy'));
+        setFormValue(form, 'edit_optRule_desc', data.getAttribute('desc'));
+    } else {
+        // The symmId is hidden, but we still need it on the Python side.
+        setFormValue(form, 'edit_symm_id', id);
+
+        // The source IPs list is delivered with semicolons standing in for newlines,
+        // so we have to replace them before setting the widget's contents.
+        var srcIPs = data.getAttribute('srcIPs').replace(/, /g, '\n');
+        setFormValue(form, 'edit_symm_srcIPs', srcIPs);
+    }
+};
+
+// ]]>
+</script>

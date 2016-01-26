@@ -1,0 +1,379 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+#
+# This is a template that defines content for the "Sites"
+# tab in the Simple QoS Configuration page.
+#
+# It is an included template for parent PSP setupAdvNet_qosSimple.psp, and
+# should be referenced to determine other methods and variables that
+# are externally declared but still in scope. The parent PSP is where
+# RBM permissions and imports are done.
+#
+# @author Andrew Hao
+%>
+
+<psp:method name="css_sites">
+    return '''
+/* Make AET width consistent with other tables. */
+#remoteSiteTable_main {
+    width: 100%;
+}
+'''
+</psp:method>
+
+<psp:method name="dialogEntries_sites" params="bwOversubscriptionEnabled, availableWanBw">
+    if bwOversubscriptionEnabled:
+        wanBwValidate = ('intInRange', '[0, 4294967295]')
+        wanBwHint = ''
+    else:
+        wanBwValidate = ('intInRange', '[0, %s]' % availableWanBw)
+        wanBwHint = '(%s kbps available)' % availableWanBw
+
+    # Generating options for the "Service Class" and "DSCP" select lists.
+    classDscpSpecialOptions = [('255', 'Reflect')]
+    siteDscpSpecialOptions =  [('254', 'Inherit from Service Class')] + classDscpSpecialOptions
+    qopDscpSpecialOptions =  [('253', 'Inherit DSCP from Application')]
+
+    # Generating options for QoP path select lists.
+    mgmt = self.session().value('mgmt')
+    qopPathsSubtree = Nodes.getTreeifiedSubtree(mgmt, '/rbt/pathmon/qop/config/path')
+    qopPathOptions = [(qos.DEFAULT_PATH_NONE, '--')]
+    for pathId in qopPathsSubtree:
+        qopPathOptions.append((pathId, qopPathsSubtree[pathId]['path_name']))
+    qopPathOptions.sort(FormUtils.alphanumericCompare, key=lambda x: x[1])
+
+
+    nodeEntryObjs = {
+        'order': FormUtils.NodeEntry(
+            name='order',
+            label='Position',
+            widget='select'),
+        'name': FormUtils.NodeEntry(
+            name='name',
+            label='Name',
+            validate='qosName'),
+        'subnet': FormUtils.NodeEntry(
+            name='subnet',
+            label='Remote Subnets',
+            widget='textarea',
+            inputOptional=True,
+            validate=('ipv4prefix_list', '["\n", 50]')),
+        'addSite_wanbandwidth': FormUtils.NodeEntry(
+            name='addSite_wanbandwidth',
+            label='Remote Link Bandwidth',
+            tooltip='Required if QoS Shaping is enabled.',
+            validate=wanBwValidate,
+            hint=wanBwHint,
+            units='kbps',
+            widgetClass='medium'),
+        'editSite_wanbandwidth': FormUtils.NodeEntry(
+            name='editSite_wanbandwidth',
+            label='Remote Link Bandwidth',
+            tooltip='Required if QoS Shaping is enabled.',
+            # Ideally, the maximum int range should be
+            # (available bw + site's current bw), but our validation system
+            # can't handle this.
+            validate=('intInRange', '[0, 4294967295]'),
+            units='kbps',
+            widgetClass='medium'),
+        'bandwidthProfile': FormUtils.NodeEntry(
+            name='bandwidthprofile',
+            label='Service Policy',
+            widget='select'),
+        'cls': FormUtils.NodeEntry(
+            name='cls',
+            label='Service Class',
+            widget='select',
+            selectOptions=qos.DEFAULT_CLASSES),
+        'out_dscp': FormUtils.NodeEntry(
+            name='out_dscp',
+            label='DSCP',
+            widget='select',
+            tooltip='Required if QoS Marking is enabled. Also applies to traffic when Path Selection is not enabled or all paths are down.',
+            selectOptions=RVBDUtils.makeDSCPSelectOptions([
+                                        ('254', 'Inherit from Service Class'),
+                                        ('255', 'Reflect')
+                                        ], True)),
+        'default_path': FormUtils.NodeEntry(
+            name='default_path',
+            widget='radio',
+            value=qos.DEFAULT_PATH_RELAY,
+            label={qos.DEFAULT_PATH_RELAY: 'Relay traffic from the interface normally.',
+                   qos.DEFAULT_PATH_DROP:  'Drop traffic.'}),
+        }
+
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    for pathNum in range(1, qos.NUM_QOP_PATHS + 1):
+        if policyType:
+            qopDict = {
+                'qopPath%s' % pathNum: FormUtils.NodeEntry(
+                    name='qopPath%s' % (pathNum),
+                    label='Path %s' % (pathNum),
+                    widget='text',
+                    validate='qosName',
+                    inputOptional=True,
+                    action='updateCmcQopSiteDscpFieldsSites()')
+            }
+        else:
+            qopDict = {
+                'qopPath%s' % pathNum: FormUtils.NodeEntry(
+                    name='qopPath%s' % (pathNum),
+                    label='Path %s' % (pathNum),
+                    widgetClass='small',
+                    action='updateQopSiteDscpFields()',
+                    selectOptions=qopPathOptions)
+            }
+
+        qopDict.update({
+            'qopDscp%s' % pathNum: FormUtils.NodeEntry(
+                name='qopDscp%s' % (pathNum),
+                label='DSCP',
+                widgetClass='small',
+                selectOptions=RVBDUtils.makeDSCPSelectOptions(qopDscpSpecialOptions, True)),
+        })
+        nodeEntryObjs.update(qopDict)
+
+    return nodeEntryObjs
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+wanBandwidth = int(Nodes.present(mgmt,  pathPrefix + '/rbt/hfsc/config/global/interface/primary/link_rate'))
+totalSiteBandwidth = 0
+for siteId in Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/site'): {
+    totalSiteBandwidth += int(Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/site/%s/wan_bw' % siteId))
+}
+availableWanBw = wanBandwidth - totalSiteBandwidth
+bwOversubscriptionEnabled = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/bw_overcommit') == 'true'
+isWanBandwidthSet = wanBandwidth == 0 and 'false' or 'true'
+dialogEntries_sites = self.dialogEntries_sites(bwOversubscriptionEnabled, availableWanBw)
+addPrefix = 'addSite_'
+editPrefix = 'editSite_'
+allProfiles = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/profile')
+allProfiles.sort(FormUtils.alphanumericCompare)
+allProfiles = [(p, p) for p in allProfiles]
+dialogEntries_sites['bandwidthProfile'].selectOptions = allProfiles
+
+allSiteIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/hfsc/config/site')
+allSiteIndices.sort(FormUtils.alphanumericCompare)
+allSiteIndices = [(i, i) for i in allSiteIndices]
+defaultSiteIndex = len(allSiteIndices)
+
+# We add a space to the end of the "End" option, see bug 70309 for details
+dialogEntries_sites['order'].selectOptions = \
+    [('1', 'Start')] + allSiteIndices + [(str(defaultSiteIndex) + ' ', 'End')]
+dialogEntries_sites['order'].value = str(len(allSiteIndices)) + ' '
+
+def generateQopHtml(addOrEdit): {
+    assert addOrEdit in ('add', 'edit'), "Argument to generateQopHtml() must be 'add' or 'edit'."
+    pfx = (addOrEdit == 'add') and addPrefix or editPrefix
+
+    qopPathHtml = ''
+    for pathNum in range(1, qos.NUM_QOP_PATHS + 1): {
+        qopPathHtml += dialogEntries_sites['qopPath%s' % (pathNum)].html(self, namePrefix=pfx, more=[dialogEntries_sites['qopDscp%s' % (pathNum)]]) + '\n'
+    }
+
+    qopPathHintHtml = ''
+    if policyType: {
+        qopPathHintHtml += '''<tr><td colspan="2" class="qosSettingsMessage">Path preference order
+                              (only one path will be used):</td></tr>'''
+    } else: {
+        qopPathHintHtml += '''<tr><td colspan="2" class="qosSettingsMessage">
+                              <a href="/mgmt/gui?p=setupQos_qop">Path</a> preference order
+                              (only one path will be used):</td></tr>'''
+    }
+
+    return """
+        <tr><td colspan="3" class="qosSettingsHeader">Default settings for site traffic that does not match any application:</td></tr>
+        %(cls)s
+        %(out_dscp)s
+        <tr><td colspan="3" class="qosSettingsHeader">Default paths for site traffic that does not match any application:</td></tr>
+        %(qopPathHint)s
+        %(qopPath)s
+        <tr><td colspan="2" class="qosSettingsMessage">If paths are configured and all down:</td></tr>
+        <tr><td colspan="3">
+        <div id="%(pfx)sDefaultPathDiv" class="indent">
+          %(ruleDefaultPathRelay)s
+          %(ruleDefaultPathDrop)s
+        </div>
+        </td></tr>""" % {
+           'cls': dialogEntries_sites['cls'].html(self, namePrefix=pfx),
+           'out_dscp': dialogEntries_sites['out_dscp'].html(self, namePrefix=pfx),
+           'qopPathHint': qopPathHintHtml,
+           'qopPath': qopPathHtml,
+           'ruleDefaultPathRelay': dialogEntries_sites['default_path'].html(self, namePrefix=pfx, value=qos.DEFAULT_PATH_RELAY),
+           'ruleDefaultPathDrop':  dialogEntries_sites['default_path'].html(self, namePrefix=pfx, value=qos.DEFAULT_PATH_DROP),
+           'pfx': pfx}
+}
+
+
+remoteSiteTable = ajaxentrytable.AjaxEntryTable('remoteSite',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=easyQoS_sites'),
+    headerSpec=('',
+                ('Order', '', 'sortAttrib("order_idx")'),
+                ('Name', '', 'sortAttrib("name")'),
+                ('Remote Subnets', '', 'sortAttrib("subnet")'),
+                ('Service Policy', '', 'sortAttrib("bandwidth_profile")'),
+                ('Remote Link Bandwidth', '', 'sortAttrib("remote_link_bw")'),
+                'Paths'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('order_idx', 'selectedSite_', 'moveToSelectedSite_', ['%d']),
+ AjaxEntryTable.tdAttr('order_idx'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdLines('subnet'),
+ AjaxEntryTable.tdAttr('bandwidth_profile'),
+ AjaxEntryTable.tdAttr('remote_link_bw_pretty'),
+ AjaxEntryTable.tdLines('qopPretty')]
+""" % defaultSiteIndex,
+    emptyMessage='No remote site information',
+    addButtonText='Add Site',
+    moveName='moveSite',
+    moveButtonText='Move Site',
+    moveButtonCancelText='Cancel Move',
+    removeName='removeSite',
+    removeButtonText='Remove Site')
+
+remoteSiteTable.addDivContent="""
+<p id="mustSetWanBwMessage" class="hidden midLevel">
+  The WAN Bandwidth in the WAN Link section must be set before sites can be added.
+</p>
+<div id="needMoreWanBwMessage" class="hidden midLevel">
+  New sites cannot be added because there is no more available WAN bandwidth. To make more WAN bandwidth available, do one or more of the following:
+  <p></p>
+  <ul>
+    <li>Enable Local WAN Oversubscription in the WAN Link section.</li>
+    <li>Decrease the Remote Link Bandwidth of a different Site.</li>
+    <li>Increase the WAN Bandwidth in the WAN Link section.</li>
+  </ul>
+</div>
+<div id="addSite" class="site midLevel">
+  <table>
+    %(name)s
+    %(order)s
+    %(subnet)s
+    %(wanBandwidth)s
+    %(bandwidthProfile)s
+    %(generateQopHtml)s
+  </table>
+  %(submitButton)s
+</div>
+""" % {'name': dialogEntries_sites['name'].html(self, namePrefix=addPrefix),
+       'order': dialogEntries_sites['order'].html(self, namePrefix=addPrefix),
+       'subnet': dialogEntries_sites['subnet'].html(self, namePrefix=addPrefix),
+       'wanBandwidth': dialogEntries_sites['addSite_wanbandwidth'].html(self),
+       'bandwidthProfile': dialogEntries_sites['bandwidthProfile'].html(self, namePrefix=addPrefix),
+       'submitButton': FormUtils.formSubmitButtons(self, {'name': 'addSite',
+                                                          'value': 'Add'}),
+       'generateQopHtml': generateQopHtml('add')}
+
+remoteSiteTable.editDivContent="""
+<input type="hidden" name="editSite_name" />
+<input type="hidden" name="editSite_order" />
+<table class="midLevel">
+  %(subnet)s
+  %(wanBandwidth)s
+  %(bandwidthProfile)s
+  %(generateQopHtml)s
+</table>
+%(submitButton)s
+""" % {'subnet': dialogEntries_sites['subnet'].html(self, namePrefix=editPrefix),
+       'wanBandwidth': dialogEntries_sites['editSite_wanbandwidth'].html(self),
+       'bandwidthProfile': dialogEntries_sites['bandwidthProfile'].html(self, namePrefix=editPrefix),
+       'submitButton': FormUtils.formSubmitButtons(self, {'name': 'editSite',
+                                                          'value': 'Apply'}),
+       'generateQopHtml': generateQopHtml('edit')}
+%>
+
+<form id="easyQoS_remoteLinksForm" action="<%= self.thisPageletRequest() %>" method="post">
+  <div>
+    <%= remoteSiteTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_sites" />
+  </div>
+</form>
+
+<%
+# Need to generate the list of attribute names for the qop paths.
+qopPathKeywordsList = ['qopPath%s' % (pathNum) for pathNum in range(1, qos.NUM_QOP_PATHS + 1)]
+qopDscpKeywordsList = ['qopDscp%s' % (pathNum) for pathNum in range(1, qos.NUM_QOP_PATHS + 1)]
+
+self.addPageletJavascript('''
+var allProfiles = %(profiles)s;
+
+function updateQopSiteDscpFields(val) {
+    var prefix = ['add', 'edit'];
+    for (var i = 0; i < prefix.length; i++) {
+        for (var pathNum = 1; pathNum <= %(NUM_QOP_PATHS)s ; pathNum++) {
+            var pathSelectList = Y.one('select[name="' + prefix[i] + 'Site_qopPath' + pathNum + '"]');
+            var dscpSelectList = Y.Selector.query('select[name="' + prefix[i] + 'Site_qopDscp' + pathNum + '"]')[0];
+            enableFormElements(dscpSelectList, !(pathSelectList.get('value') == '%(default_path_none)s'));
+        }
+    }
+}
+
+function updateCmcQopSiteDscpFieldsSites(val) {
+    var prefix = ['add', 'edit'];
+    for (var i = 0; i < prefix.length; i++) {
+        for (var pathNum = 1; pathNum <= %(NUM_QOP_PATHS)s ; pathNum++) {
+            var pathSelectName = Y.one('input[name="' + prefix[i] + 'Site_qopPath' + pathNum + '"]');
+            var dscpSelectList = Y.Selector.query('select[name="' + prefix[i] + 'Site_qopDscp' + pathNum + '"]')[0];
+            enableFormElements(dscpSelectList, !(pathSelectName.get('value') == ''));
+        }
+    }
+}
+
+remoteSiteTable.addEntry = function() {
+    // Hide the add div if the WAN bandwidths have not been set yet.
+    if (%(isWanBandwidthSet)s === false) {
+        enableElements('addSite', 'hide');
+        enableElements('mustSetWanBwMessage', true);
+    }
+    // Hide the add div if there is no available bandwidth and oversubscription is not enabled.
+    else if ( (%(availableWanBw)s === 0) && (!%(bwOversubEnabled)s) ) {
+        enableElements('addSite', 'hide');
+        enableElements('needMoreWanBwMessage', true);
+    }
+};
+
+remoteSiteTable.editEntry = function(editName) {
+    var form = $('easyQoS_remoteLinksForm');
+    var el = this.getEntryElement('name', editName);
+
+    // AET comes back with semicolon delimiters. Switch to newlines.
+    var subnetPretty = el.getAttribute('subnet').replace(/;/g, '\\u000A');
+
+    setFormValue(form, 'editSite_order', el.getAttribute('order_idx'));
+    setFormValue(form, 'editSite_name', editName);
+    setFormValue(form, 'editSite_subnet', subnetPretty);
+    setFormValue(form, 'editSite_wanbandwidth', el.getAttribute('remote_link_bw'));
+    setFormValue(form, 'editSite_bandwidthprofile', el.getAttribute('bandwidth_profile'));
+
+    keywords = ['cls', 'out_dscp', 'default_path'].concat(%(qopPathKeywordsList)s, %(qopDscpKeywordsList)s);
+    setFormValues(form, el, keywords, 'editSite_');
+
+};
+
+// disable the subnet textarea for the default site
+remoteSiteTable.updateHook = function() {
+    if (this.editName) {
+        Y.one('#easyQoS_remoteLinksForm textarea[name=editSite_subnet]').
+            set('disabled', this.editName === '%(defaultSiteName)s');
+    }
+    %(updateQopSiteDscpFields)s
+};
+
+''' % {
+    'isWanBandwidthSet': isWanBandwidthSet,
+    'availableWanBw': availableWanBw,
+    'bwOversubEnabled': bwOversubscriptionEnabled and 'true' or 'false',
+    'profiles': allProfiles,
+    'defaultSiteName': qos.DEFAULT_SITE_NAME,
+    'qopPathKeywordsList': qopPathKeywordsList,
+    'qopDscpKeywordsList': qopDscpKeywordsList,
+    'default_path_relay': qos.DEFAULT_PATH_RELAY,
+    'default_path_none': qos.DEFAULT_PATH_NONE,
+    'NUM_QOP_PATHS': qos.NUM_QOP_PATHS,
+    'updateQopSiteDscpFields': policyType and 'updateCmcQopSiteDscpFieldsSites();' or 'updateQopSiteDscpFields();'
+})
+%>

@@ -1,0 +1,35 @@
+#!/bin/sh
+# /usr/lib/sa/sa2.sh
+# (C) 1999-2004 Sebastien Godard <sebastien.godard@wanadoo.fr>
+#
+# Changes:
+# - 2004-01-22 Nils Philippsen <nphilipp@redhat.com>
+#   make history configurable
+# Changes:
+# - 2004-11-03 Andy Pang <andypang@riverbed.com>
+#   support different date formats for binary and text files
+#   make directories containing binary and text files configurable
+# Changes:
+# - 2008-01-24 Philip O'Toole <potoole@riverbed.com>
+#   bump HISTORY value down to 21 so sa files are always
+#   removed after three weeks. See bug 2885.
+# Changes:
+# - 2010-09-17 Abhiraj Butala <abutala@riverbed.com>
+#   Moved HISTORY=21 after reading of /etc/sysconfig/sysstat as 
+#   otherwise HISTORY was reset to 7. See Bug 64938.
+SARDIR=/var/opt/rbt/sar
+SADIR=/var/log/sa
+[ -r /etc/sysconfig/sysstat ] && . /etc/sysconfig/sysstat
+HISTORY=21
+S_TIME_FORMAT=ISO ; export S_TIME_FORMAT
+umask 0022
+SARDATE=`date  +%Y.%m.%d.%H.%M`
+SADATE=`date  +%d`
+RPT=${SARDIR}/${SARDATE}.sar
+ENDIR=/usr/bin
+DFILE=${SADIR}/sa${SADATE}
+[ -f "$DFILE" ] || exit 0
+cd ${ENDIR}
+${ENDIR}/sar $* -f ${DFILE} > ${RPT}
+find ${SADIR} -name 'sa??' -mtime +"$HISTORY" -exec rm -f {} \;
+find ${SARDIR} -name '*.sar' -mtime +"$HISTORY" -exec rm -f {} \;

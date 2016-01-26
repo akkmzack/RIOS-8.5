@@ -1,0 +1,14 @@
+#!/bin/sh
+# Steelhead specific daily cleanup operations
+#
+
+NEURAL_FILES=10
+NEURAL_DIRECTORY=/var/opt/rbt/
+
+# delete all but the 10 newest neural stats
+to_delete=`ls -rt ${NEURAL_DIRECTORY}/neural-stats.* 2> /dev/null | head -n -10`
+
+if [ ! -z "${to_delete}" ]; then
+    rm -f $to_delete
+fi
+

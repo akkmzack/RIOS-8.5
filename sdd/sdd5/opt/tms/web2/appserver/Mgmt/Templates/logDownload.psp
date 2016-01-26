@@ -1,0 +1,109 @@
+<%
+
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## logDisplay
+## This is the template to display a page of log messages.
+##
+## STATUS: Bugs in filtering introduced after checkin, otherwise mostly done.
+## Still needs iterative refresh for last page of current log.
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, logDownload, Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdministrationLogs',) %>
+
+<psp:method name="nodeEntries">
+    logPrefix = self.request().fields().get('logPrefix', '')
+    entries = {
+        'LoggingAction': FormUtils.NodeEntry(
+            path='/logging/syslog/action/file/\/var\/log\/%smessages' %
+                 logPrefix,
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<%
+mgmt = req.parent().session().value('mgmt')
+fields = req.fields()
+logPrefix = fields.get('logPrefix', '')
+reason = fields.pop('reason', '')
+if reason: {
+    req.parent().formError = reason
+}
+%>
+
+<script type='text/javascript'><!--
+nonConfigForms.push('logDownloadForm');
+//--></script>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+  action="<%= self.thisPageletRequest() %>"
+  id="logDownloadForm">
+  <div>
+<%
+logDownloadTable = ajaxentrytable.AjaxEntryTable('logfiles',
+    '/mgmt/xmldata?p=logFiles&logPrefix=%s&errorRedirect=%s' %
+    (FormUtils.escapeForJsString(logPrefix),
+     HTTPUtils._makeQuerystringDestParameter(self.request())),
+    headerSpec = (
+        'Download Plain Text',
+        'Download Compressed'
+    ),
+    rowSpec = """[
+    AjaxEntryTable.td([
+        AjaxEntryTable.conditionalList('uncompressedHref', [
+            AjaxEntryTable.constantText('[ '),
+            AjaxEntryTable.a('uncompressedHref', 'uncompressedTitle',
+                [AjaxEntryTable.attrText('logName'),
+                 AjaxEntryTable.constantText(' as Plain Text')]),
+            AjaxEntryTable.constantText(' ] '),
+            AjaxEntryTable.attrText('plainSize')
+        ])
+    ]),
+    AjaxEntryTable.td([
+        AjaxEntryTable.conditionalList('compressedHref', [
+            AjaxEntryTable.constantText('[ '),
+            AjaxEntryTable.a('compressedHref', 'compressedTitle',
+                [AjaxEntryTable.attrText('logName'),
+                 AjaxEntryTable.constantText(' as Gzip File')]),
+            AjaxEntryTable.constantText(' ] '),
+            AjaxEntryTable.attrText('compressedSize')
+        ])
+    ])
+]""",
+    emptyMessage = 'No logs.'
+)
+%>
+  <%= logDownloadTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<form method="post" action="<%= self.thisPageletRequest() %>" id="logRotateForm">
+  <fieldset class="topLevel">
+    <legend>Log Actions</legend>
+    <div class="submitButtons">
+      <input type="hidden" name="_action_" value="logRotate" />
+      <input type="submit" name="rotate" value="Rotate Logs" />
+    </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>

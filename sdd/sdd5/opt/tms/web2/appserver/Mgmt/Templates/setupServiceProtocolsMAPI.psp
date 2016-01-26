@@ -1,0 +1,229 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsMAPI.psp
+## This is the template for the MAPI protocol settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = (
+    'setupDAAC',
+    'setupServiceInpathRules',
+    'setupServiceProtocolsHTTP',
+    'setupServiceProtocolsSSLMain',
+)
+%>
+
+<psp:method name="nodeEntries">
+    return {
+        'optEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable MAPI Exchange Optimization',
+            enableDiv='optSubsection'),
+        'exchangePort': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/port',
+            type='uint16',
+            validate='port',
+            widgetClass='port',
+            label='Exchange Port'),
+        'nspiEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/nspi/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable MAPI NSPI',
+            tooltip='<em>Does not apply to RiOS 7.0 and above.</em>',
+            enableDiv='nspiSubsection'),
+        'nspiPort': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/nspi/port',
+            type='uint16',
+            validate='port',
+            widgetClass='port',
+            label='NSPI Port',
+            tooltip='<em>Does not apply to RiOS 7.0 and above.</em>',
+            labelClass='label-fixed-small-indent'),
+       'rpcEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/outlook_anywhere/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Outlook Anywhere Optimization',
+            tooltip='<p>This feature requires that HTTP Optimization is enabled.  Additionally, for the common case of Outlook Anywhere over HTTPS, SSL Optimization must be enabled and the IIS SSL certificate must be installed on the server-side Steelhead.</p>',
+            enableDiv='rpcSubsection'),
+        'rpcAutoEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/outlook_anywhere/auto_detect',
+            type='bool',
+            widget='checkboxLeft',
+            label='Auto-Detect Outlook Anywhere Connections',
+# Autodetect is a tricky feature to explain succinctly.  We should
+# find some time to work on this tooltip.
+#            tooltip='<p>Attempt to optimize Outlook Anywhere connections automatically.  This only works reliably when there is a single Steelhead at each site.</p><p>For more complex topologies, configure In-Path Rules with Outlook Anywhere latency optimization policies.</p>'),
+            ),
+        '2003Enable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/mapi2k3',
+            name='enable2k3',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Exchange 2003 Support',
+            enableDiv='optimize2007Div',
+            tooltip='''
+            <p>
+              MAPI Exchange Optimization must be enabled to optimize outbound traffic from Outlook 2003 to the Exchange server.
+            </p>
+            <p>
+              Regardless of the MAPI Exchange Optimization setting, this option <i>must</i> be configured identically on the client-side and server-side Steelheads.
+            </p>
+            <p><em>Does not apply to RiOS 7.0 and above.</em></p>
+            '''),
+        '2007Enable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/mapi2k7/fallback',
+            name='enable2k7',
+            type='bool',
+            filter=lambda a: ('true' == a) and 'false' or 'true',
+            widget='checkboxLeft',
+            label='Enable Exchange 2007+ Support',
+            tooltip='''
+            <p>
+              MAPI Exchange Optimization must be enabled to optimize outbound traffic from Outlook 2007 and higher to the Exchange server.
+            </p>
+            <p>
+              Regardless of the MAPI Exchange Optimization setting, this option <i>must</i> be configured identically on the client-side and server-side Steelheads.
+            </p>
+            <p><em>Does not apply to RiOS 7.0 and above.</em></p>
+            '''),
+        'encrypted': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/mapi2k7/encrypted/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Encrypted Optimization',
+            enableDiv='encryptedOptimizationDiv'),
+        'prepopEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/prepop/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Transparent Prepopulation',
+            enableDiv='prepopSubsection'),
+        'prepopMax': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/prepop/max_connections',
+            type='uint32',
+            widgetClass='small',
+            label='Max Connections'),
+        'prepopInterval': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/prepop/poll_interval',
+            type='uint32',
+            widgetClass='small',
+            label='Poll Interval (minutes)',
+            units=''),
+        'prepopTimeout': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/prepop/timeout',
+            type='uint32',
+            widgetClass='small',
+            label='Time Out (hours)',
+            units=''),
+        'win7Delegation': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/delegation/win7',
+            type='bool',
+            widget='radio',
+            label={'false': 'NTLM Transparent Mode',
+                   'true':  'NTLM Delegation Mode'},
+            tooltip={'false': 'Transparent Mode enables optimization of encrypted MAPI RPC traffic with transparent authentication.',
+            'true': 'Delegation Mode enables optimization of encrypted MAPI RPC traffic by authenticating using Kerberos delegation architecture. This mode is required only if you are optimizing MAPI clients on newer Windows versions, like Windows 7.'}),
+        'kerbAuthSupportEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/blade/exchange/config/native_krb/enable',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Optimize encrypted-MAPI connections that use Kerberos authentication.',
+            label='Enable Kerberos Authentication Support')
+        }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+if pathPrefix: {
+    windowsDomainLink = 'Windows Domain'
+    windowsDomainAuthLink = 'Windows Domain Authentication'
+}
+else: {
+    windowsDomainLink = '<a href="/mgmt/gui?p=setupServiceDomain">Windows Domain</a>'
+    windowsDomainAuthLink = '<a href="/mgmt/gui?p=setupWinDomAuth">Windows Domain Authentication</a>'
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupServiceProtocolsMAPI" />
+    <legend>Settings</legend>
+
+    <div class="midLevel">
+      <%= nodeEntries['optEnable'].html(self) %>
+      <div id="optSubsection" class="indent">
+
+        <table>
+          <%= nodeEntries['exchangePort'].html(self) %>
+        </table>
+
+        <%= nodeEntries['rpcEnable'].html(self) %>
+        <div id="rpcSubsection" class="indent">
+          <%= nodeEntries['rpcAutoEnable'].html(self) %>
+        </div>
+
+        <%= nodeEntries['encrypted'].html(self) %>
+        <div id='encryptedOptimizationDiv' class="indent">
+
+          <%= nodeEntries['win7Delegation'].html(self, value='false') %>
+          <%= nodeEntries['win7Delegation'].html(self, value='true') %>
+          <%= nodeEntries['kerbAuthSupportEnable'].html(self) %>
+          <p>
+            Note: The server-side appliance must be joined to the
+            <%= windowsDomainLink %> in order to use this feature.
+            Additionally, NTLM Delegation Mode and Kerberos
+            Authentication require configuration of
+            <%= windowsDomainAuthLink %> on the server-side appliance.
+          </p>
+
+        </div>
+
+        <%= nodeEntries['prepopEnable'].html(self) %>
+        <div id="prepopSubsection" class="indent">
+          <table>
+            <%= nodeEntries['prepopMax'].html(self) %>
+            <%= nodeEntries['prepopInterval'].html(self) %>
+            <%= nodeEntries['prepopTimeout'].html(self) %>
+          </table>
+        </div>
+
+      </div>
+
+<%
+# keep these nodes in UI for pre 7.0 SH versions for CMC policies
+if policyType: { %>
+      <%= nodeEntries['2003Enable'].html(self) %>
+      <div id="optimize2007Div" class="indent">
+        <%= nodeEntries['2007Enable'].html(self) %>
+      </div>
+      <%= nodeEntries['nspiEnable'].html(self) %>
+      <div id="nspiSubsection" class="indent">
+        <table>
+          <%= nodeEntries['nspiPort'].html(self) %>
+        </table>
+      </div>
+<% } %>
+    </div>
+
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

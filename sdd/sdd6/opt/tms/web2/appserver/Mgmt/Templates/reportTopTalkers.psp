@@ -1,0 +1,223 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## reportTopTalkers.psp
+## This is the template for the Top Talksers report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="time, Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdvNet_netflow',) %>
+
+<psp:method name="nodeEntries">
+    return {
+        'topTalkersAction': NodeEntry(
+            path='/stats/actions/gettoptalkers',
+            type='action')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'chart': NodeEntry(
+            name='chart',
+            selectOptions=[('conversation', 'By Conversation'),
+                           ('sender', 'By Sender'),
+                           ('receiver', 'By Receiver'),
+                           ('host', 'By Host'),
+                           ('port', 'By Application Port')],
+            action="($('reportControlForm').submit());"),
+        'per': NodeEntry(
+            name='per',
+            selectOptions=[('hour', 'Last Hour'),
+                           ('day', 'Last Day'),
+                           ('all', 'All')],
+            action="($('reportControlForm').submit());"),
+        'topN': NodeEntry(
+            name='topN',
+            type='uint8',
+            widgetClass='small',
+            validate=('intInRange', '[1, 50]')),
+        'protocol': NodeEntry(
+            name='protocol',
+            selectOptions= [('tcp', 'TCP'),
+                            ('udp', 'UDP'),
+                            ('both', 'Both')],
+            action="($('reportControlForm').submit());"),
+        'trafficType': NodeEntry(
+            name='trafficType',
+            selectOptions=[('optimized', 'Optimized'),
+                           ('passthrough', 'Passthrough'),
+                           ('both', 'Both')],
+            action="($('reportControlForm').submit());"),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+now = int(time.time())
+
+# Options
+chartField = fields.get('chart', 'conversation')
+topNField = fields.get('topN', '50')
+protocolField = fields.get('protocol', 'both')
+trafficField = fields.get('trafficType', 'both')
+perField = fields.get('per', '')
+if perField == '': {
+    perField = self.session().value('per', 'all')
+    if perField not in ['hour', 'day']: {
+        perField = 'all'
+    }
+} elif 'all' != perField: {
+    self.session().setValue('per', perField)
+}
+
+topNMap = ('5', '10', '25', '50')
+ajaxurl = '/mgmt/xmldata?p=topTalker&reportType=%s&topN=%s&protocol=%s&trafficType=%s&per=%s&ct='
+
+dialogEntries = self.dialogEntries()
+dialogEntries['chart'].value = chartField
+dialogEntries['per'].value = perField
+dialogEntries['topN'].value = topNField
+dialogEntries['protocol'].value = protocolField
+dialogEntries['trafficType'].value = trafficField
+
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# Don't bother with the controls/table/JavaScript if the feature is disabled.
+if (Nodes.present(mgmt, '/rbt/sport/netflow/config/top_talkers/enable') != 'true'): {
+%>
+
+<p>
+    Top Talkers is currently disabled.
+</p>
+
+<%
+    self.endPagelet()
+} else: {
+%>
+
+<form id="reportControlForm"
+      class="graphControlForm"
+      method="get"
+      action="/mgmt/gui">
+  <div>
+    <input type="hidden" name="p" value="reportTopTalkers" />
+    <table class="reportParameters">
+      <tr>
+	<th>Chart:</th>
+	<th>Period:</th>
+	<th>Count:</th>
+	<th>Protocol:</th>
+	<th>Traffic Type:</th>
+	<th></th>
+      </tr>
+      <tr>
+	<td><%= dialogEntries['chart'].html(self, format='inline') %></td>
+	<td><%= dialogEntries['per'].html(self, format='inline') %></td>
+	<td><%= dialogEntries['topN'].html(self, format='inline') %></td>
+	<td><%= dialogEntries['protocol'].html(self, format='inline') %></td>
+	<td><%= dialogEntries['trafficType'].html(self, format='inline') %></td>
+    <td class="go"><%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go'}) %></td>
+      </tr>
+    </table>
+  </div>
+</form>
+
+<%
+
+    ttConversationTable = ajaxentrytable.AjaxEntryTable('ttConversation',
+        url=FormUtils.escapeForJsString(ajaxurl % ('conversation', topNField, protocolField, trafficField, perField)),
+        titleText='Top Conversations',
+        headerSpec=[('Rank', 'topTalkers_rank', "sortAttrib('id')"),
+                    ('Source IP:Port', '', "sortAttrib('src')"),
+                    ('Destination IP:Port', '', "sortAttrib('dst')"),
+                    ('Byte Count', 'topTalkers_byteCount', "sortAttrib('bytes')")],
+        rowSpec = """[AjaxEntryTable.tdAttr('id'),
+                      AjaxEntryTable.tdAttr('src'),
+                      AjaxEntryTable.tdAttr('dst'),
+                      AjaxEntryTable.tdAttr('bytesPretty')]""",
+        emptyMessage='No information available about Top Conversations.',
+        dataType='JSON2')
+
+    ttSrcHostOnlyTable = ajaxentrytable.AjaxEntryTable('ttSrcHostOnly',
+        url=FormUtils.escapeForJsString(ajaxurl % ('src_host_only', topNField, protocolField, trafficField, perField)),
+        titleText='Top Senders',
+        headerSpec=[('Rank', 'topTalkers_rank', "sortAttrib('id')"),
+                    ('Source IP', '', "sortAttrib('src_ip')"),
+                    ('Byte Count', 'topTalkers_byteCount', "sortAttrib('bytes')")],
+        rowSpec = """[AjaxEntryTable.tdAttr('id'),
+                      AjaxEntryTable.tdAttr('src_ip'),
+                      AjaxEntryTable.tdAttr('bytesPretty')]""",
+        emptyMessage='No information available about Top Senders.',
+        dataType='JSON2')
+
+    ttDestHostOnlyTable = ajaxentrytable.AjaxEntryTable('ttDestHostOnly',
+        url=FormUtils.escapeForJsString(ajaxurl % ('dest_host_only', topNField, protocolField, trafficField, perField)),
+        titleText='Top Receivers',
+        headerSpec=[('Rank', 'topTalkers_rank', "sortAttrib('id')"),
+                    ('Destination IP', '', "sortAttrib('dest_ip')"),
+                    ('Byte Count', 'topTalkers_byteCount', "sortAttrib('bytes')")],
+        rowSpec = """[AjaxEntryTable.tdAttr('id'),
+                      AjaxEntryTable.tdAttr('dest_ip'),
+                      AjaxEntryTable.tdAttr('bytesPretty')]""",
+        emptyMessage='No information available about Top Receivers.',
+        dataType='JSON2')
+
+    ttApplicationTable = ajaxentrytable.AjaxEntryTable('ttApplication',
+        url=FormUtils.escapeForJsString(ajaxurl % ('app_port_only', topNField, protocolField, trafficField, perField)),
+        titleText='Top Application Ports',
+        headerSpec=[('Rank', 'topTalkers_rank', "sortAttrib('id')"),
+                    ('Source Port', '', "sortAttrib('src_port')"),
+                    ('Byte Count', 'topTalkers_byteCount', "sortAttrib('bytes')")],
+        rowSpec = """[AjaxEntryTable.tdAttr('id'),
+                      AjaxEntryTable.tdAttr('src_port'),
+                      AjaxEntryTable.tdAttr('bytesPretty')]""",
+        emptyMessage='No information available about Top Application Ports.',
+        dataType='JSON2')
+
+    ttIgnorePortsTable = ajaxentrytable.AjaxEntryTable('ttIgnorePorts',
+        url=FormUtils.escapeForJsString(ajaxurl % ('ignore_ports', topNField, protocolField, trafficField, perField)),
+        titleText='Top Hosts',
+        headerSpec=[('Rank', 'topTalkers_rank', "sortAttrib('id')"),
+                    ('Source IP', '', "sortAttrib('src_ip')"),
+                    ('Destination IP', '', "sortAttrib('dest_ip')"),
+                    ('Byte Count', 'topTalkers_byteCount', "sortAttrib('bytes')")],
+        rowSpec = """[AjaxEntryTable.tdAttr('id'),
+                      AjaxEntryTable.tdAttr('src_ip'),
+                      AjaxEntryTable.tdAttr('dest_ip'),
+                      AjaxEntryTable.tdAttr('bytesPretty')]""",
+        emptyMessage='No information available about Top Hosts.',
+        dataType='JSON2')
+
+    table = ('conversation' == chartField) and ttConversationTable or \
+            ('sender' == chartField) and ttSrcHostOnlyTable or \
+            ('receiver' == chartField) and ttDestHostOnlyTable or \
+            ('host' == chartField) and ttIgnorePortsTable or \
+            ('port' == chartField) and ttApplicationTable
+    if table: {
+        self.writeln(table.html(self, cssClass='midLevel'))
+    }
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+nonConfigForms.push('reportControlForm');
+//-->
+</script>
+
+<%
+}
+%>

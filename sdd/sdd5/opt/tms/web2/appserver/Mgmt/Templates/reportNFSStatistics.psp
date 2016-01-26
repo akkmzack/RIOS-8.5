@@ -1,0 +1,155 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## NFS Statistics Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, Nodes" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsNFS',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/nfs',
+            '/rbt/sport/nfs/config/server/user']
+</psp:method>
+
+<psp:method name="getServerOptions">
+    mgmt = self.session().value('mgmt')
+
+    options = []
+    for serverName, server in Nodes.getTreeifiedSubtree(mgmt, '/rbt/sport/nfs/config/server/user').iteritems():
+        try:
+            serverAddresses = server['addr']
+        except KeyError:
+            # It's possible to add a server from the CLI without specifying an
+            # IP address, so if that's the case, just skip this server because
+            # without an IP address, we can't fetch stats anyway.
+            continue
+
+        for address in serverAddresses.iterkeys():
+            options.append((address, "%s (%s)" % (serverName, address)))
+
+
+    options.sort(key=lambda opt: opt[1])
+    options.insert(0, ('0.0.0.0', 'All'))
+
+    return options
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'server': FormUtils.NodeEntry(
+            name='server',
+            label='Server',
+            widget='select',
+            userPath='sh/web/reports/nfs_server_ip',
+            userConfigAutoSave=True,
+            selectOptions=self.getServerOptions(),
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['server'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Response Rate (responses/sec)';
+    highstockOptions.series = [
+        { name: 'Local Response Rate',
+          color: RBT.Reports2.BLUE,
+          type: 'area' },
+        { name: 'Remote Response Rate',
+          color: RBT.Reports2.RED,
+          type: 'area' },
+        { name: 'Delayed Response Rate',
+          color: RBT.Reports2.GREEN,
+          type: 'area' }
+    ];
+
+    // Make the navigator shadow the first series (Local Response Rate).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        customControlDiv: Y.one('div#reportControls'),
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        statsFn: nfsStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// A callback function that supplies the summary stats displayed in the legend.
+function nfsStats(allSeriesData) {
+    var allStats = [];
+
+    var localResponses = Math.round(RBT.Reports2.integrate(allSeriesData[0]));
+    var localResponsesText = 'Total: ' +
+                             RBT.Reports2.addThousandsSeparators(localResponses) +
+                             ' responses';
+    allStats.push([localResponsesText]);
+
+    var remoteResponses = Math.round(RBT.Reports2.integrate(allSeriesData[1]));
+    var remoteResponsesText = 'Total: ' +
+                              RBT.Reports2.addThousandsSeparators(remoteResponses) +
+                              ' responses';
+    allStats.push([remoteResponsesText]);
+
+    var delayedResponses = Math.round(RBT.Reports2.integrate(allSeriesData[2]));
+    var delayedResponsesText = 'Total: ' +
+                               RBT.Reports2.addThousandsSeparators(delayedResponses) +
+                               ' responses';
+    allStats.push([delayedResponsesText]);
+
+    return allStats;
+}
+
+// Create a data URL with user input as params.
+function assembleDataUrl() {
+    var baseDataUrl = '<%= Reports2.constructDataUrl("reportNFSStatistics") %>';
+    var server = Y.one('select[name="server"]').get('value');
+    return addQueryStringParameter(baseDataUrl, 'server', server);
+}
+
+// Called when the user changes the value of a custom control.
+function paramChanged() {
+    chart.replaceChart({
+        dataUrl: assembleDataUrl()
+    });
+}
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value) {
+    value = RBT.Reports2.roundWithPadding(value, 1);
+    return RBT.Reports2.addThousandsSeparators(value) + " responses/sec";
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

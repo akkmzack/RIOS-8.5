@@ -1,0 +1,260 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, Kyle Getz
+##
+## This is the template for the Steelhead home page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, FormUtils, Nodes, OSUtils, PagePresentation:Pagelet, GfxUtils, Reports2" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#systemStatus {
+  display: inline;
+  width: auto;
+}
+
+#systemStatus td.header {
+  color: #666666;
+  font-weight: bold;
+  text-align: right;
+}
+
+#systemStatus td.data {
+  padding-left: 10px;
+}
+
+#systemStatus td.spacer {
+  width: 30px;
+}
+
+/* The overflow: hidden style keeps the chart from disappearing on resize in IE. */
+#chartContainer {
+  position: relative;
+  overflow: hidden;
+}
+
+#lanThroughputChartFieldset {
+  margin-right: 10px;
+  width: auto;
+}
+
+#lanThroughputChartDiv {
+  height: 300px;
+  width: 470px;
+}
+
+#bandwidthSummaryFieldset {
+  width: auto;
+}
+
+#bandwidthSummaryDiv {
+  height: 300px;
+  width: 365px;
+}
+
+img#bwSummaryGraphImg {
+  margin-top: 20px;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+serviceUptime = Nodes.present(mgmt, '/pm/monitor/process/sport/uptime', None)
+if serviceUptime: {
+    serviceUptimeSeconds = float(serviceUptime) / 1000
+    serviceUptimePretty = FormUtils.englishTimeInterval(serviceUptimeSeconds)
+} else: {
+    serviceUptimePretty = 'Not Running'
+}
+
+systemUptime = Nodes.present(mgmt, '/system/uptime', None)
+if systemUptime: {
+    systemUptimeSeconds = float(systemUptime) / 1000
+    systemUptimePretty = FormUtils.englishTimeInterval(systemUptimeSeconds)
+} else: {
+    systemUptimePretty = 'Unknown'
+}
+
+temperature = Nodes.present(mgmt, '/rbt/sensors/state/temperature', None)
+if temperature: {
+    temperaturePretty = '%s&#176;C' % temperature
+} else: {
+    temperaturePretty = 'Unknown'
+}
+
+cmc = Nodes.present(mgmt, '/cmc/state/cmc_hostname', 'Not Managed')
+
+try: {
+    motd = file('/etc/motd').read()
+    if len(motd) > 0: {
+        motd = '<p class="announcement">%s</p>' % cgi.escape(motd or '')
+    }
+}
+except: {
+    motd = ''
+}
+%>
+
+<% self.beginPagelet() %>
+
+<p class="important topLevel">
+  Welcome to the Management Console for <b><%= OSUtils.hostname() %></b>!
+</p>
+
+<%= motd %>
+
+<fieldset id="systemStatus">
+  <legend>System Status</legend>
+  <table class="midLevel">
+    <tr>
+      <td class="header">System Uptime:</td>
+      <td class="data"><%= systemUptimePretty %></td>
+      <td class="spacer"></td>
+      <td class="header">CMC:</td>
+      <td class="data"><%= cmc %></td>
+    </tr>
+    <tr>
+      <td class="header">Service Uptime:</td>
+      <td class="data"><%= serviceUptimePretty %></td>
+
+<% if not Nodes.isVM(): { %>
+      <td class="spacer"></td>
+      <td class="header">Temperature:</td>
+      <td class="data"><%= temperaturePretty %></td>
+<% } %>
+
+    </tr>
+  </table>
+</fieldset>
+
+<div id="chartContainer">
+  <table>
+    <tr>
+      <td>
+        <fieldset id="lanThroughputChartFieldset">
+          <legend>Optimized LAN Throughput Over Last Week</legend>
+          <div id="lanThroughputChartDiv"></div>
+        </fieldset>
+      </td>
+      <td>
+        <fieldset id="bandwidthSummaryFieldset">
+          <legend>Bandwidth Summary Over Last Week</legend>
+          <div id="bandwidthSummaryDiv">
+            <img id="bwSummaryGraphImg" class="graphImg" alt="Bandwidth Summary Graph" src="" />
+          </div>
+        </fieldset>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // Assemble the Highstock options for the LAN Throughput chart.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.chart.panning = false;
+    highstockOptions.chart.spacingLeft = 0;
+    highstockOptions.chart.spacingRight = 5;
+    highstockOptions.chart.spacingTop = 15;
+    highstockOptions.chart.zoomType = '';
+    highstockOptions.navigator.enabled = false;
+    highstockOptions.plotOptions.area.fillOpacity = 0.5;
+    highstockOptions.plotOptions.series.dataGrouping.groupPixelWidth = 2;
+    highstockOptions.scrollbar.enabled = false;
+    highstockOptions.series = [
+        {name: 'LAN Peak',
+         type: 'area',
+         color: RBT.Reports2.GRAY_DARK,
+         dataGrouping: {approximation: 'high'}},
+        {name: 'LAN P95',
+         type: 'area',
+         color: RBT.Reports2.BLUE,
+         dataGrouping: {approximation: 'high'}},
+        {name: 'LAN Average',
+         type: 'area',
+         color: RBT.Reports2.AQUA},
+        {name: 'WAN Peak',
+         visible: false},
+        {name: 'WAN P95',
+         visible: false},
+        {name: 'WAN Average',
+         visible: false}
+    ];
+
+    // Construct the URL used to request the chart data.
+    var dataUrl = '<%= Reports2.constructDataUrl("reportOptimizedThroughput") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'port', 0);
+    dataUrl = addQueryStringParameter(dataUrl, 'direction', 'bi');
+
+    // Calculate the appropriate lower bound for the stats query.
+    var now = (new Date()).getTime();
+    var week = 7 * 24 * 60 * 60 * 1000;
+    var lowerBound = Math.floor((now - week) / 1000);
+
+    // Create the LAN Throughput chart.
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#lanThroughputChartDiv',
+        dataUrl: dataUrl,
+        dataFormatterFn: dataFormatter,
+        options: highstockOptions,
+        statsFn: throughputStats,
+        alwaysOnSeries: ['LAN Peak', 'LAN P95', 'LAN Average'],
+        updateInterval: 0,
+        lowerBound: lowerBound
+    });
+
+    // Hide the window-related controls in the control panel.  This is
+    // admittedly not a pretty approach, but it doesn't seem worth the effort to
+    // extend the framework to handle this one corner case.
+    Y.one('#lanThroughputChartDiv').one('table.reports2SizeLinks').setStyle('display', 'none');
+    Y.one('#lanThroughputChartDiv').one('div.reports2WindowControls').setStyle('display', 'none');
+
+    // Create the Bandwidth Summary chart.
+    var ct = (new Date()).getTime();
+    fetchReport('bwSummaryGraphImg', '/mgmt/gfx?p=bandwidthSummary&req=bws&amp;ct=' + ct);
+});
+
+function throughputStats(allSeriesData) {
+    var allStats = [];
+
+    // Calculate maximum LAN throughput.
+    var maxLANThroughput = RBT.Reports2.max(allSeriesData[0]);
+    var maxLANThroughputText = 'Peak: ' + dataFormatter(maxLANThroughput);
+    allStats.push([maxLANThroughputText]);
+
+    // Calculate maximum LAN P95 throughput.
+    var p95LANThroughput = RBT.Reports2.max(allSeriesData[1]);
+    var p95LANThroughputText = 'Peak: ' + dataFormatter(p95LANThroughput);
+    allStats.push([p95LANThroughputText]);
+
+    // Calculate average LAN throughput.
+    var avgLANThroughput = RBT.Reports2.avg(allSeriesData[2]);
+    var avgLANThroughputText = 'Average: ' + dataFormatter(avgLANThroughput);
+    allStats.push([avgLANThroughputText]);
+
+    // Pad out the array to account for the three hidden series.
+    allStats.push([]);
+    allStats.push([]);
+    allStats.push([]);
+
+    return allStats;
+}
+
+function dataFormatter(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'bps');
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

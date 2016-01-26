@@ -1,0 +1,327 @@
+<%
+## Copyright 2006-2011, Riverbed Technology, Inc., All rights reserved.
+##
+## setupAdminAlarms.psp
+## Enables various alarms for all products.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="RVBDUtils, FormUtils, FormUtils:NodeEntryAlarm, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupAdministrationSMTP', 'diagnosticAlarms', 'setupAdminEmailCMC') 
+%>
+
+<psp:method name="nodeEntries">
+    # Alarms read state from "/alarm/state/alarm/...".
+    # And the server side writes to "/alarm/config/alarm/...".
+
+    # Our (rather clever) way of getting around this is creating something
+    # called a NodeEntryAlarm.  What happens is we set the path to the config
+    # node, which we have read/write privileges to.  Then, when we populate the
+    # list of checkboxes, we get a list of state nodes.  Technically, we have
+    # access to the state nodes, but if we ask for permission it's denied.
+    # This bypasses that whole issue.  This bug is in the RBM backend, being
+    # tracked by bug 94729.
+
+    mgmt = self.session().value('mgmt')
+
+    # Build a tree containing all the information needed to create the node entries for each alarm.
+    # The tree is a nested associative array.  Each entry uses the alarm name as its key, and contains:
+    #     the 'label' string (the pretty name), 
+    #     a 'nonconfigurable' boolean, and
+    #     a 'children' subtree
+    # 
+    def createAlarmTree(alarmId): 
+
+        tree = {}
+
+        # Some alarm names contain embedded slashes; they need to be escaped.
+        escAlarmId = alarmId.replace('/', '\\/')
+
+        # Skip hidden alarms (except for 'health')
+        if alarmId != 'health' and 'true' == Nodes.present(mgmt, '/alarm/state/alarm/%s/hidden' % escAlarmId):
+            return tree
+
+        tree[alarmId] = {}
+
+        label = Nodes.present(mgmt, '/alarm/state/alarm/%s/display_name' % escAlarmId, alarmId)
+        tooltip = Nodes.present(mgmt, '/alarm/state/alarm/%s/description' % escAlarmId)
+        tree[alarmId]['label'] = label
+        tree[alarmId]['tooltip'] = tooltip
+
+        tree[alarmId]['nonconfigurable'] = \
+            'true' != Nodes.present(mgmt, '/alarm/state/alarm/%s/disable_allowed' % escAlarmId)
+
+        tree[alarmId]['children'] = {}
+        children = Nodes.present(mgmt, '/alarm/state/alarm/%s/aggregates' % escAlarmId)
+        if children:
+            for childId in children.split(','):
+                tree[alarmId]['children'].update(createAlarmTree(childId))
+
+        return tree
+
+    # Create the alarm tree and store it in a global variable.
+    self.alarmTree = createAlarmTree('health')
+
+    # With the alarm tree's top level children as input, 
+    # create all the alarm nodeEntry objects.
+    #
+    def createAlarmNodes(tree=self.alarmTree['health']['children']): 
+        for alarmId, entry in tree.iteritems():
+            # Some alarm names contain embedded slashes; they need to be escaped.
+            escAlarmId = alarmId.replace('/', '\\/')
+            result[alarmId] = NodeEntryAlarm(
+                path='/alarm/config/alarm/%s/enabled' % escAlarmId,
+                tooltip=entry['tooltip'] or None,
+                type='bool',
+                widget='checkboxLeft',
+                widgetClass=entry['nonconfigurable'] and 'nonconfigurable' or '',
+                action='checkboxPropagateSuppressedStateDownwards(this, true);',
+                label=entry['label'])
+            createAlarmNodes(entry['children'])
+
+    # Extra nodeEntry objects for temperature and CPU load settings.
+    def createSpecialAlarmNodes():
+        tree=self.alarmTree['health']['children']        
+        if 'temperature' in tree:
+            result['warning_temp_error'] = NodeEntryAlarm(
+                path='/alarm/config/alarm/warning_temp/error_threshold',
+                type='uint16',
+                widgetClass='small',
+                label='Rising Threshold',
+                units='&deg;C')
+            result['warning_temp_clear'] = NodeEntryAlarm(
+                path='/alarm/config/alarm/warning_temp/clear_threshold',
+                type='uint16',
+                widgetClass='small',
+                label='Reset Threshold',
+                units='&deg;C')
+        if 'cpu_util_indiv' in tree:
+            # cpu Limits (read cpu 0, server sets all)
+            result['cpu_error'] = NodeEntryAlarm(
+                path='/alarm/config/alarm/cpu:*:util/error_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Rising Threshold',
+                units='%',
+                validate=('intInRange', '[0, 100]'))
+            result['cpu_clear'] = NodeEntryAlarm(
+                path='/alarm/config/alarm/cpu:*:util/clear_threshold',
+                type='uint32',
+                widgetClass='small',
+                label='Reset Threshold',
+                units='%',
+                validate=('intInRange', '[0, 100]'))
+
+    result = {}
+
+    # Create all the alarm nodeEntries, indexed by alarm name in the 'result' array.
+    createAlarmNodes()
+    createSpecialAlarmNodes()
+
+    return result
+
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+
+self.beginPagelet()
+
+if 'running' != Nodes.present(mgmt, '/pm/monitor/process/alarmd/state'): {
+    self.writeln('<p class="warning">Alarm configuration is only available when the alarm process is running.</p>')
+} 
+else: {
+%>
+
+<%
+# Generate the HTML for an individual alarm.
+# If the alarm has children, generate the HTML for them, too.
+# The HTML string is the return value.
+# 
+# Structure:
+# 
+# Each nodeEntry is embedded in a DIV of class "alarmChild".
+# 
+# Alarm detail nodeEntries, if any, are embedded in a DIV of class "alarmDetails", 
+# and are indented relative to the owning "alarmChild" DIV.
+# 
+# Child alarms are contained in an "alarmChildren" DIV,
+# which is also indented relative to the enclosing DIV.
+# 
+def htmlAlarm(alarmId, childTree): {
+    html = ''
+    html += '<div class="alarmChild">'
+    node = nodeEntries[alarmId]
+    html += node.html(self)
+    if 'cpu_util_indiv' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['cpu_error'].html(self),
+             nodeEntries['cpu_clear'].html(self))
+    } 
+    if 'warning_temp' == alarmId: {
+        html += '<div class="alarmDetails indent"><table>%s %s</table></div>' % \
+            (nodeEntries['warning_temp_error'].html(self),
+             nodeEntries['warning_temp_clear'].html(self))
+    }
+    if childTree: {
+        keys = childTree.keys()
+        keys.sort(FormUtils.alphanumericCompare, key=lambda k: nodeEntries[k].label)
+        html += '<div class="alarmChildren indent">'
+        for childId in keys: {
+            html += htmlAlarm(childId, childTree[childId]['children'])
+        }
+        html += '</div>'
+    }
+    html += '</div>'
+    return html
+}
+
+# Here we perform a structured, alphabetical rendering of the alarms into HTML.
+def layoutAlarmTree(): {
+    html = ''
+    childTree = self.alarmTree['health']['children']
+    keys = childTree.keys()
+    keys.sort(FormUtils.alphanumericCompare, key=lambda k: nodeEntries[k].label)
+    for childId in keys: {
+        html += htmlAlarm(childId, childTree[childId]['children']) 
+    }
+    self.writeln(html)
+}
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="alarmForm">
+
+  <fieldset>
+    <legend>Enable Alarms</legend>
+    <div class="midLevel">
+      <% layoutAlarmTree() %>
+      <input type="hidden" name="_action_" value="setFormNodes" />
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+}
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// A NodeList of all top level alarm checkboxes
+function topLevelCheckboxes() {
+    return Y.one('#alarmForm').
+        all('fieldset > .midLevel > .alarmChild > .nodeEntry > input');
+}
+
+// A Nodelist of a checkbox's immediate children.
+function checkboxChildren(checkbox) {
+    return checkbox.ancestor('.alarmChild').
+        all('> .alarmChildren > .alarmChild > .nodeEntry > input');
+}
+
+// Is the alarm associated with this checkbox configurable?
+function isConfigurable(checkbox) {
+    return !checkbox.hasClass('nonconfigurable');
+}
+
+// Set configurability for an alarm's checkbox.  
+// This is used at load-time to propagate non-configurability upwards.
+function setConfigurable(checkbox, val) {
+    if (val) {
+        checkbox.removeClass('nonconfigurable');
+    } else {
+        checkbox.addClass('nonconfigurable');
+    }
+}
+
+// Get the NodeEntry parent of a checkbox.
+function getNodeEntry(checkbox) {
+    return checkbox.ancestor('.nodeEntry');
+}
+
+// Enable/disable the "details" of an alarm.  Details are nodeEntries
+// that are related to an alarm but are not, per se, its children.
+function enableDetails(checkbox, val) {
+    var details = checkbox.ancestor('.alarmChild').one('> .alarmDetails');
+    if (details) {
+        enableElements(details, val);
+    }
+}
+
+// When the checkbox of an alarm is unchecked, all its descendants are disabled.
+// When it is checked, its immediate children are enabled, but their descendants
+// depend on their parents for their state, in the same manner.
+//
+// Non-configurable alarms are never enabled.
+//
+// This function serves as the 'action' function for all alarm nodeEntries
+// (but not for alarmDetails nodeEntries).  It is also run for each checkbox
+// during load time.
+//
+function checkboxPropagateSuppressedStateDownwards(chkbox, allAncestorsChecked) {
+    var checkbox = Y.one(chkbox);
+    var configurable = isConfigurable(checkbox);
+    var checked = checkbox.get('checked');
+    enableElements(getNodeEntry(checkbox), configurable && allAncestorsChecked);
+    enableDetails(checkbox, checked && configurable && allAncestorsChecked);
+    allAncestorsChecked = allAncestorsChecked && checked;
+    var children = checkboxChildren(checkbox);
+    for (var i = 0; i < children.size(); i++) {
+        var child = children.item(i);
+        var childChecked = child.get('checked');
+        checkboxPropagateSuppressedStateDownwards(child, allAncestorsChecked);
+    }
+}
+
+// Search an alarm for a non-configurable descendant. 
+// If one is found, set all its ancestors as non-configurable, and disable them.
+function checkboxPropagateNonconfigurableChildrenUpwards(checkbox) {
+    if (!isConfigurable(checkbox)) {
+        return true;
+    }
+    var children = checkboxChildren(checkbox);
+    for (var i = 0; i < children.size(); i++) {
+        var nonconfigurable = checkboxPropagateNonconfigurableChildrenUpwards(children.item(i));
+        if (nonconfigurable) {
+            setConfigurable(checkbox, false);
+            enableElements(getNodeEntry(checkbox), false);
+            return true;
+        }
+    }
+    return false;
+}
+
+// For each top-level alarm, search for a non-configurable descendant. 
+// If one is found, set all its ancestors as non-configurable.
+// This is a load-time-only function.
+function propagateNonconfigurableAlarmsUpwards() {
+    topCheckboxes = topLevelCheckboxes();
+    for (var i = 0; i < topCheckboxes.size(); i++) {
+        checkboxPropagateNonconfigurableChildrenUpwards(topCheckboxes.item(i));
+    }
+}
+
+// Propagate the "suppressed" state of all top-level alarms to their descendants.
+// This is a load-time-only function.
+function propagateSuppressedAlarmsDownwards() {
+    topCheckboxes = topLevelCheckboxes();
+    for (var i = 0; i < topCheckboxes.size(); i++) {
+        checkboxPropagateSuppressedStateDownwards(topCheckboxes.item(i), true);
+    }
+}
+
+// Load-time stuff
+onloadScript += " propagateNonconfigurableAlarmsUpwards();";
+onloadScript += " propagateSuppressedAlarmsDownwards();";
+
+// ]]>
+</script>

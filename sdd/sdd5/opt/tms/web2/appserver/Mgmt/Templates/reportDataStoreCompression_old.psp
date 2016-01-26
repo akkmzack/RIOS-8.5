@@ -1,0 +1,76 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportDataStoreCompression.psp
+## This is the template for the Data Store Compression report page.
+## Refactored to use common report code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:DataStoreCompressionPagelet" %>
+<%@page extends="DataStoreCompressionPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'dataStoreCompressionForm',
+        'reportSpecs': {
+            'dsac': {
+                'tableName': 'dataStoreCompressionTable',
+                'gfxId': 'dataStoreCompressionOld',
+                'gfxDisplayId': 'dataStoreCompressionGraphImg'
+            }
+        }
+}
+dataStoreCompressionTable = ajaxentrytable.AjaxEntryTable('dataStoreCompression',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Data Store Compression.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div id="dataStoreCompressionGraphDiv" class="graphDiv">
+  <img id="dataStoreCompressionGraphImg" class="graphImg"
+    alt="Data Store Compression Graph" />
+</div>
+<br />
+
+<form id="dataStoreCompressionForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+   <%= GfxUtils.getExportOrReportAction(self) %>
+   <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= dataStoreCompressionTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+

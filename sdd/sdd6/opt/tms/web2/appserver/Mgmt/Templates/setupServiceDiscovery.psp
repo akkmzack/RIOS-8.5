@@ -1,0 +1,177 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+## Author: cwang
+##
+## setupServiceDiscovery.psp
+##
+##  CSH Discovery Service
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'discovery_enable': NodeEntry(
+            path='/rbt/discovery/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Discovery Service')
+        }
+</psp:method>
+
+<psp:method name="css">
+    return '''
+.coloredDivContainer {
+ -moz-border-radius-bottomright: 10px;
+ -moz-border-radius-topleft: 10px;
+ -webkit-border-bottom-right-radius: 10px;
+ -webkit-border-top-left-radius: 10px;
+ border-bottom-right-radius: 10px;
+ border-top-left-radius: 10px;
+ background-color: #E3E7ED;
+ padding: 5px 15px;
+ position: relative;
+ margin-bottom: 25px;
+ width: 610px;
+}
+.blank {
+    width: 0px;
+}
+#discoveryNodesTable_main {
+    width: 600px;
+    margin-left: 10px;
+}
+'''
+</psp:method>
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+
+node_id = Nodes.present(mgmt, '/rbt/discovery/state/node_id')
+node_key = Nodes.present(mgmt, '/rbt/discovery/state/node_key')
+discovery_type = Nodes.present(mgmt, '/rbt/discovery/config/settings/discovery_type')
+polling_interval = Nodes.present(mgmt, '/rbt/discovery/config/settings/discovery_polling_interval')
+portal_url = Nodes.present(mgmt, '/rbt/discovery/state/portal_url')
+
+discoveryNodesTable = ajaxentrytable.AjaxEntryTable('discoveryNodes',
+    titleText='Nodes',
+    headerSpec=('Name', 'Type'),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('type')]""",
+    emptyMessage='No Discovery Nodes.',
+    editDivOffset=0)
+
+discoveryNodesTable.editDivContent = '''
+    <div class="midLevel">
+      <div id="edit_node_priority"></div>
+      <table id="edit_node_table"><tr>
+        <td class="nodeEntry labelPaddedRight">Node ID:</td>
+        <td class="nodeEntry"><span id="edit_node_id"></span></td>
+      </tr></table>
+      <div class="midLevel">
+        <p>Public Interfaces:</p>
+        <div id="pubIface_div"></div>
+        <p>Local Interfaces:</p>
+        <div id="locIface_div"></div>
+      </div>
+    </div>
+    '''
+
+discoveryGroupsTable = ajaxentrytable.AjaxEntryTable('discoveryGroups',
+    url='/mgmt/xmldata?p=discoveryGroups',
+    titleText='Optimization Groups',
+    headerSpec=('Group Name', 'Load Balancing Policy'),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('lb_policy_display')]""",
+    emptyMessage='No Optimization Groups.',
+    editDivOffset=0)
+
+discoveryGroupsTable.editDivContent='''
+   %s
+''' % discoveryNodesTable.html(self, cssClass="midLevel")
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Discovery Service Settings</legend>
+    <div class="midLevel">
+      <input type="hidden" name="_action_" value="setFormNodes" />
+      <%= nodeEntries['discovery_enable'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<div class="topLevel coloredDivContainer">
+  <div class="midLevel">
+    <p><b>Discovery Service Information</b></p>
+    <table>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Node ID: </td>
+        <td class="nodeEntry"><%= node_id %></td>
+      </tr><tr>
+        <td class="nodeEntry labelPaddedRight">Node Key: </td>
+        <td class="nodeEntry"><%= node_key %></td>
+      </tr><tr>
+        <td class="nodeEntry labelPaddedRight">Discovery Type: </td>
+        <td class="nodeEntry"><%= discovery_type %></td>
+      </tr><tr>
+        <td class="nodeEntry labelPaddedRight">Polling Interval: </td>
+        <td class="nodeEntry"><%= polling_interval %> seconds</td>
+      </tr><tr>
+        <td class="nodeEntry labelPaddedRight">Portal URL: </td>
+        <td class="nodeEntry"><%= portal_url %></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<%= discoveryGroupsTable.html(self, cssClass="topLevel") %>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+discoveryNodesTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('edit_node_id', el.getAttribute('nodeID'));
+    var priority = '';
+    if (el.getAttribute('priority') != undefined) {
+        priority = 'Priority: ' + el.getAttribute('priority');
+    }
+    setElementText('edit_node_priority', priority);
+    var pubDiv = Y.one('#pubIface_div');
+    pubDiv.get('childNodes').remove();
+    pubIfaces = el.getElementsByTagName('pub-interface');
+    if (pubIfaces.length) {
+        for (var i = 0; i < pubIfaces.length; i++) {
+            pubDiv.appendChild(Y.Node.create('<div class="indent">' + pubIfaces[i].getAttribute('name') + ': ' + pubIfaces[i].getAttribute('addr') + '</div>'));
+        }
+    } else {
+        pubDiv.appendChild(Y.Node.create('<div class="indent hint">No Public Interfaces</div>'));
+    }
+
+    var locDiv = Y.one('#locIface_div');
+    locDiv.get('childNodes').remove();
+    locIfaces = el.getElementsByTagName('loc-interface');
+    if (locIfaces.length) {
+        for (var i = 0; i < locIfaces.length; i++) {
+            locDiv.appendChild(Y.Node.create('<div class="indent">' + locIfaces[i].getAttribute('name') + ': ' + locIfaces[i].getAttribute('addr') + '</div>'));
+        }
+    } else {
+        locDiv.appendChild(Y.Node.create('<div class="indent hint">No Local Interfaces</div>'));
+    }
+};
+discoveryGroupsTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    discoveryNodesTable.sendRequest('/mgmt/xmldata?p=discoveryNodes&group=' + editName + '&policy=' + el.getAttribute('lb_policy'));
+};
+// ]]>
+</script>

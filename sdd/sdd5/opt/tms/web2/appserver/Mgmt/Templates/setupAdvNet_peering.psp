@@ -1,0 +1,308 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_peering.psp
+##
+## Advanced Networking, Peering
+%>
+
+<psp:method name="nodeEntries">
+    return {
+        'peering': FormUtils.NodeEntry(
+            path='/rbt/sport/peering'),
+        'enable': FormUtils.NodeEntry(
+            path='/rbt/sport/peering/config/auto_peering',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Enhanced Auto-Discovery'),
+        'eptEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/peering/config/ept/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Extended Peer Table')
+     }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    return {
+        'type': FormUtils.NodeEntry(
+            name='action',
+            selectOptions=(('normal', 'Auto'),
+                           ('respond', 'Accept'),
+                           ('forward', 'Passthrough')),
+            label='Rule Type'),
+        'at': FormUtils.NodeEntry(
+            name='idx',
+            selectOptions = ('1',),
+            label='Insert Rule At'),
+        'src': FormUtils.NodeEntry(
+            name='src/network',
+            widgetClass='ipv6subnet',
+            validate='mappedSubnet',
+            label='Source Subnet',
+            value='All-IP'),
+        'dst': FormUtils.NodeEntry(
+            name='dst/network',
+            widgetClass='ipv6subnet',
+            validate='mappedSubnet',
+            label='Destination Subnet',
+            value='All-IP'),
+        'port': FormUtils.NodeEntry(
+            name='dst/port_label',
+            widgetClass='port',
+            label='Port',
+            value='all',
+            validate='portPortLabel'),
+        'peer': FormUtils.NodeEntry(
+            name='peer/addr',
+            widgetClass='ipv4addr',
+            validate='validatePeerAddr',
+            label='Peer IP Address',
+            value='All-IPv4'),
+        'ssl': FormUtils.NodeEntry(
+            name='ssl_cap',
+            selectOptions=(('dont_check', 'No Check'),
+                           ('capable', 'Capable'),
+                           ('incapable', 'Incapable')),
+            label='SSL Capability'),
+        'cloud_acceleration': FormUtils.NodeEntry(
+            name='saas_action',
+            selectOptions= (('auto', 'Auto'),
+                            ('passthru', 'Pass Through')),
+            label='Cloud Acceleration'),
+        'description': FormUtils.NodeEntry(
+            name='description',
+            widgetClass='wide',
+            label='Description')
+    }
+</psp:method>
+
+<psp:method name="css">
+    return '''
+#peeringTable_main { width: 100%; }
+.warningIcon {
+ border: none;
+ vertical-align:text-bottom;
+}
+'''
+</psp:method>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceGeneral',
+        'setupServiceInpathRules',
+        'setupServiceProtocolsSSLMain',
+        'setupServiceProtocolsSSLCAs',
+        'setupServiceProtocolsSSLAdvanced',
+        'setupPortLabels',
+    )
+%>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+addRule = 'addRule_'
+editRule = 'editRule_'
+
+eptValid = (policyType or \
+            ('true' == Nodes.present(mgmt, '/rbt/sport/peering/state/ept_valid'))) \
+            and 'true' or 'false'
+self.addPageletJavascript('''onloadScript += " enableElements('eptEnable', %s); "; ''' % eptValid)
+
+rules = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/peering/config/rule')
+lastPos = len(rules) + 1
+dialogEntries['at'].selectOptions = [('1', 'Start')] + \
+                                    [str(i + 1) for i in range(lastPos)] + \
+                                    [(str(lastPos), 'End')]
+dialogEntries['at'].value = str(lastPos)
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# G-Spec Special Message
+# For SH EX G's we need to display a message to the user saying
+# peering rules have a particular special behavior.
+%>
+<% if RVBDUtils.isEXGSpec(): { %>
+  <p class="warning">
+  This Steelhead EX model only supports the acceleration of Granite connections.<br />
+  <strong>Please note that Peering Rules have been disabled.</strong></p>
+<% } %>
+
+<p>
+  Peering rules allow you to define appliance peering relationships.
+  Note that only the first matching rule will be applied.
+</p>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="peeringSettingsForm">
+  <fieldset class="topLevel">
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enable'].html(self) %>
+      <div id="eptEnable">
+        <% policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+           if policyType: { %>
+               <%= nodeEntries['eptEnable'].html(self, hint='<img class="popupTitle warningIcon" title="For this change to take effect, the optimization service on the appliance must be restarted with the &quot;Clear Data Store&quot; option. Once the data store is cleared, client performance will be degraded until the data store is repopulated." width="16" height="16" alt="warning" src="/images/exclamation_warning_transparent.png" />')%>
+        <% } else: { %>
+               <%= nodeEntries['eptEnable'].html(self, hint='<img class="popupTitle warningIcon" title="For this change to take effect, the optimization service must be restarted with the &quot;Clear Data Store&quot; option. Once the data store is cleared, client performance will be degraded until the data store is repopulated." width="16" height="16" alt="warning" src="/images/exclamation_warning_transparent.png" />')%>
+        <% } %>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+# For policy pages on CMC, this is always supported.
+saasSupported = policyType and 'true' or Nodes.present(mgmt, '/rbt/akam/state/supported')
+
+peeringHeader = ['', 'Number', 'Type', 'Source', 'Destination', 'Port', 'Peer', 'SSL']
+if saasSupported == 'true': {
+    peeringHeader.append('Cloud Acceleration')
+}
+
+peeringRowSpec = """
+[AjaxEntryTable.tdReorderCheckbox('id',
+                                  'moveFromPeeringRule_',
+                                  'moveToPeeringRule_',
+                                  ['default']),
+ AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+ AjaxEntryTable.tdAttr('type-pretty'),
+ AjaxEntryTable.tdAttr('source'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('port-pretty'),
+ AjaxEntryTable.tdAttr('peer'),
+ AjaxEntryTable.tdAttr('ssl-pretty')
+ %s]
+""" % (saasSupported == 'true' and ", AjaxEntryTable.tdAttr('cloud-acceleration-pretty')" or '')
+
+peeringTable = ajaxentrytable.AjaxEntryTable('peering',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=peering'),
+    headerSpec=peeringHeader,
+    rowSpec=peeringRowSpec,
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage="No current Peers (shouldn\\'t happen).",
+    removeName='removeRules',
+    removeButtonText='Remove Selected Rules',
+    moveName='moveRules',
+    moveButtonText='Move Selected Rules...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add a New Peering Rule',
+    addButtonName='addPeeringRule',
+    editButtonName='editPeeringRule',
+    editDivTitle='Edit Peering Rule <b><span id="editRule_title"></span></b>')
+
+peeringTable.addDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+    </table>
+  </div>
+''' % (dialogEntries['type'].html(self, namePrefix=addRule),
+       dialogEntries['at'].html(self, namePrefix=addRule),
+       dialogEntries['src'].html(self, namePrefix=addRule),
+       dialogEntries['dst'].html(self, namePrefix=addRule,
+           more=[dialogEntries['port']]),
+       dialogEntries['peer'].html(self, namePrefix=addRule,
+           more=[dialogEntries['ssl']]),
+       saasSupported == 'true' and dialogEntries['cloud_acceleration'].html(self, namePrefix=addRule) or '',
+       dialogEntries['description'].html(self, namePrefix=addRule))
+
+peeringTable.editDivContent='''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+      %s
+      %s
+      %s
+      %s
+    </table>
+    <input type="hidden" name="editRule_index" />
+  </div>
+''' % (dialogEntries['type'].html(self, namePrefix=editRule),
+       dialogEntries['src'].html(self, namePrefix=editRule),
+       dialogEntries['dst'].html(self, namePrefix=editRule,
+           more=[dialogEntries['port']]),
+       dialogEntries['peer'].html(self, namePrefix=editRule,
+           more=[dialogEntries['ssl']]),
+       saasSupported == 'true' and dialogEntries['cloud_acceleration'].html(self, namePrefix=editRule) or '',
+       dialogEntries['description'].html(self, namePrefix=editRule))
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="peeringTableForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServicePeering" />
+  </div>
+  <%= peeringTable.html(self, 'topLevel') %>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Validates IPv4 peer addresses
+function validatePeerAddr(val) {
+    try {
+        // check for a numerical subnet
+        RBT.Validator.Syntax.ipv4addr(val);
+    } catch (e) {
+        // check the string values
+        if (val.toLowerCase() != 'all-ipv4') {
+            throw 'An IPv4 peer address (X.X.X.X), or <tt>All-IPv4</tt>, is required.';
+        }
+    }
+}
+
+peeringTable.editEntry = function(editName) {
+    var form = document.getElementById('peeringTableForm');
+    var el = this.getEntryElement('id', editName);
+    setElementText('editRule_title', editName);
+    setFormValue(form, 'editRule_index', editName);
+    setFormValue(form, 'editRule_action', el.getAttribute('type'));
+    setFormValue(form, 'editRule_src/network', el.getAttribute('source'));
+    setFormValue(form, 'editRule_dst/network', el.getAttribute('destination'));
+    setFormValue(form, 'editRule_dst/port_label', el.getAttribute('port'));
+    setFormValue(form, 'editRule_peer/addr', el.getAttribute('peer'));
+    setFormValue(form, 'editRule_ssl_cap', el.getAttribute('ssl'));
+    setFormValue(form, 'editRule_description', el.getAttribute('description'));
+    if ('<%= saasSupported %>' == 'true') {
+        setFormValue(form, 'editRule_saas_action', el.getAttribute('cloud-acceleration'));
+    }
+    return true;
+}
+
+<%
+# G-Spec Disable Page
+# For SH EX G's we need to disable the contents of this page.
+%>
+<% if RVBDUtils.isEXGSpec(): { %>
+enableElements('peeringSettingsForm', false);
+enableElements('peeringTableForm', false);
+<% } %>
+
+// ]]>
+</script>

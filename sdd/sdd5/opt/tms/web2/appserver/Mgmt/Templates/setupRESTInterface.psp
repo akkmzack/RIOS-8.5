@@ -1,0 +1,163 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+##
+## setupRESTInterface.psp
+## This page allows the user to configure the REST interface settings.
+%>
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, FormUtils:formSubmitButtons, ajaxentrytable, PagePresentation:Pagelet, RBA" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdministrationWeb',) %>
+
+<psp:method name="css">
+    return '''
+div#accessCodeDiv {
+  word-wrap: break-word;
+  border: 1px solid #cccccc;
+  width: 500px;
+  font-family: "Courier New";
+  padding: 8px;
+  margin-top: 3px;
+  margin-bottom: 16px;
+}
+
+'''
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    return RBA.isAdminUser(self.session().value('mgmt'))
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'restEnable': NodeEntry(
+            path='/pm/process/restd/auto_launch',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable REST API Access'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    entries = {
+        'desc': FormUtils.NodeEntry(
+            name='desc',
+            type='string',
+            validate='nonempty',
+            widgetClass='wide',
+            widget='text',
+            label='Description of Use'),
+        'addAccessCode_generate': NodeEntry(
+            name='addAccessCode_generate',
+            widget='radio',
+            label={'true': 'Generate New Access Code',
+                   'false': 'Import Existing Access Code'},
+            enableDiv={'false': 'addAccessCode_importSection'},
+            value='true'),
+        'addAccessCode_data': NodeEntry(
+            name='addAccessCode_data',
+            widget='textarea',
+            validate='nonempty')
+    }
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+accessCodeTable = ajaxentrytable.AjaxEntryTable('accessCode',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=restAccessCodes'),
+    titleText='Access Codes',
+    headerSpec=(
+        '',
+        'Access Code Description',
+        'Creator'),
+    rowSpec="""
+[   AjaxEntryTable.tdSelectCheckbox('jti', 'accesscode_'),
+    AjaxEntryTable.tdEdit('jti', 'desc'),
+    AjaxEntryTable.tdAttr('owner')
+]""",
+    emptyMessage='No access codes.',
+    removeName='removeAccessCode',
+    removeButtonText='Remove Selected',
+    removePrefix='accesscode_',
+    addButtonText='Add Access Code',
+    addButtonName='addAccessCode',
+    editButtonName='editAccessCode')
+
+accessCodeTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %(desc)s
+  </table>
+  %(generate_btn)s
+  %(import_btn)s
+  <div id="addAccessCode_importSection" class="indent">
+  %(import_data)s
+  </div>
+</div>
+''' % {
+    'desc': dialogEntries['desc'].html(self, namePrefix='accessCodeAdd_'),
+    'generate_btn': dialogEntries['addAccessCode_generate'].html(self, value='true'),
+    'import_btn': dialogEntries['addAccessCode_generate'].html(self, value='false'),
+    'import_data': dialogEntries['addAccessCode_data'].html(self, format='block')
+}
+
+accessCodeTable.editDivContent = '''
+<input type="hidden" name="accessCodeEdit_jti" />
+<div class="midLevel">
+  <strong>Access Code:</strong><br />
+  <div id="accessCodeDiv">
+  <span id="access_code"></span>
+  </div>
+  <table>
+    %(desc)s
+  </table>
+</div>
+''' % {
+    'desc': dialogEntries['desc'].html(
+        self, namePrefix='accessCodeEdit_')
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="restSettingsForm">
+  <fieldset>
+    <legend>REST API Access Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['restEnable'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self, {'name': 'apply', 'value': 'Apply'}) %>
+</form>
+
+<form method="post" id="restAccessCodesForm"
+  action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupRESTAccessCodes" />
+    <%= accessCodeTable.html(self, 'topLevel') %>
+  </div>
+</form>
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+accessCodeTable.editEntry = function(editName) {
+    var form = $('restAccessCodesForm');
+    var el = this.getEntryElement('jti', editName);
+
+    setElementText('access_code', el.getAttribute('code'));
+    form.accessCodeEdit_jti.value = editName;
+    form.accessCodeEdit_desc.value = el.getAttribute('desc');
+}
+// ]]>
+</script>

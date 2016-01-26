@@ -1,0 +1,186 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_services.psp
+##
+## Start and stop services.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#buttonsDiv {
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+#rebootButton {
+  margin-right: 6px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+return {
+    'actionReboot': FormUtils.NodeEntry(
+        path='/pm/actions/reboot'),
+    'actionShutDown': FormUtils.NodeEntry(
+        path='/pm/actions/shutdown')
+}
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'applianceClean': FormUtils.NodeEntry(
+            name='applianceClean',
+            widget='checkboxLeft',
+            label='Clear Data Store')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+sportState = Nodes.present(mgmt, '/pm/monitor/process/sport/state', 'Not Running')
+dialogEntries = self.dialogEntries()
+
+reloadNeeded = Nodes.getBoolean(mgmt, '/rbt/sport/status/reload_needed')
+if reloadNeeded: {
+    self.getPagePresentationServlet().setFormError('The appliance must be rebooted due to a configuration change.')
+}
+
+sdrPolicy = Nodes.present(mgmt, '/rbt/sport/datastore/config/sdr_policy', '')
+
+if sdrPolicy == 'sdr-m': {
+    dialogEntries['applianceClean'].tooltip = 'This option is not available in SDR-M mode.'
+} else: {
+    dialogEntries['applianceClean'].tooltip = 'Client performance will be degraded until the data store is repopulated.'
+}
+
+hasUnsavedChanges = Nodes.present(mgmt, \
+    '/mgmtd/db/info/running/unsaved_changes') == 'true'
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_shutdown"
+      id="serviceControlForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setupApplianceControl" />
+    <legend>Reboot or Shut Down</legend>
+    <div class="midLevel">
+      <p>
+        Rebooting or shutting down will disrupt existing network
+        connections being proxied through this appliance.
+
+<%
+if RVBDUtils.isBOB(): {
+%>
+
+        Shutting down may take a few minutes and
+        <strong class="warning">rebooting may take up to 15 minutes.</strong>
+
+<%
+} else: {
+%>
+
+        Reboot and shutdown operations may take a few minutes.
+
+<%
+}
+%>
+
+      </p>
+      <div class="midLevel" id="clearDataStoreDiv">
+        <%= dialogEntries['applianceClean'].html(self) %>
+      </div>
+      <div id="buttonsDiv">
+      <%= FormUtils.formSubmitButtons(self,
+                                      {'id': 'rebootButton',
+                                       'name': 'applianceReboot',
+                                       'value': 'Reboot',
+                                       'onclick': 'buttonClicked(this); return false;'},
+                                      {'id': 'shutdownButton',
+                                       'name': 'applianceShutdown',
+                                       'value': 'Shutdown',
+                                       'onclick': 'buttonClicked(this); return false;'}) %>
+      </div>
+    </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    enableElements('clearDataStoreDiv', '<%= sdrPolicy %>' != 'sdr-m');
+});
+
+function buttonClicked(button) {
+    RBT.rpc({
+        url: '/mgmt/xmldata?p=dbDirty',
+        successFn: function(response) { checkUnsaved(button, response); }
+    });
+}
+
+function checkUnsaved(button, response) {
+    var unsaved = response.dirty;
+    if (unsaved == false && button.value == 'Reboot') {
+        submitForm(button);
+        return;
+    }
+    var warningString = '';
+    if (unsaved == true) {
+        warningString = '<p>Your unsaved configuration changes will be lost.</p>';
+    }
+    if (button.value == 'Shutdown') {
+        warningString += '<p>';
+        if (unsaved == true) {
+            warningString += 'Additionally, if ';
+        }
+        else {
+            warningString = 'If ';
+        }
+        warningString += 'you shut down the appliance, you may not be able to \
+                          power it back on without physical access.</p>';
+    }
+    warningString += '<p>Are you sure you wish to continue?</p>';
+
+    // Display the dialog
+    new RBT.Dialog({
+        alignNode: button,
+        content: warningString,
+        buttons: [
+            {
+                label: button.value,
+                clickFn: function() { submitForm(button); }
+            },
+            {
+                label: 'Cancel',
+                clickFn: RBT.Dialog.dismiss
+            }
+        ]
+    }).render('#serviceControlForm');
+}
+
+// We need to manually add the element before submitting the form, because the
+// information of what button the user clicked is lost when buttonClicked() is
+// called.
+function submitForm(button) {
+    var el = document.createElement('input');
+    el.type = 'hidden';
+    el.name = button.name;
+    el.value = button.value;
+    $('serviceControlForm').appendChild(el);
+    $('serviceControlForm').submit();
+    return;
+}
+// ]]>
+</script>

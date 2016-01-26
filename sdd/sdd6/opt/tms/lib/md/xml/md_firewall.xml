@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2009 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: firewall                                                -->
+<!--   Module Root: /net/firewall                                           -->
+<!--  Config. Root: /net/firewall/config                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../framework/src/bin/mgmtd/modules/md_firewall.c                 -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/net/firewall/config/myconfig</name>                      -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="firewall">
+    <config>
+        <name>/net/firewall/config/enable</name>
+        <description>global setting to enable/disable firewall</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/cmc/1/ip</name>
+        <description>Allowed CMC IP</description>
+        <value type="ipv4addr">0.0.0.0</value>
+        <db-policy>localdb</db-policy>
+    </config>
+    <config-wildcard>
+        <name>/net/firewall/config/tables/inbound/rules/*</name>
+        <description>firewall inbound rule</description>
+        <value type="uint16"/>
+    </config-wildcard>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/action</name>
+        <description>target of the rule</description>
+        <value type="string">allow</value>
+        <value-choices>
+            <choice>allow</choice>
+            <choice>deny</choice>
+        </value-choices>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/nolog</name>
+        <description>If action is deny, determines if logging should be turned off for that rule</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/description</name>
+        <description>description of the rule</description>
+        <value type="string"></value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/interface</name>
+        <description>interface that this rule applies</description>
+        <value type="string"></value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/protocol</name>
+        <description>protocol number</description>
+        <value type="uint8">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/service</name>
+        <description>service</description>
+        <value type="string"></value>
+        <value-choices>
+            <choice/>
+            <choice>http</choice>
+            <choice>https</choice>
+            <choice>soap</choice>
+            <choice>ssh</choice>
+            <choice>telnet</choice>
+            <choice>ftp</choice>
+            <choice>snmp</choice>
+        </value-choices>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/source/network</name>
+        <description>source network</description>
+        <value type="ipv4prefix">0.0.0.0/0.0.0.0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/source/port/start</name>
+        <description>start of source port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/source/port/end</name>
+        <description>end of source port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/destination/port/start</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/rules/*/destination/port/end</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config-wildcard>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*</name>
+        <description>firewall inbound rule</description>
+        <value type="uint16"/>
+    </config-wildcard>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/action</name>
+        <description>target of the rule</description>
+        <value type="string">allow</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/nolog</name>
+        <description>If action is deny, determines if logging should be turned off for that rule</description>
+        <value type="bool">false</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/description</name>
+        <description>description of the rule</description>
+        <value type="string"></value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/interface</name>
+        <description>interface that this rule applies</description>
+        <value type="string"></value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/protocol</name>
+        <description>protocol number</description>
+        <value type="uint8">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/service</name>
+        <description>service</description>
+        <value type="string"></value>
+        <value-choices>
+            <choice/>
+            <choice>http</choice>
+            <choice>https</choice>
+            <choice>soap</choice>
+            <choice>ssh</choice>
+            <choice>telnet</choice>
+            <choice>ftp</choice>
+            <choice>snmp</choice>
+        </value-choices>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/source/network</name>
+        <description>source network</description>
+        <value type="ipv4prefix">0.0.0.0/0.0.0.0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/source/port/start</name>
+        <description>start of source port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/source/port/end</name>
+        <description>end of source port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/destination/port/start</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <config>
+        <name>/net/firewall/config/tables/inbound/_allow_always/*/destination/port/end</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+    </config>
+    <state-wildcard>
+        <name>/net/firewall/state/default_rules/*</name>
+        <description>firewall inbound rule</description>
+        <value type="uint16"/>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <iterate-func>md_firewall_default_rules_iterate</iterate-func>
+        <iterate-func-arg>iterate_all</iterate-func-arg>
+    </state-wildcard>
+    <state>
+        <name>/net/firewall/state/default_rules/*/action</name>
+        <description>target of the rule</description>
+        <value type="string">allow</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>action</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/nolog</name>
+        <description>If action is deny, determines if logging should be turned off for that rule</description>
+        <value type="bool">false</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>nolog</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/description</name>
+        <description>description of the rule</description>
+        <value type="string"></value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>description</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/interface</name>
+        <description>interface that this rule applies</description>
+        <value type="string"></value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>interface</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/protocol</name>
+        <description>protocol number</description>
+        <value type="uint8">0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>protocol</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/service</name>
+        <description>service</description>
+        <value type="string"></value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>service</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/source/network</name>
+        <description>source network</description>
+        <value type="ipv4prefix">0.0.0.0/0.0.0.0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>source/network</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/source/port/start</name>
+        <description>start of source port range</description>
+        <value type="uint16">0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>source/port/start</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/source/port/end</name>
+        <description>end of source port range</description>
+        <value type="uint16">0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>source/port/end</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/destination/port/start</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>destination/port/end</get-func-arg>
+    </state>
+    <state>
+        <name>/net/firewall/state/default_rules/*/destination/port/end</name>
+        <description>start of destination port range</description>
+        <value type="uint16">0</value>
+        <get-func>md_firewall_default_rules_get</get-func>
+        <get-func-arg>destination/port/end</get-func-arg>
+    </state>
+</node-list>

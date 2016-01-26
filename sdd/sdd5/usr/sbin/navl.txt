@@ -1,0 +1,700 @@
+#-------------------------------------------------------------------------------------------------
+# NLP1042 RevC2 xaui init
+#   broadcastable init sequence, need a reset (not broadcastable) to all ports before-hand 
+#-------------------------------------------------------------------------------------------------
+# v1p7 mwj 2011-05-12
+# add transpose (1.c20c.9) when RX_LOS asserted for LED link status
+# v1p8 pc  2011-05-24 update using margaret ocal_tx_losXposee_tgt_v1p8.uc
+# add LC PLL lookup table to reliably run a wider temperature range
+# v1p9 mwj 2011-05-31
+# add lrcv/lrxmit reset and xaui squelch during RXLOS to ensure no LED
+#     when RXLOS = 1 and no incoming signal
+# changed wait time after SRAM load to 300ms to ensure contvideal values
+#     are udpated
+# v1p9B mwj 2011-06-30
+# store temp to 1.eff0
+# increased wait time to 400ms in case customer MDIO is faster and
+#     reaches RCON faster
+
+
+
+# Evaluating: 's_eepromLoad '
+#----------------------------------------------------
+# s_eepromLoad: loading calico_C2 settings...
+#----------------------------------------------------
+# NOTE: no reset (h/w or x.0000.15) here
+
+# PART 1: nlp_init ----------------------------------
+
+w 1.0000.15     0x1
+sleep  200000
+
+
+w 1.ca42.10:8    0x1; 	#  cmu_e2o_tx:vcocaplrsel
+w 1.ca44.15:12   0x8; 	#  cmu_e2o_tx:reg_vcotailsel
+w 1.ca44.9:5     0x10; 	#  cmu_e2o_tx:reg_contvideal
+w 1.ca46.8       0x1; 	#  cmu_e2o_tx:reg_cp_highv_en
+w 1.ca46.11:9    0x4; 	#  cmu_e2o_tx:reg_cp_highvctl
+w 1.cb0e.13:12   0x1; 	#  bt_237_236_ir25txcmu1
+w 1.ca4c.5:0     0x2; 	#  cmu_e2o_tx:antesten
+w 1.ca12.10:8    0x1; 	#  cmu_o2e_lim:vcocaplrsel
+w 1.ca14.15:12   0x8; 	#  cmu_o2e_lim:reg_vcotailsel
+w 1.ca14.9:5     0x10; 	#  cmu_o2e_lim:reg_contvideal
+w 1.ca16.8       0x1; 	#  cmu_o2e_lim:reg_cp_highv_en
+w 1.ca16.11:9    0x4; 	#  cmu_o2e_lim:reg_cp_highvctl
+w 1.cb06.13:12   0x1; 	#  bt_109_108_ir25rxfcmu1
+w 1.ca1c.5:0     0x2; 	#  cmu_o2e_lim:antesten
+w 1.ca42.13:11   0x1; 	#  cmu_e2o_tx:reg_bufcaplrsel
+w 1.ca43.14:12   0x2; 	#  cmu_e2o_tx:bufcmc
+w 1.c246.9:7     0x3; 	#  csbiasmuxsel
+w 1.c242.2:0     0x0; 	#  lkbiassel
+w 1.c240.7:4     0x0; 	#  ldbiassel
+w 1.c240.13:11   0x7; 	#  cmbiassel
+w 1.c242.15:13   0x0; 	#  cspredrvsel
+w 1.c246.0       0x0; 	#  sfpmodeen
+w 1.c246.1       0x1; 	#  krmodeen
+w 1.c243.4:0     0x1; 	#  drvpre
+w 1.c243.10:5    0x3f; 	#  drvmain
+w 1.c243.15:11   0x2; 	#  drvpost
+w 1.cb0b.1:0     0x1; 	#  bt_177_176_ic25drvbias0
+w 1.cb0b.5:4     0x1; 	#  bt_181_180_ir25drvbias0
+w 1.cb0b.9:8     0x3; 	#  bt_185_184_ir25drvbias2
+w 1.cb0b.11:10   0x3; 	#  bt_187_186_ir25drvbias3
+w 1.cb0b.13:12   0x3; 	#  bt_189_188_ir25drvbias4
+w 1.cb0b.15:14   0x3; 	#  bt_191_190_ir25drvbias5
+w 1.cc00.7:0     0x0; 	#  lsatxfi_o2e_rxrxfcdrqoffs
+w 1.cc02.7       0x1; 	#  lsatxfi_o2e_rxrxfcdrwrpmltgl
+w 1.cc02.7       0x0; 	#  lsatxfi_o2e_rxrxfcdrwrpmltgl
+w 1.cc07.4:0     0x17; 	#  lsatxfi_o2e_rxrxfeqklp
+w 1.cc08.5:0     0x1f; 	#  lsatxfi_o2e_rxrxfdfetap1
+w 1.cc08.11:6    0x1f; 	#  lsatxfi_o2e_rxrxfdfetap2
+w 1.cc09.5:0     0x1f; 	#  lsatxfi_o2e_rxrxfdfetap3
+w 1.cc09.11:6    0x1f; 	#  lsatxfi_o2e_rxrxfdfetap4
+w 1.cc07.8:5     0x0; 	#  lsatxfi_o2e_rxrxfeqmres
+w 1.cc0e.0       0x1; 	#  lsatxfi_o2e_rxrxfdfetapstrobe
+w 1.cc0e.1       0x1; 	#  lsatxfi_o2e_rxrxfdfeosdacstrobe
+w 1.cc0e.2       0x1; 	#  lsatxfi_o2e_rxrxfeqosdacstrobe
+w 1.cc0e.0       0x0; 	#  lsatxfi_o2e_rxrxfdfetapstrobe
+w 1.cc0e.1       0x0; 	#  lsatxfi_o2e_rxrxfdfeosdacstrobe
+w 1.cc0e.2       0x0; 	#  lsatxfi_o2e_rxrxfeqosdacstrobe
+w 1.cc02.5       0x1; 	#  lsatxfi_o2e_rxrxfclk16inv
+w 1.cc04.0       0x1; 	#  lsatxfi_o2e_rxrxfvgaovrden
+w 1.cc04.8:1     0x5a; 	#  lsatxfi_o2e_rxrxfvgaovrd
+w 1.cc11.5:3     0x0; 	#  lsatxfi_o2e_rxrxfdfetap1adj
+w 1.cc11.8:6     0x0; 	#  lsatxfi_o2e_rxrxfdfetap2adj
+w 1.cc11.11:9    0x0; 	#  lsatxfi_o2e_rxrxfdfetap3adj
+w 1.cc11.14:12   0x0; 	#  lsatxfi_o2e_rxrxfdfetap4adj
+w 1.cc11.2:0     0x0; 	#  lsatxfi_o2e_rxrxfdfemainadj
+w 1.cb02.7:4     0xf; 	#  bt_039_036_ir50rxfeq1
+w 1.cb02.3:0     0xf; 	#  bt_035_032_ir50rxfeq0
+w 1.cb21.15:12   0x1; 	#  bt_543_540_ir50xtpll3
+w 1.ca01.0       0x1; 	#  cmu_o2e_tx:cpdac_ovrd
+w 1.ca01.7:1     0x8; 	#  cmu_o2e_tx:ov_cpdac
+w 1.cb1b.15:12   0x1; 	#  bt_447_444_ir50xrpll3
+w 1.ca51.0       0x1; 	#  cmu_e2o_rx:cpdac_ovrd
+w 1.ca51.7:1     0x8; 	#  cmu_e2o_rx:ov_cpdac
+w 1.c2c3.3:0     0xf; 	#  pwdpostb
+w 1.c2ca.15:0   0x17e0;
+w 1.c2d0.15:0   0x17e0;
+w 1.c2d6.15:0   0x17e0;
+w 1.c2dc.15:0   0x17e0;
+#w 1.c2f1.5:1     0xa; 	#  xreqklp0
+w 1.c2f1.15:0     0x5e01;	#  xreqmlpf0
+#w 1.c2f5.5:1     0xa; 	#  xreqklp1
+w 1.c2f5.15:0     0x5e01; 	#  xreqmlpf1
+#w 1.c2f9.5:1     0xa; 	#  xreqklp2
+w 1.c2f9.15:0     0x5e01; 	#  xreqmlpf2
+#w 1.c2fd.5:1     0xa; 	#  xreqklp3
+w 1.c2fd.15:0     0x5e01; 	#  xreqmlpf3
+w 1.c2e8.8:0     0x100; 	#  xrcdrqoffs0
+w 1.c2e9.8:0     0x100; 	#  xrcdrqoffs1
+w 1.c2ea.8:0     0x100; 	#  xrcdrqoffs2
+w 1.c2eb.8:0     0x100; 	#  xrcdrqoffs3
+w 1.c2e6.11      0x1; 	#  xrcdrwrpmltgl
+w 1.c2e6.11      0x0; 	#  xrcdrwrpmltgl
+w 1.c010.14	 0x1; 	#  ber_los_mask
+w 1.c017.13	 0x0;   #  rx_pmainpcsfault_mask
+w 1.c010.13	 0x1;   #  los_opt_intlos_mask
+w 1.cd40.3:0	 0x1;   #  pdtrgmsk_10gbrx
+w 1.c019.10 	 0x1;   #  sd_intlos_mask
+w 1.ff2a.15:0    0x4a
+
+
+sleep 200000; # 200ms
+
+
+# PART 2: uc code  ----------------------------------
+
+# cmdUC processing binary and source file...
+# cmdUC Writing binary into memory...
+w 1.d008.0       0x1
+# config uC
+sleep 100000; # 100ms
+w 1.d000.15:0    0x5200
+sleep 100000; # 100ms
+# writing binary into uC SRAM...
+w 1.d800.15:0    0x2fff
+w 1.d801.15:0    0x300f
+w 1.d802.15:0    0x2ff4
+w 1.d803.15:0    0x3ef4
+w 1.d804.15:0    0x20ae
+w 1.d805.15:0    0x301e
+w 1.d806.15:0    0x6ec4
+w 1.d807.15:0    0x22c4
+w 1.d808.15:0    0x3ef4
+w 1.d809.15:0    0x400e
+w 1.d80a.15:0    0x6ec4
+w 1.d80b.15:0    0x220e
+w 1.d80c.15:0    0x300e
+w 1.d80d.15:0    0x2124
+w 1.d80e.15:0    0x3cc4
+w 1.d80f.15:0    0x6ec4
+w 1.d810.15:0    0x23fe
+w 1.d811.15:0    0x3c1e
+w 1.d812.15:0    0x2214
+w 1.d813.15:0    0x3ca4
+w 1.d814.15:0    0x6ec4
+w 1.d815.15:0    0x20a4
+w 1.d816.15:0    0x3cc4
+w 1.d817.15:0    0x2dfe
+w 1.d818.15:0    0x307e
+w 1.d819.15:0    0x6e24
+w 1.d81a.15:0    0x6e24
+w 1.d81b.15:0    0x6ec4
+w 1.d81c.15:0    0x20e4
+w 1.d81d.15:0    0x3cc4
+w 1.d81e.15:0    0x402e
+w 1.d81f.15:0    0x6ec4
+w 1.d820.15:0    0x400e
+w 1.d821.15:0    0x6ec4
+w 1.d822.15:0    0x2014
+w 1.d823.15:0    0x3cc4
+w 1.d824.15:0    0x64de
+w 1.d825.15:0    0x6e8f
+w 1.d826.15:0    0x400e
+w 1.d827.15:0    0x6ec4
+w 1.d828.15:0    0x2044
+w 1.d829.15:0    0x3cc4
+w 1.d82a.15:0    0x64de
+w 1.d82b.15:0    0x6e8f
+w 1.d82c.15:0    0x201e
+w 1.d82d.15:0    0x300e
+w 1.d82e.15:0    0x6ec4
+w 1.d82f.15:0    0x20d4
+w 1.d830.15:0    0x3cc4
+w 1.d831.15:0    0x64de
+w 1.d832.15:0    0x6e8f
+w 1.d833.15:0    0x21fe
+w 1.d834.15:0    0x300e
+w 1.d835.15:0    0x6ec4
+w 1.d836.15:0    0x20e4
+w 1.d837.15:0    0x3cc4
+w 1.d838.15:0    0x404e
+w 1.d839.15:0    0x6ec4
+w 1.d83a.15:0    0x400e
+w 1.d83b.15:0    0x6ec4
+w 1.d83c.15:0    0x21f5
+w 1.d83d.15:0    0x3005
+w 1.d83e.15:0    0xb805
+w 1.d83f.15:0    0x8556
+w 1.d840.15:0    0x8557
+w 1.d841.15:0    0x8558
+w 1.d842.15:0    0x8559
+w 1.d843.15:0    0x855a
+w 1.d844.15:0    0x400d
+w 1.d845.15:0    0x6d8f
+w 1.d846.15:0    0x2032
+w 1.d847.15:0    0x3022
+w 1.d848.15:0    0x1002
+w 1.d849.15:0    0x2132
+w 1.d84a.15:0    0x3022
+w 1.d84b.15:0    0x1002
+w 1.d84c.15:0    0x21c2
+w 1.d84d.15:0    0x3022
+w 1.d84e.15:0    0x1002
+w 1.d84f.15:0    0x2302
+w 1.d850.15:0    0x3022
+w 1.d851.15:0    0x1002
+w 1.d852.15:0    0x23a2
+w 1.d853.15:0    0x3022
+w 1.d854.15:0    0x1002
+w 1.d855.15:0    0x24c2
+w 1.d856.15:0    0x3022
+w 1.d857.15:0    0x1002
+w 1.d858.15:0    0x2562
+w 1.d859.15:0    0x3022
+w 1.d85a.15:0    0x1002
+w 1.d85b.15:0    0x6f7e
+w 1.d85c.15:0    0x4004
+w 1.d85d.15:0    0xb814
+w 1.d85e.15:0    0x5e43
+w 1.d85f.15:0    0x3d7
+w 1.d860.15:0    0x2032
+w 1.d861.15:0    0x3022
+w 1.d862.15:0    0x1002
+w 1.d863.15:0    0x200e
+w 1.d864.15:0    0x300e
+w 1.d865.15:0    0x2
+w 1.d866.15:0    0xd01e
+w 1.d867.15:0    0x6e8f
+w 1.d868.15:0    0x20fe
+w 1.d869.15:0    0x300e
+w 1.d86a.15:0    0xb80e
+w 1.d86b.15:0    0xd01d
+w 1.d86c.15:0    0x5de3
+w 1.d86d.15:0    0x249e
+w 1.d86e.15:0    0x301e
+w 1.d86f.15:0    0x135e
+w 1.d870.15:0    0x6f7e
+w 1.d871.15:0    0x6f7e
+w 1.d872.15:0    0x20d4
+w 1.d873.15:0    0x3cc4
+w 1.d874.15:0    0x6ec4
+w 1.d875.15:0    0x20e4
+w 1.d876.15:0    0x3cc4
+w 1.d877.15:0    0x404e
+w 1.d878.15:0    0x6ec4
+w 1.d879.15:0    0x400e
+w 1.d87a.15:0    0x6ec4
+w 1.d87b.15:0    0x6f7e
+w 1.d87c.15:0    0x2044
+w 1.d87d.15:0    0x3cc4
+w 1.d87e.15:0    0x6ec4
+w 1.d87f.15:0    0x6f7e
+w 1.d880.15:0    0x2014
+w 1.d881.15:0    0x3cc4
+w 1.d882.15:0    0x6ec4
+w 1.d883.15:0    0x200e
+w 1.d884.15:0    0x300e
+w 1.d885.15:0    0x2124
+w 1.d886.15:0    0x3cc4
+w 1.d887.15:0    0x6ec4
+w 1.d888.15:0    0x2504
+w 1.d889.15:0    0x3cd4
+w 1.d88a.15:0    0x4015
+w 1.d88b.15:0    0x65c4
+w 1.d88c.15:0    0x2514
+w 1.d88d.15:0    0x3cd4
+w 1.d88e.15:0    0x64d5
+w 1.d88f.15:0    0xb145
+w 1.d890.15:0    0xb115
+w 1.d891.15:0    0x65c4
+w 1.d892.15:0    0x2bd2
+w 1.d893.15:0    0x3012
+w 1.d894.15:0    0x1002
+w 1.d895.15:0    0x678f
+w 1.d896.15:0    0x2514
+w 1.d897.15:0    0x3cd4
+w 1.d898.15:0    0x64d5
+w 1.d899.15:0    0xb145
+w 1.d89a.15:0    0xb105
+w 1.d89b.15:0    0x65c4
+w 1.d89c.15:0    0x2bd2
+w 1.d89d.15:0    0x3012
+w 1.d89e.15:0    0x1002
+w 1.d89f.15:0    0x6f78
+w 1.d8a0.15:0    0xe78e
+w 1.d8a1.15:0    0x22c5
+w 1.d8a2.15:0    0x3ef5
+w 1.d8a3.15:0    0x6ec5
+w 1.d8a4.15:0    0x2084
+w 1.d8a5.15:0    0x3034
+w 1.d8a6.15:0    0x2005
+w 1.d8a7.15:0    0x3d75
+w 1.d8a8.15:0    0xc451
+w 1.d8a9.15:0    0x2f62
+w 1.d8aa.15:0    0x3022
+w 1.d8ab.15:0    0x1002
+w 1.d8ac.15:0    0x2444
+w 1.d8ad.15:0    0x3ca4
+w 1.d8ae.15:0    0x2ed2
+w 1.d8af.15:0    0x3022
+w 1.d8b0.15:0    0x1002
+w 1.d8b1.15:0    0x2144
+w 1.d8b2.15:0    0x3ca4
+w 1.d8b3.15:0    0x2ed2
+w 1.d8b4.15:0    0x3022
+w 1.d8b5.15:0    0x1002
+w 1.d8b6.15:0    0x2f02
+w 1.d8b7.15:0    0x3012
+w 1.d8b8.15:0    0x1002
+w 1.d8b9.15:0    0x28c2
+w 1.d8ba.15:0    0x3012
+w 1.d8bb.15:0    0x1002
+w 1.d8bc.15:0    0x0
+w 1.d8bd.15:0    0x628f
+w 1.d8be.15:0    0x4007
+w 1.d8bf.15:0    0x2524
+w 1.d8c0.15:0    0x3cd4
+w 1.d8c1.15:0    0x64d5
+w 1.d8c2.15:0    0x2005
+w 1.d8c3.15:0    0x9575
+w 1.d8c4.15:0    0x65c4
+w 1.d8c5.15:0    0x678f
+w 1.d8c6.15:0    0x2dd2
+w 1.d8c7.15:0    0x3012
+w 1.d8c8.15:0    0x1002
+w 1.d8c9.15:0    0x6f77
+w 1.d8ca.15:0    0x2514
+w 1.d8cb.15:0    0x3cd4
+w 1.d8cc.15:0    0x64d5
+w 1.d8cd.15:0    0xbd05
+w 1.d8ce.15:0    0xbf45
+w 1.d8cf.15:0    0x2db2
+w 1.d8d0.15:0    0x3012
+w 1.d8d1.15:0    0x5553
+w 1.d8d2.15:0    0x1302
+w 1.d8d3.15:0    0x2006
+w 1.d8d4.15:0    0x3016
+w 1.d8d5.15:0    0x5763
+w 1.d8d6.15:0    0x13c2
+w 1.d8d7.15:0    0xd017
+w 1.d8d8.15:0    0x2bf2
+w 1.d8d9.15:0    0x3012
+w 1.d8da.15:0    0x1002
+w 1.d8db.15:0    0x6f72
+w 1.d8dc.15:0    0x1002
+w 1.d8dd.15:0    0x628f
+w 1.d8de.15:0    0x2514
+w 1.d8df.15:0    0x3cd4
+w 1.d8e0.15:0    0x64d5
+w 1.d8e1.15:0    0x4026
+w 1.d8e2.15:0    0x9655
+w 1.d8e3.15:0    0x65c4
+w 1.d8e4.15:0    0x648f
+w 1.d8e5.15:0    0x401d
+w 1.d8e6.15:0    0x2f22
+w 1.d8e7.15:0    0x3012
+w 1.d8e8.15:0    0x1002
+w 1.d8e9.15:0    0x6f74
+w 1.d8ea.15:0    0x2fd6
+w 1.d8eb.15:0    0x3ff6
+w 1.d8ec.15:0    0x8655
+w 1.d8ed.15:0    0x65c4
+w 1.d8ee.15:0    0x6f72
+w 1.d8ef.15:0    0x1002
+w 1.d8f0.15:0    0x22cd
+w 1.d8f1.15:0    0x301d
+w 1.d8f2.15:0    0x2108
+w 1.d8f3.15:0    0x3808
+w 1.d8f4.15:0    0x628f
+w 1.d8f5.15:0    0x5dd3
+w 1.d8f6.15:0    0x2012
+w 1.d8f7.15:0    0x3022
+w 1.d8f8.15:0    0x1302
+w 1.d8f9.15:0    0x63a8
+w 1.d8fa.15:0    0x2b72
+w 1.d8fb.15:0    0x3022
+w 1.d8fc.15:0    0x1002
+w 1.d8fd.15:0    0xdffd
+w 1.d8fe.15:0    0x2f52
+w 1.d8ff.15:0    0x3012
+w 1.d900.15:0    0x1002
+w 1.d901.15:0    0x6f72
+w 1.d902.15:0    0x1002
+w 1.d903.15:0    0x2214
+w 1.d904.15:0    0x3ca4
+w 1.d905.15:0    0x64de
+w 1.d906.15:0    0x2ef4
+w 1.d907.15:0    0x3ff4
+w 1.d908.15:0    0x8e4e
+w 1.d909.15:0    0x2214
+w 1.d90a.15:0    0x3ca4
+w 1.d90b.15:0    0x6ec4
+w 1.d90c.15:0    0x2104
+w 1.d90d.15:0    0x3004
+w 1.d90e.15:0    0x9e4e
+w 1.d90f.15:0    0x2214
+w 1.d910.15:0    0x3ca4
+w 1.d911.15:0    0x6ec4
+w 1.d912.15:0    0x1002
+w 1.d913.15:0    0x2294
+w 1.d914.15:0    0x3ca4
+w 1.d915.15:0    0x64db
+w 1.d916.15:0    0x8bbc
+w 1.d917.15:0    0xb84b
+w 1.d918.15:0    0x300c
+w 1.d919.15:0    0xdf0b
+w 1.d91a.15:0    0xdf0c
+w 1.d91b.15:0    0x1002
+w 1.d91c.15:0    0xc5b5
+w 1.d91d.15:0    0xc6c6
+w 1.d91e.15:0    0x855e
+w 1.d91f.15:0    0xb84e
+w 1.d920.15:0    0x866c
+w 1.d921.15:0    0xb84c
+w 1.d922.15:0    0xb60c
+w 1.d923.15:0    0x9cee
+w 1.d924.15:0    0x20a4
+w 1.d925.15:0    0x3cc4
+w 1.d926.15:0    0x6ec4
+w 1.d927.15:0    0x20e4
+w 1.d928.15:0    0x3cc4
+w 1.d929.15:0    0x202e
+w 1.d92a.15:0    0x300e
+w 1.d92b.15:0    0x6ec4
+w 1.d92c.15:0    0x200e
+w 1.d92d.15:0    0x300e
+w 1.d92e.15:0    0x6ec4
+w 1.d92f.15:0    0x1002
+w 1.d930.15:0    0x22b4
+w 1.d931.15:0    0x3ca4
+w 1.d932.15:0    0x64db
+w 1.d933.15:0    0x8bbc
+w 1.d934.15:0    0xb84b
+w 1.d935.15:0    0xb80c
+w 1.d936.15:0    0xb84c
+w 1.d937.15:0    0xdf0b
+w 1.d938.15:0    0xdf0c
+w 1.d939.15:0    0x1002
+w 1.d93a.15:0    0xc7b7
+w 1.d93b.15:0    0xc8c8
+w 1.d93c.15:0    0x877e
+w 1.d93d.15:0    0xb84e
+w 1.d93e.15:0    0x888c
+w 1.d93f.15:0    0xb84c
+w 1.d940.15:0    0xb60c
+w 1.d941.15:0    0x9cee
+w 1.d942.15:0    0x20b4
+w 1.d943.15:0    0x3cc4
+w 1.d944.15:0    0x6ec4
+w 1.d945.15:0    0x20e4
+w 1.d946.15:0    0x3cc4
+w 1.d947.15:0    0x402e
+w 1.d948.15:0    0x6ec4
+w 1.d949.15:0    0x400e
+w 1.d94a.15:0    0x6ec4
+w 1.d94b.15:0    0x1002
+w 1.d94c.15:0    0x22a4
+w 1.d94d.15:0    0x3ca4
+w 1.d94e.15:0    0x64db
+w 1.d94f.15:0    0x8bbc
+w 1.d950.15:0    0xb84b
+w 1.d951.15:0    0xb80c
+w 1.d952.15:0    0xb84c
+w 1.d953.15:0    0xdf0b
+w 1.d954.15:0    0xdf0c
+w 1.d955.15:0    0x1002
+w 1.d956.15:0    0xc9b9
+w 1.d957.15:0    0xcaca
+w 1.d958.15:0    0x899e
+w 1.d959.15:0    0xb84e
+w 1.d95a.15:0    0x8aac
+w 1.d95b.15:0    0xb84c
+w 1.d95c.15:0    0xb60c
+w 1.d95d.15:0    0x9cee
+w 1.d95e.15:0    0x20c4
+w 1.d95f.15:0    0x3cc4
+w 1.d960.15:0    0x6ec4
+w 1.d961.15:0    0x20e4
+w 1.d962.15:0    0x3cc4
+w 1.d963.15:0    0x402e
+w 1.d964.15:0    0x6ec4
+w 1.d965.15:0    0x400e
+w 1.d966.15:0    0x6ec4
+w 1.d967.15:0    0x1002
+w 1.d968.15:0    0x628f
+w 1.d969.15:0    0x20a4
+w 1.d96a.15:0    0x3004
+w 1.d96b.15:0    0x64d9
+w 1.d96c.15:0    0x899e
+w 1.d96d.15:0    0xbf0e
+w 1.d96e.15:0    0xbf4e
+w 1.d96f.15:0    0x4012
+w 1.d970.15:0    0x2f0e
+w 1.d971.15:0    0x300e
+w 1.d972.15:0    0x2054
+w 1.d973.15:0    0x3cc4
+w 1.d974.15:0    0x6ec4
+w 1.d975.15:0    0x2064
+w 1.d976.15:0    0x3cc4
+w 1.d977.15:0    0x64de
+w 1.d978.15:0    0x8ee9
+w 1.d979.15:0    0xbe0e
+w 1.d97a.15:0    0xbf4e
+w 1.d97b.15:0    0x5e23
+w 1.d97c.15:0    0x382
+w 1.d97d.15:0    0x8
+w 1.d97e.15:0    0x401e
+w 1.d97f.15:0    0x99e9
+w 1.d980.15:0    0x69c4
+w 1.d981.15:0    0x280e
+w 1.d982.15:0    0x300e
+w 1.d983.15:0    0x63ae
+w 1.d984.15:0    0x8
+w 1.d985.15:0    0x2fee
+w 1.d986.15:0    0x3ffe
+w 1.d987.15:0    0x89e9
+w 1.d988.15:0    0x69c4
+w 1.d989.15:0    0x280e
+w 1.d98a.15:0    0x300e
+w 1.d98b.15:0    0x63ae
+w 1.d98c.15:0    0x6f72
+w 1.d98d.15:0    0x1002
+w 1.d98e.15:0    0x628f
+w 1.d98f.15:0    0x20a4
+w 1.d990.15:0    0x3004
+w 1.d991.15:0    0x64d9
+w 1.d992.15:0    0x899e
+w 1.d993.15:0    0xbf0e
+w 1.d994.15:0    0xbf4e
+w 1.d995.15:0    0x4012
+w 1.d996.15:0    0x5e23
+w 1.d997.15:0    0x3d2
+w 1.d998.15:0    0x1d
+w 1.d999.15:0    0x2f0e
+w 1.d99a.15:0    0x300e
+w 1.d99b.15:0    0x2054
+w 1.d99c.15:0    0x3cc4
+w 1.d99d.15:0    0x6ec4
+w 1.d99e.15:0    0x2064
+w 1.d99f.15:0    0x3cc4
+w 1.d9a0.15:0    0x64de
+w 1.d9a1.15:0    0x8ee9
+w 1.d9a2.15:0    0xbe0e
+w 1.d9a3.15:0    0xbf4e
+w 1.d9a4.15:0    0x5e23
+w 1.d9a5.15:0    0x382
+w 1.d9a6.15:0    0x9
+w 1.d9a7.15:0    0x2fee
+w 1.d9a8.15:0    0x3ffe
+w 1.d9a9.15:0    0x89e9
+w 1.d9aa.15:0    0x69c4
+w 1.d9ab.15:0    0x280e
+w 1.d9ac.15:0    0x300e
+w 1.d9ad.15:0    0x63ae
+w 1.d9ae.15:0    0x7
+w 1.d9af.15:0    0x401e
+w 1.d9b0.15:0    0x99e9
+w 1.d9b1.15:0    0x69c4
+w 1.d9b2.15:0    0x280e
+w 1.d9b3.15:0    0x300e
+w 1.d9b4.15:0    0x63ae
+w 1.d9b5.15:0    0x6f72
+w 1.d9b6.15:0    0x1002
+w 1.d9b7.15:0    0x628f
+w 1.d9b8.15:0    0x2844
+w 1.d9b9.15:0    0x3c04
+w 1.d9ba.15:0    0x64de
+w 1.d9bb.15:0    0x2d62
+w 1.d9bc.15:0    0x3022
+w 1.d9bd.15:0    0x1e52
+w 1.d9be.15:0    0x20c4
+w 1.d9bf.15:0    0x3c24
+w 1.d9c0.15:0    0x64de
+w 1.d9c1.15:0    0x2ff9
+w 1.d9c2.15:0    0x3fd9
+w 1.d9c3.15:0    0x89e9
+w 1.d9c4.15:0    0x69c4
+w 1.d9c5.15:0    0x26c4
+w 1.d9c6.15:0    0x3c04
+w 1.d9c7.15:0    0x64de
+w 1.d9c8.15:0    0x2ff9
+w 1.d9c9.15:0    0x3fa9
+w 1.d9ca.15:0    0x89e9
+w 1.d9cb.15:0    0x69c4
+w 1.d9cc.15:0    0x2894
+w 1.d9cd.15:0    0x3c04
+w 1.d9ce.15:0    0x64de
+w 1.d9cf.15:0    0x2f79
+w 1.d9d0.15:0    0x3ff9
+w 1.d9d1.15:0    0x89e9
+w 1.d9d2.15:0    0x69c4
+w 1.d9d3.15:0    0x2eb2
+w 1.d9d4.15:0    0x3022
+w 1.d9d5.15:0    0x1002
+w 1.d9d6.15:0    0x2894
+w 1.d9d7.15:0    0x3c04
+w 1.d9d8.15:0    0x64de
+w 1.d9d9.15:0    0x2089
+w 1.d9da.15:0    0x3009
+w 1.d9db.15:0    0x99e9
+w 1.d9dc.15:0    0x69c4
+w 1.d9dd.15:0    0x26c4
+w 1.d9de.15:0    0x3c04
+w 1.d9df.15:0    0x64de
+w 1.d9e0.15:0    0x2009
+w 1.d9e1.15:0    0x3059
+w 1.d9e2.15:0    0x99e9
+w 1.d9e3.15:0    0x69c4
+w 1.d9e4.15:0    0x20c4
+w 1.d9e5.15:0    0x3c24
+w 1.d9e6.15:0    0x64de
+w 1.d9e7.15:0    0x2009
+w 1.d9e8.15:0    0x3029
+w 1.d9e9.15:0    0x99e9
+w 1.d9ea.15:0    0x69c4
+w 1.d9eb.15:0    0x6f72
+w 1.d9ec.15:0    0x1002
+w 1.d9ed.15:0    0x64d6
+w 1.d9ee.15:0    0x21f7
+w 1.d9ef.15:0    0x3fc7
+w 1.d9f0.15:0    0x8676
+w 1.d9f1.15:0    0xb505
+w 1.d9f2.15:0    0x9566
+w 1.d9f3.15:0    0x66c4
+w 1.d9f4.15:0    0xb545
+w 1.d9f5.15:0    0x1002
+w 1.d9f6.15:0    0x628f
+w 1.d9f7.15:0    0x6138
+w 1.d9f8.15:0    0x5883
+w 1.d9f9.15:0    0x2062
+w 1.d9fa.15:0    0x3032
+w 1.d9fb.15:0    0x1302
+w 1.d9fc.15:0    0x2ff7
+w 1.d9fd.15:0    0x3007
+w 1.d9fe.15:0    0x8786
+w 1.d9ff.15:0    0xb887
+w 1.da00.15:0    0x8785
+w 1.da01.15:0    0xb8c5
+w 1.da02.15:0    0x5e63
+w 1.da03.15:0    0x2f72
+w 1.da04.15:0    0x3022
+w 1.da05.15:0    0x13c2
+w 1.da06.15:0    0x6f72
+w 1.da07.15:0    0x1002
+w 1.da08.15:0    0xd82
+w 1.da09.15:0    0xe87
+w 1.da0a.15:0    0xf8d
+w 1.da0b.15:0    0x1092
+w 1.da0c.15:0    0x1198
+w 1.da0d.15:0    0x129d
+w 1.da0e.15:0    0x13a3
+w 1.da0f.15:0    0x14a8
+w 1.da10.15:0    0x15ae
+w 1.da11.15:0    0x16b4
+w 1.da12.15:0    0x0
+w 1.da13.15:0    0x0
+
+# done with uC binary
+# cmdUC verifying binary...
+w 1.d080.15:0    0x100
+w 1.d092.15:0    0x0
+sleep   400000;  # wait for uC to settle offset calibration
+
+w 1.cc08.5:0     0x6; 	#  lsatxfi_o2e_rxrxfdfetap1
+w 1.cc08.11:6    0x23; 	#  lsatxfi_o2e_rxrxfdfetap2
+w 1.cc09.5:0     0x28; 	#  lsatxfi_o2e_rxrxfdfetap3
+w 1.cc09.11:6    0x2d; 	#  lsatxfi_o2e_rxrxfdfetap4
+w 1.cc0e.0       0x1; 	#  lsatxfi_o2e_rxrxfdfetapstrobe
+w 1.cc0e.0       0x0; 	#  lsatxfi_o2e_rxrxfdfetapstrobe
+# end of s_eepromLoad
+
+sleep  200000
+
+# PART 3: speed mode --------------------------------
+
+# Evaluating: 'xaui_init '
+w 1.c2e1.3:0     0xf;   #  mci_lpbk_glue
+w 1.c088.3:0     0x0;   #  espeed_mode
+w 1.c012.3:0     0x0;   #  cfg_pwrdnxr
+w 1.c012.7:4     0x0;   #  cfg_pwrdnxt
+w 1.c0f0.15:0    0x010a;#  revision
+w 1.c0f1.15:0    0x0056;#  clk mode
+
+w 1.c20d.1       0x1;   #  rConStart
+sleep   200000;  # sleep 200ms
+w 1.c2e1.14       0x1;   # reset FIFO
+sleep   20000;  # sleep 20ms
+w 1.c2e1.14       0x0;   # reset FIFO
+

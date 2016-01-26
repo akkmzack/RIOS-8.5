@@ -1,0 +1,57 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsJInit.psp
+## This is the template for the JInitiator protocol settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableJInit': FormUtils.NodeEntry(
+            path='/rbt/sport/jinit/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Oracle Forms Optimization',
+            enableDiv='httpModeContainer'),
+        'enableHttpMode': FormUtils.NodeEntry(
+            path='/rbt/sport/jinit/config/http_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable HTTP Mode')
+        }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>" >
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableJInit'].html(self) %>
+      <div id="httpModeContainer" class="indent">
+        <%= nodeEntries['enableHttpMode'].html(self) %>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+
+<% self.endPagelet() %>
+

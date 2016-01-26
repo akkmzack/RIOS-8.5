@@ -1,0 +1,191 @@
+<%
+
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## myAccount.psp
+## View my permissions.
+##
+## STATUS: needs more testing, but basically complete.
+
+
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, FormUtils, PagePresentation:Pagelet, OSUtils, RVBDUtils:isIB, Nodes" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageIsReadable">
+    return True
+</psp:method>
+
+<psp:method name="handlePermissionError" params="fields">
+    errorText = ""
+    if 'perm' in fields:
+        errorText = 'You do not have read permission for the %s page.' % \
+            fields['perm']
+    self.getPagePresentationServlet().setFormError(errorText)
+</psp:method>
+
+<psp:method name="css">
+    return '''
+            #passwordChangeBlocked {
+              color: #0000B0;
+              background-color: white;
+              border: 1px solid black;
+              padding: 6px 10px;
+              margin: 10px 0;
+            }
+'''
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'changePassword': FormUtils.NodeEntry(
+            name='changePassword',
+            widget='checkboxLeft',
+            label='Change Password',
+            enableDiv='passwordContainer'),
+        'password': FormUtils.NodeEntry(
+            name='password',
+            widget='password',
+            label='New Password',
+            validate='password',
+            inputOptional=True),
+        'passwordConfirm': FormUtils.NodeEntry(
+            name='passwordConfirm',
+            widget='password',
+            label='Confirm New Password',
+            validate='password',
+            inputOptional=True),
+        'oldPassword': FormUtils.NodeEntry(
+            name='oldPassword',
+            widget='password',
+            label='Current Password',
+            inputOptional=True),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+localId = self.session().value('localId')
+userId = self.session().value('userId')
+
+self.handlePermissionError(self.request().fields())
+
+localUserTable = ajaxentrytable.AjaxEntryTable('localUser',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=localUser'),
+    titleText='Permissions',
+    headerSpec=['Role', 'Permission'],
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('value')]""",
+    emptyMessage='No roles are assigned to user %s'
+                % localId)
+
+#self.addOnload('Validator.addFormButtonAdjustor("localPasswordForm", passwordButtonAdjustor)')
+
+# Tell the user how often he may change his password if he can't do so.
+passwordChangeDays = int(Nodes.present(mgmt, '/aaa/auth/config/policies/pass_change_interval', '0'))
+
+# Tell the user how soon can his password be changed if he can't do so.
+changeInDays = int(Nodes.present(mgmt, '/auth/passwd/user/%s/state/change_in_days' % userId, '0'))
+passwordBlockExpiresText = (changeInDays == 1) and 'tonight' or 'in %d days' % changeInDays
+%>
+
+<% self.beginPagelet() %>
+
+<%
+# only allow password change if you logged in as a local user
+# not via tacacs or radius
+if localId == userId: {
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="localPasswordForm">
+  <fieldset>
+    <legend>Password</legend>
+    <div id="passwordChangeBlocked">
+      The password for this account cannot be changed at this time. The next opportunity
+      to change it will be at midnight <%= passwordBlockExpiresText %>.
+    </div>
+    <div id="passwordChangeEnabled">
+      <div class="midLevel">
+        <%= dialogEntries['changePassword'].html(self) %>
+        <div id="passwordContainer" class="indent">
+          <table>
+<% if Nodes.present(mgmt, '/auth/passwd/user/%s/state/old_passwd_reqd' % localId) == 'true': { %>
+            <%= dialogEntries['oldPassword'].html(self) %>
+<% } %>
+            <%= dialogEntries['password'].html(self) %>
+            <%= dialogEntries['passwordConfirm'].html(self) %>
+          </table>
+        </div>
+        <input type="hidden" name="account" value="<%=localId %>" />
+        <input type="hidden" name="_action_" value="changeAccountPassword" />
+      </div>
+      <%= FormUtils.formSubmitButtons(self) %>
+    </div>
+  </fieldset>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="resetUserConfigForm">
+  <fieldset>
+    <legend>User Preferences</legend>
+      <div class="midLevel">
+        <p>User preferences are used to remember the state of the management
+          console across sessions on a per-user basis. They do not affect
+          the configuration of the appliance.
+        </p>
+        <input type="hidden" name="_action_" value="resetUserConfig" />
+        <%= FormUtils.formSubmitButtons(self, {
+            'name': 'deleteUserConfig',
+            'value': 'Restore Defaults'}) %>
+      </div>
+  </fieldset>
+</form>
+<%
+}
+
+if not isIB(): {
+%>
+
+<%= localUserTable.html(self, cssClass="topLevel") %>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+passwordSection = new DisplayControl();
+passwordSection.display = function(targetDivID) {
+    if (<%= changeInDays %>) {
+        return targetDivID == 'passwordChangeBlocked';
+    }
+    return targetDivID == 'passwordChangeEnabled';
+}
+addUpdateable('enable', passwordSection, 'passwordChangeEnabled');
+addUpdateable('display', passwordSection, 'passwordChangeBlocked');
+
+// We want to disable the Apply button if Change Password isn't
+// checked because otherwise it's a no-op.
+function passwordButtonAdjustor(isValid) {
+    var form = document.forms['localPasswordForm'];
+    var checkbox = form.elements['changePassword'];
+    var button = form.elements['apply'];
+    button.disabled = !isValid || !checkbox.checked;
+}
+
+// ]]>
+</script>

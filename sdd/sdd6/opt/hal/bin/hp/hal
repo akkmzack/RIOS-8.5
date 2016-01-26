@@ -1,0 +1,1045 @@
+#!/bin/sh
+#
+# HAL (Hardware Abstraction Layer)
+#
+# Platform: HP
+#
+# Models: 6020
+#
+# Types:
+#
+#    BOOL   : string: "false" | "true"
+#    LIST   : list of strings separated by a newline (LF-ASCI10) character
+#    STRING : string
+#    TABLE  : some table format described in the description
+#    UINT32 : unsigned 32-bit integer
+#
+# Functions:
+#
+#    VOID init_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID init_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware specific initializations.
+#
+#    VOID deinit_hardware_phase1(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    VOID deinit_hardware_phase2(VOID)
+#
+#       Callback to perform any hardware de-initializations.
+#
+#    UINT32 get_num_raid_arrays(VOID)
+#
+#       Returns the number of raid arrays or 0 for none.
+#
+#    TABLE get_raid_status(UINT32)
+#
+#       Returns a table showing the status of each drive in the array.
+#       The format is:
+#
+#       <drive-id> <drive-status>
+#       <drive-id> <drive-status>
+#       ...
+#       <drive-id> <drive-status>
+#
+#       The drive status should be one of "online", "rebuild", "failed",
+#       or "missing".
+#
+#    VOID show_raid_diagram(UINT32)
+#
+#       Display an ASCII representation of the RAID bay diagram
+#       with current status.
+#
+#    UINT32 get_temperature(VOID)
+#
+#       Get the current system temperature in Celsius. Note that a returned
+#       value of 0 (zero) means the current appliance does not support a
+#       temperature reading.
+#
+#    BOOL uses_power_supplies(VOID)
+#
+#       Returns whether or not this appliance uses notification enabled
+#       power supplies.
+#
+#    TABLE get_power_supply_status(VOID)
+#
+#       Returns a table showing the status of each power supply in the
+#       system. The format is:
+#
+#       <power-supply-id> <power-supply-status>
+#       <power-supply-id> <power-supply-status>
+#       ...
+#       <power-supply-id> <power-supply-status>
+#
+#       The status should be one of "online", "failed".
+#
+#    BOOL uses_hardware_wdt(VOID)
+#
+#       Does this machine use standard hardware WDT support via watchdog
+#       kernel modules?
+#
+#    STRING get_usb_device(VOID)
+#    STRING get_usb_id(VOID)
+#
+#       These two functions return what device and ID to use when attempting
+#       to mount a USB keychain device on this appliance.
+#
+#    UINT32 get_ecc_ram_support(VOID)
+#       Returns 0 for no ECC support or 1 for ECC support
+#
+#    TABLE get_ecc_ram_status(VOID)
+#
+#       Returns a table of ecc ram errors.  The format is:
+#       CE <current correctable error count> <optional csv seperated dimm list>
+#       UE <current unrecoverable error count> <optional csv seperated dimm list>
+#
+#    STRING get_ecc_ram_alarm (VOID)
+#       Returns "degraded" if an unrecoverable error has occurred.
+#       Returns "critical" if correctable errors have occurred.
+#       Returns "normal" otherwise.
+#       Once any error occurs it will persist until power
+#       reboot.
+#
+#    VOID get_bios_ver
+#       Little routine to find out the BIOS version
+#
+#    VOID get_ipmi_ver
+#       Little routine to find out the IPMI version and FW version
+#
+#    VOID get_controller_ver
+#       Little routine to find out the FW version of the minnow controller
+#
+#
+# Exit Codes:
+#
+#    0   : success
+#    1   : generic error
+#    128 : not implemented
+#
+#------------------------------------------------------------------------------
+
+HWTOOL=/opt/tms/bin/hwtool
+MDDBREQ=/opt/tms/bin/mddbreq
+MFDB=/config/mfg/mfdb
+MODPROBE=/sbin/modprobe
+RMMOD=/sbin/rmmod
+HAL_CACHE=/var/opt/tms/hal_cache
+CACHED_MOBO=${HAL_CACHE}/motherboard
+
+#------------------------------------------------------------------------------
+# Figure out script directory
+#------------------------------------------------------------------------------
+
+SCRIPT_PATH=`dirname $0`
+if [ "x${SCRIPT_PATH}" = "x." ]; then
+    SCRIPT_PATH=`pwd`
+fi
+
+#------------------------------------------------------------------------------
+# Parse command line
+#------------------------------------------------------------------------------
+
+FUNCTION=$1; shift
+ARGS=$@
+
+if [ "x${FUNCTION}" = "x" ]; then
+    echo "No function specified."
+    exit 1
+fi
+
+#------------------------------------------------------------------------------
+# get_model
+#------------------------------------------------------------------------------
+
+get_model()
+{
+    RESULT=`${MDDBREQ} -v ${MFDB} query get - /rbt/mfd/model`
+    if [ $? != 0 ]; then
+        echo "Failed to determine model number."
+        exit 1
+    fi
+    echo ${RESULT}
+}
+
+#------------------------------------------------------------------------------
+# get_motherboard
+#------------------------------------------------------------------------------
+
+get_motherboard()
+{
+    if [ -f ${CACHED_MOBO} ]; then
+        MOBO=`cat ${CACHED_MOBO} | grep "^CMP"`
+        if [ "x${MOBO}" != "x" ]; then
+            echo ${MOBO}
+            return
+        fi
+    fi
+
+    MOBO=`${HWTOOL} -q motherboard`
+    if [ $? != 0 ]; then
+        echo "Failed to determine motherboard."
+        exit 1
+    fi
+    echo ${MOBO} > ${CACHED_MOBO}
+    echo ${MOBO}
+    return
+}
+
+#-----------------------------------------------------------------------------
+# Helpers for setting dimm labels in ECC driver
+#-----------------------------------------------------------------------------
+set_dimm_label()
+{
+    ROW=$1
+    CHANNEL=$2
+    LABEL=$3
+    MC=$4
+
+    FPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label
+    if [ -f ${FPATH} ]; then
+        echo ${LABEL} > ${FPATH}
+    fi
+}
+
+#
+# based on each motherboard type. set the dimm labels for each
+# MC/CSROW/CHANNEL. For more info reference the
+# bluesmoke development page at sourceforge.net
+#
+set_ecc_csrow_labels()
+{
+    MOBO=`get_motherboard`
+
+    # All but the CMP-00109 have 1 memory controller
+    #
+    case "${MOBO}" in
+        "CMP-00031")
+                set_dimm_label "0" "0" "BANK0A" "0"
+                set_dimm_label "0" "1" "BANK1A" "0"
+                set_dimm_label "1" "0" "BANK0A" "0"
+                set_dimm_label "1" "1" "BANK1A" "0"
+                set_dimm_label "2" "0" "BANK0B" "0"
+                set_dimm_label "2" "1" "BANK1B" "0"
+                set_dimm_label "3" "0" "BANK0B" "0"
+                set_dimm_label "3" "1" "BANK1B" "0"
+
+                set_dimm_label "4" "0" "BANK1A" "0"
+                set_dimm_label "4" "1" "BANK0A" "0"
+                set_dimm_label "5" "0" "BANK1A" "0"
+                set_dimm_label "5" "1" "BANK0A" "0"
+                set_dimm_label "6" "0" "BANK1B" "0"
+                set_dimm_label "6" "1" "BANK0B" "0"
+                set_dimm_label "7" "0" "BANK1B" "0"
+                set_dimm_label "7" "1" "BANK0B" "0"
+            ;;
+        "CMP-00109")
+                set_dimm_label "0" "0" "DIMMA1" "0"
+                set_dimm_label "0" "1" "DIMMA2" "0"
+                set_dimm_label "1" "0" "DIMMA1" "0"
+                set_dimm_label "1" "1" "DIMMA2" "0"
+                set_dimm_label "2" "0" "DIMMA3" "0"
+                set_dimm_label "2" "1" "DIMMA4" "0"
+                set_dimm_label "3" "0" "DIMMA3" "0"
+                set_dimm_label "3" "1" "DIMMA4" "0"
+
+                set_dimm_label "0" "0" "DIMMB1" "1"
+                set_dimm_label "0" "1" "DIMMB2" "1"
+                set_dimm_label "1" "0" "DIMMB1" "1"
+                set_dimm_label "1" "1" "DIMMB2" "1"
+                set_dimm_label "2" "0" "DIMMB3" "1"
+                set_dimm_label "2" "1" "DIMMB4" "1"
+                set_dimm_label "3" "0" "DIMMB3" "1"
+                set_dimm_label "3" "1" "DIMMB4" "1"
+            ;;
+        "CMP-00072")
+                set_dimm_label "0" "0" "BANK4B" "0"
+                set_dimm_label "1" "0" "BANK4B" "0"
+                set_dimm_label "0" "1" "BANK4A" "0"
+                set_dimm_label "1" "1" "BANK4A" "0"
+                set_dimm_label "2" "0" "BANK3B" "0"
+                set_dimm_label "2" "0" "BANK3B" "0"
+                set_dimm_label "3" "1" "BANK3A" "0"
+                set_dimm_label "3" "1" "BANK3A" "0"
+                set_dimm_label "4" "0" "BANK2B" "0"
+                set_dimm_label "4" "0" "BANK2B" "0"
+                set_dimm_label "5" "1" "BANK2A" "0"
+                set_dimm_label "5" "1" "BANK2A" "0"
+                set_dimm_label "6" "0" "BANK1B" "0"
+                set_dimm_label "6" "0" "BANK1B" "0"
+                set_dimm_label "7" "1" "BANK1A" "0"
+                set_dimm_label "7" "1" "BANK1A" "0"
+            ;;
+        "CMP-00013")
+                set_dimm_label "0" "0" "DIMM3B" "0"
+                set_dimm_label "1" "0" "DIMM3B" "0"
+                set_dimm_label "0" "1" "DIMM3A" "0"
+                set_dimm_label "1" "1" "DIMM3A" "0"
+                set_dimm_label "2" "0" "DIMM2B" "0"
+                set_dimm_label "3" "0" "DIMM2B" "0"
+                set_dimm_label "2" "1" "DIMM2A" "0"
+                set_dimm_label "3" "1" "DIMM2A" "0"
+                set_dimm_label "4" "0" "DIMM1B" "0"
+                set_dimm_label "5" "0" "DIMM1B" "0"
+                set_dimm_label "4" "1" "DIMM1A" "0"
+                set_dimm_label "5" "1" "DIMM1A" "0"
+            ;;
+        *)
+            ;;
+    esac
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase1
+#------------------------------------------------------------------------------
+
+init_hardware_phase1()
+{
+    # flush hal cache
+    if [ ! -d ${HAL_CACHE} ]; then
+        mkdir -m 0755 ${HAL_CACHE}
+    fi
+    rm -f ${HAL_CACHE}/*
+
+    MOBO=`get_motherboard`
+    case "${MOBO}" in
+        "CMP-00092")
+            #
+            # make additional device node for CCISS
+            #
+            if [ -d /dev/cciss ]; then
+                rm -rf /dev/cciss/c0d0p
+                ln -s /dev/cciss/c0d0 /dev/cciss/c0d0p
+            fi
+            ;;
+        *)
+            echo "Unknown motherboard."
+            exit 1
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_bios_ver
+#------------------------------------------------------------------------------
+
+get_bios_ver()
+{
+    display=$1
+    echo "Unsupported on this platform."
+}
+
+#------------------------------------------------------------------------------
+# get_ipmi_ver
+#------------------------------------------------------------------------------
+
+get_ipmi_ver()
+{
+    display=$1
+    echo "Unsupported on this platform."
+}
+
+#------------------------------------------------------------------------------
+# get_controller_ver
+#------------------------------------------------------------------------------
+
+get_controller_ver()
+{
+    display=$1
+    echo "Unsupported on this platform."
+}
+
+
+#------------------------------------------------------------------------------
+# init_hardware_phase2
+#------------------------------------------------------------------------------
+
+init_hardware_phase2()
+{
+
+    # set the labels in the ecc driver.
+    set_ecc_csrow_labels
+
+    if [ ! -f "/var/opt/rbt/no-temperature-logging" ]; then
+        /opt/hal/bin/sensors/start-temperature-logging.sh
+    fi
+
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase1
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase1()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# deinit_hardware_phase2
+#------------------------------------------------------------------------------
+
+deinit_hardware_phase2()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# get_num_raid_arrays
+#------------------------------------------------------------------------------
+
+get_num_raid_arrays()
+{
+    MOBO=`get_motherboard`
+    case "${MOBO}" in
+        "CMP-00092")
+            echo "1"
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# get_raid_status
+#------------------------------------------------------------------------------
+
+get_raid_status()
+{
+    MOBO=`get_motherboard`
+    case "${MOBO}" in
+        "CMP-00092")
+            echo ""
+            ;;
+    esac
+}
+
+#------------------------------------------------------------------------------
+# raid_card_vendor
+#------------------------------------------------------------------------------
+
+raid_card_vendor()
+{
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# show_raid_diagram
+#------------------------------------------------------------------------------
+
+show_raid_diagram()
+{
+    return
+}
+
+#------------------------------------------------------------------------------
+# get_temperature
+#------------------------------------------------------------------------------
+
+get_temperature()
+{
+    echo "0"
+}
+
+#------------------------------------------------------------------------------
+# uses_power_supplies
+#------------------------------------------------------------------------------
+
+uses_power_supplies()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_power_supply_status
+#------------------------------------------------------------------------------
+
+get_power_supply_status()
+{
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# uses_hardware_wdt
+#------------------------------------------------------------------------------
+
+uses_hardware_wdt()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# get_usb_device
+#------------------------------------------------------------------------------
+
+get_usb_device()
+{
+    echo "/dev/sdb1"
+}
+
+#------------------------------------------------------------------------------
+# get_usb_id
+#------------------------------------------------------------------------------
+
+get_usb_id()
+{
+    echo "1"
+}
+
+#------------------------------------------------------------------------------
+# ECC Support HAL routines
+# Needed for figuring out which errors come from what chips
+# on what mainboards
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_support
+#------------------------------------------------------------------------------
+get_ecc_ram_support()
+{
+
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+#
+# Params0 - Type (ce/ue)
+# Params1 - row
+# Params2 - channel
+#
+get_ecc_csrow_error()
+{
+    TYPE=$1;
+    ROW=$2;
+    CHANNEL=$3;
+    MC=$4
+
+    if [ ${TYPE} = "ce" ]; then
+
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_${TYPE}_count;
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    else
+        EPATH=/sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ue_count
+
+        if [ ! -f ${EPATH} ]; then
+            echo "Unsupported";
+            return;
+        fi
+    fi
+
+    cat ${EPATH}
+}
+
+#
+# given a type/row/channel/mc get the label
+# for ue errors we don't know channel info so report both channels
+#
+get_ecc_csrow_label()
+{
+    TYPE=$1
+    ROW=$2
+    CHANNEL=$3
+    MC=$4
+
+    if [ ! -d /sys/devices/system/edac/mc/mc${MC}/csrow${ROW} ]; then
+        return;
+    fi
+
+    if [ ${TYPE} = "ce" ]; then
+        cat /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch${CHANNEL}_dimm_label
+    else
+        cat /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch0_dimm_label
+        cat /sys/devices/system/edac/mc/mc${MC}/csrow${ROW}/ch1_dimm_label
+    fi
+}
+
+
+# Returns a csv seperated list of errors for the particular error
+# type and mc/csrow/channel
+#
+# Param0 type (ce/ue)
+#
+get_ecc_error_list()
+{
+    TYPE=$1;
+
+    MOBO=`get_motherboard`
+
+    # Some systems have multiple Memory controllers so we need
+    # to aggregate the values from each.
+    #
+    if [ ${MOBO} = "CMP-00109" ]; then
+        MC_LIST="0 1"
+    else
+        MC_LIST="0"
+    fi
+
+    for MC in ${MC_LIST}; do
+        for ROW in "0" "1" "2" "3" "4" "5" "6" "7"; do
+            if [ ${TYPE} = "ce" ]; then
+                CHANNEL_LIST="0 1"
+            else
+                CHANNEL_LIST="0"
+            fi
+
+            for CHANNEL in ${CHANNEL_LIST}; do
+                ERRCNT=`get_ecc_csrow_error $TYPE $ROW $CHANNEL ${MC}`
+                if [ $ERRCNT = "Unsupported" ]; then
+                    continue
+                fi
+                if [ $ERRCNT -gt 0 ]; then
+                    get_ecc_csrow_label $TYPE $ROW $CHANNEL ${MC}
+                fi
+            done
+        done
+    done
+}
+
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_status
+#------------------------------------------------------------------------------
+get_ecc_ram_status()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        CE_COUNT=`get_ecc_ram_count "ce"`;
+
+        if [ ${CE_COUNT} -gt 0 ]; then
+            CECHIPLIST=`get_ecc_error_list "ce" | sort -b -u | tr "\n" ","`
+            CELEN=${#CECHIPLIST}
+            if [ $CELEN -le 1 ]; then
+                   CELEN=2
+            fi
+            echo "CE ${CE_COUNT} ${CECHIPLIST:1:$[$CELEN-2]}"
+        else
+            echo "CE 0 NONE"
+        fi
+
+        if [ ${UE_COUNT} -gt 0 ]; then
+            UECHIPLIST=`get_ecc_error_list "ue" | sort -b -u | tr "\n" ","`
+            UELEN=${#UECHIPLIST}
+            if [ $UELEN -le 1 ]; then
+                    UELEN=2
+            fi
+            echo "UE ${UE_COUNT} ${UECHIPLIST:1:$[$UELEN-2]}"
+        else
+            echo "UE 0 NONE"
+        fi
+
+    else
+        echo "Hardware does not support ECC."
+    fi
+}
+
+
+#-----------------------------------------------------------------------------
+#  get_ecc_ram_count
+#-----------------------------------------------------------------------------
+get_ecc_ram_count()
+{
+    TYPE=$1
+    MOBO=`get_motherboard`
+
+    # Some systems have multiple Memory controllers so we need
+    # to aggregate the values from each.
+    #
+    if [ ${MOBO} = "CMP-00109" ]; then
+        MC_LIST="0 1"
+    else
+        MC_LIST="0"
+    fi
+
+    ERR_COUNT=0;
+
+    for MC in ${MC_LIST}; do
+       ERR_COUNT=$[${ERR_COUNT}+`cat /sys/devices/system/edac/mc/mc${MC}/${TYPE}_count`];
+    done
+
+    echo ${ERR_COUNT}
+}
+
+#------------------------------------------------------------------------------
+# get_ecc_ram_alarm
+#------------------------------------------------------------------------------
+get_ecc_ram_alarm()
+{
+    if [ -d /sys/devices/system/edac/mc/mc0 ]; then
+        UE_COUNT=`get_ecc_ram_count "ue"`;
+        if [ ${UE_COUNT} -gt 0 ]; then
+            echo "critical"
+            return
+        else
+            CE_COUNT=`get_ecc_ram_count "ce"`;
+            if [ ${CE_COUNT} -gt 0 ]; then
+                echo "degraded"
+                return;
+            fi
+        fi
+        echo "normal"
+    else
+        echo "normal"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_present
+#------------------------------------------------------------------------------
+ssl_card_present()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_support
+#------------------------------------------------------------------------------
+ssl_card_support()
+{
+    echo "false"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_bdf
+#------------------------------------------------------------------------------
+ssl_card_bdf()
+{
+    echo "notsupport"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_vendor
+#------------------------------------------------------------------------------
+ssl_card_vendor()
+{
+    echo "unknown"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_did
+#    Return: 5825 (current SSL card device ID) 
+#------------------------------------------------------------------------------
+ssl_card_did()
+{
+    echo "unknown"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_name
+#------------------------------------------------------------------------------
+ssl_card_vid()
+{
+    echo "unknown"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_health_check
+#------------------------------------------------------------------------------
+ssl_card_health_check()
+{
+    echo "No health check tool"
+}
+
+#------------------------------------------------------------------------------
+# ssl_card_error
+#------------------------------------------------------------------------------
+ssl_card_error()
+{
+    echo "Not support"
+}
+
+#--------------------------------------------------------------------------
+# get_avail_speed_duplex
+# Lists all the available speed and duplex options for a network interface
+# ex: /opt/hal/bin/hal get_avail_speed_duplex lan0_0
+#
+#--------------------------------------------------------------------------
+
+get_avail_speed_duplex()
+{
+	INTF="${1}"
+	#If interface is primary, make sure that it is not a virtual interface
+	if [ "x${INTF}" = "xprimary" ]; then
+	   RET=`ls /sys/class/net/primary/device 2>/dev/null`
+	   if [ $? -eq 1 ]; then
+		INTF="prihw"
+	   fi
+	fi
+
+	RET=`echo ${INTF} | grep "[lw]an\|primary\|prihw\|aux"`
+	if [ $? -eq 1 ]; then
+           #invalid interface
+	   return 1
+	fi
+
+	RET=`ethtool ${INTF} | grep "Supported ports" | grep "FIBRE"`
+	if [ $? -eq 0 ]; then
+           #The card is fiber
+           AVAIL=`ethtool ${INTF} | grep "Advertised link modes" | awk -F\: '{print $2}' | sed -e 's/baseT//' -e 's/^[ /t]*//'`
+           echo $AVAIL
+           return 0
+        fi
+
+	#The card is copper
+	for i in  `ethtool ${INTF} | grep -A 4 "Supported link modes:" | grep -v "auto-negotiation\|Advertised\|Speed\|Duplex" \
+        | sed -e 's/Supported link modes://' -e 's/baseT//g' -e 's/^[ \t]*//' -e 's/ *$//' |sort -u`
+	do
+		echo $i
+	done
+	echo "auto/auto"
+	return 0
+}
+
+#--------------------------------------------------------------------------
+# get_default_speed_duplex
+# Returns the default speed and duplex settings for the interface
+# ex: /opt/hal/bin/hal get_default_speed_duplex lan0_0
+#
+#--------------------------------------------------------------------------
+
+get_default_speed_duplex()
+{
+	INTF="${1}"
+        #If interface is primary, make sure that it is not a virtual interface
+        if [ "x${INTF}" = "xprimary" ]; then
+           RET=`ls /sys/class/net/primary/device 2>/dev/null`
+           if [ $? -eq 1 ]; then
+                INTF="prihw"
+           fi
+        fi
+
+	RET=`echo ${INTF} | grep "[lw]an\|primary\|prihw\|aux"`
+        if [ $? -eq 1 ]; then
+           #invalid interface
+           return 1
+        fi
+
+	RET=`ethtool ${INTF} | grep "Supported ports" | grep "FIBRE"`
+	if [ $? -eq 0 ]; then
+           #The card is fibre
+           DEF=`ethtool ${INTF} | grep "Advertised link modes" | awk -F\: '{print $2}' | sed -e 's/baseT//' -e 's/^[ /t]*//'`
+           echo $DEF
+	else
+           echo "auto/auto"
+        fi
+
+	return 0
+}
+
+#--------------------------------------------------------------------------
+# set_speed_duplex
+# Sets speed and duplex for a interface.
+# For a fiber card, just return 0
+#
+# ex: /opt/hal/bin/hal set_speed_duplex $interface $speed $duplex
+#--------------------------------------------------------------------------
+
+set_speed_duplex()
+{
+	if [ $# -ne 3 ]; then
+           echo "Invalid parameters"
+           return 1
+	fi
+
+	#$1 = interface
+	#$2 = speed
+	#$3 = duplex
+
+	INTF="${1}"
+        #If interface is primary, make sure that it is not a virtual interface
+        if [ "x${INTF}" = "xprimary" ]; then
+           RET=`ls /sys/class/net/primary/device 2>/dev/null`
+           if [ $? -eq 1 ]; then
+                INTF="prihw"
+           fi
+        fi
+
+	RET=`echo ${INTF} | grep "[lw]an\|primary\|prihw\|aux"`
+        if [ $? -eq 1 ]; then
+           #invalid interface
+           return 1
+        fi
+
+	RET=`ethtool ${INTF} | grep "Supported ports" | grep "FIBRE"`
+	if [ $? -eq 0 ]; then
+	   #The card is fibre; Can't set speed/duplex
+           return 0
+	fi
+
+	#The card is copper
+	if [ "x${2}" = "xauto" -o "x${3}" = "xauto" ];then
+	   ethtool -s ${INTF} autoneg on
+	   return 0
+	fi
+	ethtool -s ${INTF} autoneg off speed $2 duplex $3
+
+	return 0
+}
+
+#--------------------------------------------------------------------------
+# get_system_led_color
+#--------------------------------------------------------------------------
+
+get_system_led_color()
+{
+	return 1
+}
+
+#------------------------------------------------------------------------------
+# get_hardware_pass_support
+# This hal function is called by mgmt do check whether
+# the machine supports hardware passthrough for UDP.
+#------------------------------------------------------------------------------
+get_hardware_pass_support()
+{
+        echo "false"
+}
+
+#------------------------------------------------------------------------------
+# Dispatch
+#------------------------------------------------------------------------------
+
+case "${FUNCTION}" in
+
+    "init_hardware_phase1")
+        init_hardware_phase1
+        ;;
+
+    "init_hardware_phase2")
+        init_hardware_phase2
+        ;;
+
+    "deinit_hardware_phase1")
+        deinit_hardware_phase1
+        ;;
+
+    "deinit_hardware_phase2")
+        deinit_hardware_phase2
+        ;;
+
+    "get_num_raid_arrays")
+        get_num_raid_arrays
+        ;;
+
+    "get_raid_status")
+        get_raid_status ${ARGS}
+        ;;
+
+    "show_raid_diagram")
+        show_raid_diagram ${ARGS}
+        ;;
+
+    "raid_card_vendor")
+        raid_card_vendor
+        ;;
+
+    "get_temperature")
+        get_temperature
+        ;;
+
+    "uses_power_supplies")
+        uses_power_supplies
+        ;;
+
+    "get_power_supply_status")
+        get_power_supply_status
+        ;;
+
+    "uses_hardware_wdt")
+        uses_hardware_wdt
+        ;;
+
+    "get_usb_device")
+        get_usb_device
+        ;;
+
+    "get_usb_id")
+        get_usb_id
+        ;;
+
+    "get_ecc_ram_status")
+        get_ecc_ram_status
+        ;;
+
+    "get_ecc_ram_support")
+        get_ecc_ram_support
+        ;;
+
+    "get_ecc_ram_alarm")
+        get_ecc_ram_alarm
+        ;;
+
+    "ssl_card_present")
+        ssl_card_present
+        ;;
+
+    "ssl_card_support")
+        ssl_card_support
+        ;;
+
+    "ssl_card_vendor")
+        ssl_card_vendor
+        ;;
+
+    "ssl_card_did")
+        ssl_card_did
+        ;;
+
+    "ssl_card_vid")
+        ssl_card_vid
+        ;;
+
+    "ssl_card_health_check")
+        ssl_card_health_check
+        ;;
+
+    "ssl_card_error")
+        ssl_card_error
+        ;;
+
+    "ssl_card_bdf")
+        ssl_card_bdf
+        ;;
+    "get_ipmi_ver")
+        get_ipmi_ver 1
+        ;;
+    "get_bios_ver")
+        get_bios_ver 1
+        ;;
+    "get_controller_ver")
+        get_controller_ver 1
+        ;;
+    "get_avail_speed_duplex")
+	get_avail_speed_duplex ${ARGS}
+	;;
+    "get_default_speed_duplex")
+	get_default_speed_duplex ${ARGS}
+	;;
+    "set_speed_duplex")
+	set_speed_duplex ${ARGS}
+	;;
+    "get_system_led_color")
+	get_system_led_color
+	;;
+    "get_hardware_pass_support")
+        get_hardware_pass_support
+        ;;
+    "get_default_ipmi_wdt_timeout")
+        get_default_ipmi_wdt_timeout
+        ;;
+    *)
+        echo "Not implemented."
+        exit 128
+        ;;
+
+esac
+

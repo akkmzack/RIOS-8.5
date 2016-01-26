@@ -1,0 +1,708 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_netflow.psp
+##
+## Advanced Networking Netflow
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="css">
+    return '''
+div#netflowTable_main {
+  width: 100%;
+}
+
+textarea.netflow_filter {
+  width: 250px;
+  height: 72px;
+  overflow: auto;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'appVisibilityEnable': NodeEntry(
+            path='/rbt/app_vis/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Application Visibility'),
+        'netFlowEnable': NodeEntry(
+            path='/rbt/sport/netflow/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Flow Export',
+            enableDiv='flowExportEnableDiv'),
+        'dpiExport': NodeEntry(
+            path='/rbt/sport/netflow/config/qos_dpi_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Export QoS and Application Statistics to CascadeFlow Collectors'),
+        'activeTo': NodeEntry(
+            path='/rbt/sport/netflow/config/active_to',
+            type='uint32',
+            validate=('intInRange', '[30, 3600]'),
+            widgetClass='small',
+            label='Active Flow Timeout',
+            labelClass='label-fixed-small-indent',
+            units='seconds'),
+        'inactiveTo': NodeEntry(
+            path='/rbt/sport/netflow/config/inactive_to',
+            type='uint32',
+            validate=('intInRange', '[10, 600]'),
+            widgetClass='small',
+            label='Inactive Flow Timeout',
+            labelClass='label-fixed-small-indent',
+            units='seconds'),
+        'topTalkersEnable': NodeEntry(
+            path='/rbt/sport/netflow/config/top_talkers/enable',
+            type='bool',
+            widget='checkboxLeft',
+            enableDiv='topTalkerGranularityDiv',
+            label='Enable Top Talkers'),
+        'topTalkersSnapshotInterval': NodeEntry(
+            path='/rbt/sport/netflow/config/top_talkers/snapshot_interval',
+            type='duration_sec',
+            widget='radio',
+            label={'300': '24-hour Report Period (Higher Granularity)',
+                   '600': '48-hour Report Period (Lower Granularity)'}),
+        'wanEnable': NodeEntry(
+            path='/rbt/sport/netflow/config/totalwantxbps_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable WAN Throughput Statistics'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+
+    policyValue, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(self.request().fields())
+
+    # read the list of source interfaces; use all possible interfaces
+    # for CMC policies
+    if policyType:
+        sourceInterfaces = ['primary', 'aux'] + self.getEnabledMgmtInterfaces()
+    else:
+        mgmt = self.session().value('mgmt')
+        sourceInterfaces = Nodes.getMgmtLocalChildrenNames(
+            mgmt, '/rbt/sport/netflow/state/source_interfaces')
+        sourceInterfaces = FormUtils.sortInterfacesByName(sourceInterfaces)
+
+    collectorVersions = (('9.1', 'CascadeFlow'),
+                         ('5.1', 'CascadeFlow-compatible'),
+                         ('9', 'Netflow v9'),
+                         ('5', 'Netflow v5'))
+
+    entries = {
+        'addCollector_ip': NodeEntry(
+            name='addCollector_ip',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='Collector IP Address'),
+        'addCollector_port': NodeEntry(
+            name='addCollector_port',
+            widgetClass='port',
+            value='2055',
+            label='Port',
+            type='uint16',
+            validate='port'),
+        'addCollector_version': NodeEntry(
+            name='addCollector_version',
+            selectOptions=collectorVersions,
+            value='9.1',
+            label='Version',
+            action='netflowTable.updateHook()'),
+        'addCollector_filterEnable': NodeEntry(
+            name='addCollector_filterEnable',
+            widget='checkbox',
+            label='Enable Filter',
+            units='Enable'),
+        'addCollector_filters': NodeEntry(
+            name='addCollector_filters',
+            widget='textarea',
+            widgetClass='netflow_filter',
+            label='Filter',
+            validate='validIpFilters',
+            inputOptional=True),
+        'addCollector_export': NodeEntry(
+            name='addCollector_export',
+            selectOptions=sourceInterfaces,
+            label='Packet Source Interface',
+            hint='(Interface used for the source IP of the flow packets.)'),
+        'addCollector_spoof':  NodeEntry(
+            name='addCollector_spoof',
+            widget='checkbox',
+            value='true',
+            label='LAN Address',
+            units='Show'),
+
+        'editCollector_ip': NodeEntry(
+            name='editCollector_ip',
+            type='ipv4addr',
+            widgetClass='ipaddr',
+            label='Collector IP Address'),
+        'editCollector_port': NodeEntry(
+            name='editCollector_port',
+            widgetClass='port',
+            value='2055',
+            label='Port',
+            type='uint16',
+            validate='port'),
+        'editCollector_version': NodeEntry(
+            name='editCollector_version',
+            selectOptions=collectorVersions,
+            label='Version',
+            action='netflowTable.updateHook()'),
+        'editCollector_filterEnable': NodeEntry(
+            name='editCollector_filterEnable',
+            widget='checkbox',
+            label='Enable Filter',
+            units='Enable'),
+        'editCollector_filters': NodeEntry(
+            name='editCollector_filters',
+            widget='textarea',
+            widgetClass='netflow_filter',
+            label='Filter',
+            hint='(IP/Subnet:Port, one per line)',
+            validate='validIpFilters',
+            inputOptional=True),
+        'editCollector_export': NodeEntry(
+            name='editCollector_export',
+            selectOptions=sourceInterfaces,
+            label='Packet Source Interface',
+            hint='(Interface used for the source IP of the flow packets.)'),
+        'editCollector_spoof':  NodeEntry(
+            name='editCollector_spoof',
+            widget='checkbox',
+            value='true',
+            label='LAN Address',
+            units='Show')
+    }
+
+    for iface in self.getCaptureInterfaces():
+        val =  (iface.startswith('lan') or iface.startswith('wan')) and 'all' or ''
+        entries.update({
+            'addCollector_' + iface: NodeEntry(
+                name='addCollector_if_' + iface,
+                widget='select',
+                value=val,
+                label='Capture Interface <b>%s</b>' % iface),
+            'editCollector_' + iface: NodeEntry(
+                name='editCollector_if_' + iface,
+                widget='select',
+                value=val,
+                label='Capture Interface <b>%s</b>' % iface)
+            }
+        )
+    return entries
+</psp:method>
+
+<psp:method name="getEnabledInterfaces">
+    # In a CMC policy, the list of enabled interfaces is determined
+    # in one of two ways:
+    #
+    # 1. The enabled interfaces are derived from the URL parameter
+    #    ifaces. The 'Enable Interfaces' fieldset in the CMC policy
+    #    has a list of checkboxes. The list of enabled checkboxes in
+    #    that fieldset are encoded in the value of the URL parameter
+    #    ifaces.
+    # 2. When the URL does not have the parameter 'ifaces', the list
+    #    of enabled interfaces is derived by the list of capture
+    #    interfaces defined in each flow collectors.
+    #
+    # This function returns the list of enabled interfaces for a CMC
+    # policy. It returns an empty list if the page is not a CMC
+    # policy.
+    #
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    policyValue, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(fields)
+
+    def getInterfacesFromBitmask(bitmask):
+        ifaceSpecInt = int(bitmask)
+        interfaceList = []
+        for i in range(0,5):
+            for j in range(0,3):
+                if ifaceSpecInt & (1 << (4 * i + j)):
+                    # Convert bitmask values to interface indices
+                    interfaceList.append((i,j))
+        return interfaceList
+
+
+    if policyType:
+        ifaceSpec = fields.get('ifaces')
+        if ifaceSpec:
+            # The list of enabled interfaces in the field 'ifaces'
+            # is encoded as a bitmask in the URL parameter.
+            return getInterfacesFromBitmask(ifaceSpec)
+
+        else:
+            # Get the list of currently enabled interfaces from the
+            # list of flow collector capture interfaces.
+            ifaceCapture = 0
+
+            # Helper function to append given interfaces into bitmask field
+            def appendCaptureInterfaces(bitmask, ifaceStrings):
+                captureIfs = ['lan', 'wan', 'rios_lan', 'rios_wan']
+                for ifaceName in ifaceStrings:
+                    for captureIf in captureIfs:
+                        if ifaceName.startswith(captureIf):
+                            i, j = map(int, ifaceName[len(captureIf):].split('_'))
+                            # Assert that interface indices are always within range
+                            assert (0 <= i < 5 and 0 <= j < 3)
+                            bitmask = bitmask | (1 << (4 * i + j))
+                            break
+                return bitmask
+
+            # Obtain list of capture interfaces
+            base = pathPrefix + '/rbt/sport/netflow/config/collector/address'
+            ips = Nodes.getMgmtLocalChildrenNames(mgmt, base)
+            for ip in ips:
+                ports = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/%s/port' % (base, ip))
+                for port in ports:
+                    ifPath = '%s/%s/port/%s/interface' % (base, ip, port)
+                    # Add the interfaces to the list
+                    ifaceCapture = appendCaptureInterfaces(ifaceCapture, Nodes.getMgmtLocalChildrenNames(mgmt, ifPath))
+            return getInterfacesFromBitmask(ifaceCapture)
+    else:
+        return []
+
+</psp:method>
+
+<psp:method name="getEnabledMgmtInterfaces">
+    # Return the list of Enabled Mgmt Interfaces
+    result = []
+    interfaces = self.getEnabledInterfaces()
+    for i, j in interfaces:
+        result.append('mgmt%d_%d' % (i, j))
+    return result
+</psp:method>
+
+<psp:method name="getCaptureInterfaces">
+    # Return the list of Capture Interfaces
+    if self.request():
+        policyValue, pathPrefix, policyType = Nodes.cmcDecodeNodeMode(self.request().fields())
+        if policyType:
+            # CMC's appliance and policy pages:
+            # Returns all possible enabled capture interfaces
+            ifaces = ['primary']
+            interfaces = self.getEnabledInterfaces()
+            for i, j in interfaces:
+                ifaces.append('lan%d_%d' % (i, j))
+                ifaces.append('wan%d_%d' % (i, j))
+                ifaces.append('rios_lan%d_%d' % (i, j))
+                ifaces.append('rios_wan%d_%d' % (i, j))
+            return FormUtils.sortInterfacesByName(ifaces)
+        else:
+            # On the SH:
+            # Return all available capture interfaces on the SH
+            mgmt = self.session().value('mgmt')
+            ifaces = Nodes.present(mgmt, '/rbt/sport/netflow/state/interfaces', '').strip().split(' ')
+            return FormUtils.sortInterfacesByName(ifaces)
+    return []
+</psp:method>
+
+<%
+self.hasHelp = True
+self.relatedPages = (
+    'setupSubnetSide',
+    'reportTopTalkers',
+    'reportWANThroughput',
+    'reportAppStats',
+    'reportAppVis',
+)
+
+mgmt = self.session().value('mgmt')
+policyValue, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+if policyType: {
+    # We don't have anything to query to get the list of options
+    # dynamically so we'll use a hard-coded list for now.  See bugs
+    # 23652 and 26239.
+    ifaceTypes = 'all optimized optimized-lan optimized-wan passthrough'
+} else: {
+    ifaceTypes = Nodes.present(mgmt, '/rbt/sport/netflow/state/types')
+}
+ifaceOptions = [('', 'None')] + [(t, t.capitalize()) for t in ifaceTypes.split(' ')]
+ifaces = self.getCaptureInterfaces()
+for iface in ifaces: {
+    dialogEntries['addCollector_' + iface].selectOptions = ifaceOptions
+    dialogEntries['editCollector_' + iface].selectOptions = ifaceOptions
+}
+%>
+
+
+<% self.beginPagelet() %>
+
+<!-- The config form at the top -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="netflowForm">
+  <fieldset>
+    <legend>Flow Statistics Settings</legend>
+    <input type="hidden" name="_action_" value="setupNetworkNetflow" />
+    <input type="hidden" name="topTalkerControl" id="topTalkerControl" />
+    <div class="midLevel">
+      <%= nodeEntries['appVisibilityEnable'].html(self) %>
+      <%= nodeEntries['wanEnable'].html(self) %>
+      <%= nodeEntries['topTalkersEnable'].html(self) %>
+      <div id="topTalkerGranularityDiv" class="indent">
+        <%= nodeEntries['topTalkersSnapshotInterval'].html(self, value='300') %>
+        <%= nodeEntries['topTalkersSnapshotInterval'].html(self, value='600') %>
+      </div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Flow Export Settings</legend>
+    <input type="hidden" name="netFlowControl" id="netFlowControl" />
+    <div class="midLevel">
+      <%= nodeEntries['netFlowEnable'].html(self) %>
+      <div id="flowExportEnableDiv" class="indent">
+      <%= nodeEntries['dpiExport'].html(self) %>
+      </div>
+      <table>
+        <%= nodeEntries['activeTo'].html(self) %>
+        <%= nodeEntries['inactiveTo'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<script type="text/javascript">
+<!--
+
+function encodeIfaceCheckboxes() {
+    form = document.getElementById('ifaceForm');
+    result = 0;
+    for (var i = 0; i < 5; i++) {
+        for (var j = 0; j < 3; j++) {
+            var name = 'iface' + i + '_' + j;
+            var el = getFormElement(form, name);
+            if (el && el.checked) {
+                result = result | (1 << (4 * i + j));
+            }
+        }
+    }
+    return result;
+}
+
+function setIfaceCheckboxes() {
+    form = document.getElementById('ifaceForm');
+<%
+for i, j in self.getEnabledInterfaces(): {
+    self.write('setFormValue(form, "iface%d_%d", true);\n' % (i, j))
+}
+%>
+}
+
+onloadScript += ' setIfaceCheckboxes(); ';
+
+// -->
+</script>
+
+<%
+if policyType: {
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="ifaceForm"
+      onsubmit="this.action = this.action.replace(/&amp;ifaces=(\d*)/, '') + '&amp;ifaces=' + encodeIfaceCheckboxes(); return true;" >
+  <fieldset class="topLevel">
+    <legend>Enable Interfaces</legend>
+    <p>
+      Select the interfaces to include when adding new Flow
+      collectors.
+    </p>
+    <div class="midLevel">
+      <table>
+<%
+# Generate checkbox selection for all available interfaces
+for i in range(0, 5): {
+    self.write('<tr>')
+    for j in range(0, 3): {
+        self.write('''
+  <td class="nodeEntry">
+    <input type="checkbox" name="iface%d_%d" value="true" />
+    <span class="labelPaddedLeft labelPaddedRight">lan/wan%d_%d</span>
+  </td>
+''' % (i, j, i, j))
+    }
+    self.write('</tr>')
+}
+%>
+      </table>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+}
+%>
+
+<%
+if not ifaces: { %>
+<!-- If there are no interfaces available for a user to capture data flow  -->
+<!-- on, inform the user of this and tell him how he can make the interfaces available. -->
+      <p>
+        <strong>No interfaces are available for flow capture.</strong><br>
+        Either enable <a href="/mgmt/gui?p=setupServiceGeneral">In-Path</a> or
+        <a href="/mgmt/gui?p=setupServiceGeneral">Out-of-Path</a> support to enable
+        interfaces for flow capture.
+    </p>
+<% } %>
+
+<%
+# Define the Netflow Table
+netflowTable = ajaxentrytable.AjaxEntryTable('netflow',
+   url=self.urlForCmcEdit('/mgmt/xmldata?p=netflow'),
+   titleText='Flow Collectors',
+   headerSpec=('', 'Collector Address', 'Version', 'Export Interface', 'Show LAN Address', 'Filters', 'Capture Interfaces'),
+   rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedCollector_'),
+ AjaxEntryTable.tdEdit('id', 'addressPretty'),
+ AjaxEntryTable.tdAttr('versionPretty'),
+ AjaxEntryTable.tdAttr('export-if'),
+ AjaxEntryTable.tdAttr('spoof'),
+ AjaxEntryTable.tdLines('filters'),
+ AjaxEntryTable.tdLines('ifs')]""",
+   emptyMessage='No current Flow collectors.',
+   addButtonText='Add a New Flow Collector',
+   removeName='removeCollectors',
+   removeButtonText='Remove Selected',
+   removePrefix='selectedCollector_')
+
+netflowTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      <tbody>
+        %s
+        %s
+        %s
+      </tbody>
+      <tbody id="addCollector_spoofSection">
+        %s
+      </tbody>
+      <tbody>
+        %s
+      </tbody>
+      <tbody id="addCollector_v9Section">
+        %s
+        %s
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <p>
+    Note: The filter is applicable to CascadeFlow and Netflow v9 only.
+    Flow reports will only be sent for IP/Subnets included in this
+    list.  If the filter is not enabled, all will be reported.
+    </p>
+
+    <p>
+    The filter should be of the form "IP/Subnet" or "IP:Port", one
+    entry per line.
+    </p>
+  </div>
+  %s
+''' % (dialogEntries['addCollector_ip'].html(self,
+           more=(dialogEntries['addCollector_port'],)),
+       dialogEntries['addCollector_version'].html(self),
+       dialogEntries['addCollector_export'].html(self),
+       dialogEntries['addCollector_spoof'].html(self),
+       ''.join([dialogEntries['addCollector_' + iface].html(self) for iface in self.getCaptureInterfaces()]),
+
+       dialogEntries['addCollector_filterEnable'].html(self),
+       dialogEntries['addCollector_filters'].html(self),
+
+       FormUtils.formSubmitButtons(self, {'name': 'addCollector',
+                                    'value': 'Add',
+                                    'onclick': 'return addCollectorClick(this)'}))
+netflowTable.editDivContent = '''
+  <div class="midLevel">
+    <input type="hidden" name="editCollector_id" />
+    <table>
+      <tbody>
+        <tr>
+          <td class="label">Collector IP Address, Port:</td>
+          <td><span id="editCollector_address"> </span></td>
+        </tr>
+        %s
+        %s
+      </tbody>
+      <tbody id="editCollector_spoofSection">
+        %s
+      </tbody>
+      <tbody>
+        %s
+      </tbody>
+      <tbody id="editCollector_v9Section">
+        %s
+        %s
+      </tbody>
+    </table>
+  </div>
+  %s
+''' % (dialogEntries['editCollector_version'].html(self),
+       dialogEntries['editCollector_export'].html(self),
+       dialogEntries['editCollector_spoof'].html(self),
+       ''.join([dialogEntries['editCollector_' + iface].html(self) for iface in self.getCaptureInterfaces()]),
+
+       dialogEntries['editCollector_filterEnable'].html(self),
+       dialogEntries['editCollector_filters'].html(self),
+
+       FormUtils.formSubmitButtons(self, {'name': 'editCollector',
+                                    'value': 'Apply',
+                                    'onclick': 'return editCollectorClick(this)'}))
+%>
+
+<!-- Display the Netflow Table -->
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="netflowCollectorTableForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupNetworkNetflow" />
+  </div>
+  <%= netflowTable.html(self, 'topLevel') %>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+// ipaddr/maskbits
+// or
+// ipaddr:port
+function validIpFilters(val) {
+    try {
+        var lines = val.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line.length) {
+                // ignore whitespace
+                continue;
+            }
+            var m_ip_port = line.match(/^(.+):(\d+)$/);
+            if (m_ip_port) {
+                // ipaddr:port syntax:
+                RBT.Validator.Syntax.ipv4addr(m_ip_port[1]);
+                RBT.Validator.Syntax.port(m_ip_port[2]);
+            } else {
+                // ipaddr/maskbits syntax:
+                RBT.Validator.Syntax.ipv4prefix(line);
+            }
+        }
+    } catch (e) {
+        throw 'Each line must be of the form N.N.N.N/bits or N.N.N.N:port.';
+    }
+}
+
+// require at least one capture set
+function addCollectorClick(button) {
+    var selects = button.form.getElementsByTagName('select');
+    for (var i = 0; i < selects.length; i++) {
+        var sel = selects.item(i);
+        if (stringStartsWith(sel.name, 'addCollector_if_') && sel.value) {
+            return submitPrep(button);
+        }
+    }
+    <% if ifaces: { %>
+        alert('Set at least one capture interface.');
+    <% } else: { %>
+        alert('No interfaces are available for flow capture.');
+    <% } %>
+
+    return false;
+}
+
+// require at least one capture set
+function editCollectorClick(button) {
+    var selects = button.form.getElementsByTagName('select');
+    for (var i = 0; i < selects.length; i++) {
+        var sel = selects.item(i);
+        if (stringStartsWith(sel.name, 'editCollector_if_') && sel.value) {
+            return submitPrep(button);
+        }
+    }
+    <% if ifaces: { %>
+        alert('Set at least one capture interface.');
+    <% } else: { %>
+        alert('No interfaces are available for flow capture.');
+    <% } %>
+
+    return false;
+}
+
+netflowTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = $('netflowCollectorTableForm');
+    setElementText('editCollector_address', el.getAttribute('addressPretty'));
+
+    form.editCollector_id.value = editName;
+    form.editCollector_version.value = el.getAttribute('version');
+    form.editCollector_export.value = el.getAttribute('export-if');
+    // select the LAN Address checkbox for v5 collectors with spoof
+    // turned on as well as all v9 collectors (whose spoof attributes
+    // will be 'N/A')
+    form.editCollector_spoof.checked =
+        'true' == el.getAttribute('spoof') ||
+        'N/A' == el.getAttribute('spoof');
+    form.editCollector_filterEnable.checked = 'true' == el.getAttribute('filterEnable');
+    form.editCollector_filters.value = el.getAttribute('filters').replace(/;/g, '\n');
+
+    // parse out the individual interfaces into hash table ifs
+    var iflets = (el.getAttribute('ifs') || '').split(';');
+    var ifs = {};
+    for (var i = 0; i < iflets.length; i++) {
+        var ifVal = iflets[i].split(': ');
+        ifs[ifVal[0]] = ifVal[1];
+    }
+
+    // set the interface widgets
+    var ifaces = <%= str(ifaces) %>;
+    for (var i = 0; i < ifaces.length; i++) {
+        setFormValue(form, 'editCollector_if_' + ifaces[i], ifs[ifaces[i]] || '');
+    }
+}
+
+// Do enabling/disabling of version 5/9 sections here.
+netflowTable.updateHook = function() {
+    var form = $('netflowCollectorTableForm');
+    if ('add' == this.editMode) {
+        var version = form.addCollector_version.value;
+        if (('9' == version) || ('9.1' == version)) {
+            enableElements('addCollector_spoofSection', false);
+            enableElements('addCollector_v9Section', true);
+        } else {
+            // 5, 5.1
+            enableElements('addCollector_spoofSection', true);
+            enableElements('addCollector_v9Section', false);
+        }
+    } else if ('edit' == this.editMode) {
+        var version = form.editCollector_version.value;
+        if (('9' == version) || ('9.1' == version)) {
+            enableElements('editCollector_spoofSection', false);
+            enableElements('editCollector_v9Section', true);
+        } else {
+            // 5, 5.1
+            enableElements('editCollector_spoofSection', true);
+            enableElements('editCollector_v9Section', false);
+        }
+    }
+}
+
+
+//  -->
+</script>
+

@@ -1,0 +1,143 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## setupAdministrationSMTP.psp
+##
+## This is the template for the server administrative communication settings,
+## SMTP aka. e-mail notification.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, HostUtils, FormUtils:NodeEntry, PagePresentation:Pagelet, OSUtils, Logging" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdministrationAlarm',) %>
+
+<psp:method name="nodeEntries">
+
+    mgmt = self.session().value('mgmt')
+    fields = self.request().fields()
+    host = Nodes.present(mgmt, '/system/hostname')
+    domain = Nodes.present(mgmt, '/resolver/domain_search/1/domainname')
+    if domain:
+        domain = '.' + domain;
+    toolTip = 'Override the default address used for outbound \
+              messages:<br/><code>do-not-reply@%s%s</code>' \
+              % (host, domain)
+
+    entries = {
+        'mailhub': NodeEntry(
+            path='/email/client/mailhub',
+            type='hostname',
+            validate='hostnameOrIp',
+            widgetClass='location',
+            inputOptional=True,
+            label='SMTP Server'),
+        'mailhubPort': NodeEntry(
+            path='/email/client/mailhub_port',
+            type='uint16',
+            validate='port',
+            widgetClass='small',
+            label='SMTP Port'),
+        'eventEnable': NodeEntry(
+            path='/email/notify/events/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Report Events via Email',
+            enableDiv='eventRecipients'),
+        'eventRecipients': NodeEntry(
+            path='/email/notify/events/recipients/',
+            name='eventRecipients',
+            widgetClass='wide',
+            hint='(comma separated)',
+            validate='emailList'),
+        'failureEnable': NodeEntry(
+            path='/email/notify/failures/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Report Failures via Email',
+            enableDiv='failureRecipients'),
+        'failureRecipients': NodeEntry(
+            path='/email/notify/failures/recipients/',
+            name='failureRecipients',
+            hint='(comma separated)',
+            widgetClass='wide',
+            validate='emailList'),
+        'autoSupport': NodeEntry(
+            path='/email/autosupport/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Report Failures to Technical Support'),
+        'fromAddress': NodeEntry(
+            path='/email/client/from_address',
+            widgetClass='wide2'),
+        'enableFromAddress': NodeEntry(
+            name='enableFromAddress',
+            path='/email/client/from_address',
+            filter= lambda x: x and 'true' or 'false',
+            widget='checkboxLeft',
+            value='true',
+            enableDiv='fromAddress',
+            tooltip=toolTip,
+            label="Override Default Sender's Address")
+    }
+
+    # this checkbox only shows up on the cmc base config page
+    if ('nocmc' != Nodes.present(mgmt, '/rbt/cmc/email_events/app_notify/enable', 'nocmc')) and \
+       ('editPolicy' not in fields) and ('appConfig' not in fields):
+        entries['eventCMCAppliances'] = NodeEntry(
+            path='/rbt/cmc/email_events/app_notify/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Include events from managed appliances')
+    return entries
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+
+eventAddrs, failureAddrs = HostUtils.getNotificationAddrs(mgmt, self)
+nodeEntries['eventRecipients'].value = ', '.join(eventAddrs)
+nodeEntries['failureRecipients'].value = ', '.join(failureAddrs)
+
+# eventCMCAppliances is only for CMC
+
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Email Notification</legend>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries['mailhub'].html(self) %>
+        <%= nodeEntries['mailhubPort'].html(self) %>
+      </table>
+    </div>
+    <div class="midLevel">
+      <%= nodeEntries['eventEnable'].html(self) %>
+      <div id="eventRecipients" class="indent">
+        <%= nodeEntries['eventRecipients'].html(self, format='block') %>
+        <%= 'eventCMCAppliances' in nodeEntries and nodeEntries['eventCMCAppliances'].html(self) or '' %>
+      </div>
+      <%= nodeEntries['failureEnable'].html(self) %>
+      <div id="failureRecipients" class="indent">
+        <%= nodeEntries['failureRecipients'].html(self, format='block') %>
+      </div>
+      <%= nodeEntries['enableFromAddress'].html(self) %>
+      <div id="fromAddress" class="indent">
+        <%= nodeEntries['fromAddress'].html(self, format='block') %>
+      </div>
+      <%= nodeEntries['autoSupport'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="smtpAction" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

@@ -1,0 +1,448 @@
+# This file is sourced by /etc/rc.d/init.d/rsisinit, and is the
+# implementation of RSIS for the AWS cloud. It retrieves the AWS
+# launch params and acts on them.
+
+CURL="/usr/bin/curl"
+MDADM="/sbin/mdadm"
+DATE=/bin/date
+
+USER_KEY_URL="http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key"
+USER_DATA_URL="http://169.254.169.254/latest/user-data"
+
+INSTANCE_TYPE_URL="http://169.254.169.254/latest/meta-data/instance-type"
+INSTANCE_ID_URL="http://169.254.169.254/latest/meta-data/instance-id"
+ZONE_URL="http://169.254.169.254/latest/meta-data/placement/availability-zone"
+AMI_URL="http://169.254.169.254/latest/meta-data/ami-id"
+PUBLIC_HOSTNAME_URL="http://169.254.169.254/latest/meta-data/public-hostname"
+LOCAL_HOSTNAME_URL="http://169.254.169.254/latest/meta-data/local-hostname"
+
+AWS_OUTPUT_DIR="/var/etc/opt/tms/aws/output"
+
+USER_KEY_FILE="$AWS_OUTPUT_DIR/user-pub-key"
+USER_DATA_FILE="$AWS_OUTPUT_DIR/user-data"
+INSTANCE_TYPE_FILE="$AWS_OUTPUT_DIR/instance-type"
+
+SLEEP_PERIOD=5
+LOCAL_SEGSTORE="local" # A special value which is resolved at run-time
+LARGER_INSTANCE_LOCAL_SEGSTORE_NODE="/dev/sdc"
+SMALLER_INSTANCE_LOCAL_SEGSTORE_NODE="/dev/sda2"
+RAID_SEGSTORE_NODE="/dev/md0"
+
+EC2_SMALLER_INSTANCE_TYPE="m1.small c1.medium"
+
+ADMIN="admin"
+HOME_SSH_DIR="/var/home/root/.ssh"
+AUTHORIZED_KEYS="authorized_keys"
+
+RSIS_IF="primary"
+RSIS_DHCLIENT_SCRIPT="/sbin/rsis_dhclient-script"
+DHCLIENT_PID_FILE="/var/tmp/dhclient-rsis.pid"
+DCLIENT_LEASES_FILE="/var/tmp/dhclient-rsis.leases"
+
+LICENSE_OTT_FILE="/var/opt/tms/.ki3nc9na"
+DISCOVERY_HOST_FILE="/var/opt/tms/dshost.txt"
+RVBD_SH_RSIS_FLAG="/var/.rsis_sh_ok"
+
+RETVAL=0
+
+MAX_NUM_NODES=4
+
+cleanup_exit()
+{
+    rm -f $USER_DATA_FILE
+    exit $1
+}
+
+# Ensure that given block device nodes exist. If it doesn't, create it.
+# $@ - a list of device node paths.
+ensure_block_nodes()
+{
+    for node in $@; do
+        dev_str=`echo -e "\
+            /dev/sdf 8 80 \n    \
+            /dev/sdg 8 96 \n    \
+            /dev/sdh 8 112 \n    \
+            /dev/sdi 8 128 \n    \
+            /dev/sdj 8 144 \n    \
+            /dev/sdk 8 160 \n    \
+            /dev/sdl 8 176 \n    \
+            /dev/sdm 8 192 \n    \
+            /dev/sdn 8 208 \n    \
+            /dev/sdo 8 224 \n    \
+            /dev/sdp 8 240 \n   \
+            " | grep "$node"`
+
+        if [ -n "$dev_str" ]; then
+            major=`echo $dev_str | cut -f 2 -d ' '`
+            minor=`echo $dev_str | cut -f 3 -d ' '`
+
+            if [ ! -e $1 ]; then
+                mknod $1 b $major $minor
+                if [ $? -ne 0 ]; then
+                    echo "Unable to create $1"
+                    cleanup_exit 1
+                fi
+            fi
+        fi
+    done
+}
+
+write_sport_partition()
+{
+    node=$1
+    log_info "Setting $1 as SPORT partition."
+
+    # If local segstore was requested, work out the device node for the
+    # segstore.
+    if [ "$node" == "$LOCAL_SEGSTORE" ]; then
+        node="$LARGER_INSTANCE_LOCAL_SEGSTORE_NODE"
+
+        # Get the Instance type, so we can set the right device node.
+        $CURL --retry 4 --retry-delay 5 --silent --fail -o $INSTANCE_TYPE_FILE $INSTANCE_TYPE_URL
+        echo "$EC2_SMALLER_INSTANCE_TYPE" | grep `cat $INSTANCE_TYPE_FILE` >/dev/null
+        if [ $? -eq 0 ]; then
+            # We're running inside a smaller instance
+            node="$SMALLER_INSTANCE_LOCAL_SEGSTORE_NODE"
+        fi
+    fi
+
+    $MDDBREQ /config/mfg/mfdb set modify - /rbt/mfd/store/dev string "$node"
+}
+
+enable_account()
+{
+    log_info "Enabling $1 account."
+    $MDDBREQ /config/db/`cat /config/db/active` set modify - /auth/passwd/user/$1/enable bool true
+}
+
+do_customer_key_file()
+{
+    key_file=$1
+    if [ ! -f $key_file ]; then
+        return 1
+    fi
+
+    log_info "Installing SSH key pair."
+    if [ ! -e $HOME_SSH_DIR ]; then
+        mkdir $HOME_SSH_DIR
+    fi
+    chmod 700 $HOME_SSH_DIR
+    cat $key_file >> $HOME_SSH_DIR/$AUTHORIZED_KEYS
+    chmod 600 $HOME_SSH_DIR/$AUTHORIZED_KEYS
+
+    enable_account $ADMIN
+
+    return 0
+}
+
+do_customer_login()
+{
+    if [ -f $RVBD_SH_RSIS_FLAG ]; then
+        # Customer login details should only be set once. Otherwise the script
+        # may overwrite any changes the user has made.
+        return 0
+    fi
+
+    launch_params_file=$1
+    if [ ! -f $launch_params_file ]; then
+        return 1
+    fi
+
+    encrypted_password=`cat $launch_params_file | grep -E "^passwd=" | tail -n 1 | sed 's/passwd=//g'`
+    if [ -n "$encrypted_password" ]; then
+        # Seems to be a hashed password in launch params
+        $MDDBREQ /config/db/`cat /config/db/active` set modify - /auth/passwd/user/$ADMIN/password string "$encrypted_password"
+        log_info "Setting $ADMIN password"
+        enable_account $ADMIN
+    fi
+}
+
+do_customer_hostname()
+{
+    if [ -f $RVBD_SH_RSIS_FLAG ]; then
+        # Hostname should only be set once. Otherwise the script may overwrite any hostname
+        # changes made by the user.
+        return 0
+    fi
+
+    launch_params_file=$1
+    if [ ! -f $launch_params_file ]; then
+        return 1
+    fi
+
+    hostname=`cat $launch_params_file | grep -E "^appname=" | tail -n 1 | sed 's/appname=//g'`
+    if [ -n "$hostname" ]; then
+        # Seems to be a appliance name in the launch params
+        $MDDBREQ /config/db/`cat /config/db/active` set modify - /system/hostname hostname "$hostname"
+        log_info "Setting system hostname to $hostname"
+    fi
+}
+
+do_customer_licensing()
+{
+    launch_params_file=$1
+    if [ ! -f $launch_params_file ]; then
+        return 1
+    fi
+
+    license_token=`cat $launch_params_file | grep -E "^lott=" | tail -n 1 | sed 's/lott=//g'`
+    if [ -n "$license_token" ] && [ ! -f "$LICENSE_OTT_FILE" ]; then
+        echo $license_token > $LICENSE_OTT_FILE
+        log_info "Installing license token"
+    fi
+
+    license_server=`cat $launch_params_file | grep -E "^lshost=" | tail -n 1 | sed 's/lshost=//g'`
+    if [ -n "$license_server" ]; then
+        # add license server to config
+        $MDDBREQ /config/db/`cat /config/db/active` set modify - /license/server/config/$license_server string "$license_server"
+        $MDDBREQ /config/db/`cat /config/db/active` set modify - /license/server/config/$license_server/priority uint32 5
+        $MDDBREQ /config/db/`cat /config/db/active` set modify - /license/server/config/$license_server/port uint16 80
+        log_info "Setting license server $license_server with priority 5 and port 80"
+    fi
+
+}
+
+do_customer_discovery()
+{
+    launch_params_file=$1
+    if [ ! -f $launch_params_file ]; then
+        return 1
+    fi
+
+    dshost=`cat $launch_params_file | grep -E "^rvbd_dshost=" | tail -n 1`
+    if [ -n "$dshost" ] && [ ! -f "$DISCOVERY_HOST_FILE" ]; then
+        echo $dshost > $DISCOVERY_HOST_FILE
+        log_info "Installing discovery host"
+    fi
+}
+
+do_customer_metadata()
+{
+    rm -f $1
+
+    # Do boot time, but it may not exist if start() was never called.
+    if [ -f "$BOOTTIME_FILE" ]; then
+        echo -n "boot_time=" >>$1
+        cat "$BOOTTIME_FILE" >>$1
+    fi
+
+    echo -n "instance_type=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $INSTANCE_TYPE_URL >>$1
+    echo >>$1
+
+    echo -n "instance_id=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $INSTANCE_ID_URL >>$1
+    echo >>$1
+
+    echo -n "zone=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $ZONE_URL >>$1
+    echo >>$1
+
+    echo -n "ami_id=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $AMI_URL >>$1
+    echo >>$1
+
+    echo -n "public_hostname=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $PUBLIC_HOSTNAME_URL >>$1
+    echo >>$1
+
+    echo -n "local_hostname=" >>$1
+    $CURL --retry 4 --retry-delay 5 --silent --fail -o - $LOCAL_HOSTNAME_URL >>$1
+    echo >>$1
+
+    key=`$CURL --retry 4 --retry-delay 5 --silent --fail -o - $USER_KEY_URL`
+    if [ $? -eq 0 ]; then
+        keyname=`echo $key | cut -d ' ' -f 3`
+        echo "key_pair=$keyname" >>$1
+    fi
+}
+
+do_customer_rsis()
+{
+    launch_params_file=$1
+    if [ ! -f $launch_params_file ]; then
+        return 1
+    fi
+
+    # Start by assuming we're going to use local disk for the segstore.
+    sport_partition=$LOCAL_SEGSTORE
+
+    # Get the segstore nodes from the launch parameters and db.
+    segstore_nodes=""
+
+    lp_nodes=`cat $launch_params_file | grep -E "^ds=" | tail -n 1 | sed 's/ds=//g' | sed 's/,/ /g'`
+    db_nodes=`$MDDBREQ -v /config/mfg/mfdb query get - /rbt/mfd/rsis_datastore `
+
+    if [ -n "$lp_nodes" ]; then
+        # Use node string from launch if, and only, it is non-empty.
+        if [ "$lp_nodes" != "$db_nodes" ]; then
+            # Launch params override db params.
+            $MDDBREQ /config/mfg/mfdb set modify - /rbt/mfd/rsis_datastore string "$lp_nodes"
+        fi
+        segstore_nodes="$lp_nodes"
+    elif [ -n "$db_nodes" ]; then
+        # db string is non-empty, so use that instead.
+        segstore_nodes="$db_nodes"
+    fi
+
+    # Did we retrieve nodes from either the db or launch params?
+    if [ -n "$segstore_nodes" ]; then
+        valid_segstore_nodes=""
+
+        # Wait for each volume to attach and determine which are valid
+        ensure_block_nodes $segstore_nodes
+        node_counter=0
+        for node in $segstore_nodes; do
+
+            # Limit RSIS to a maximum of MAX_NUM_NODES nodes.
+            node_counter=$(($node_counter+1))
+            if [ $node_counter -gt $MAX_NUM_NODES ]; then
+                break;
+            fi
+
+            rc=1
+            until [ $rc -eq 0 ]; do
+                sfdisk -s $node
+                rc=$?
+                sleep $SLEEP_PERIOD
+            done
+            sfdisk -l $node 2>&1 | grep "No partitions found"
+            if [ $? -eq 0 ]; then
+                # No partitions on this device, so we can use it. Strip leading and
+                # trailing whitespaces.
+                echo "$valid_segstore_nodes" | grep "$node"
+                if [ $? -eq 1 ]; then
+                    # Guard against a device node appearing more than once in the
+                    # node list.
+                    valid_segstore_nodes="$valid_segstore_nodes $node"
+                    valid_segstore_nodes=`echo "$valid_segstore_nodes" | sed -s 's/^[ ]*//g'`
+                    valid_segstore_nodes=`echo "$valid_segstore_nodes" | sed -s 's/$[ ]*//g'`
+                fi
+            fi
+        done
+
+        # Now we have the valid nodes for the segstore.
+        num_nodes=`echo "$valid_segstore_nodes" | wc -w`
+        if [ -n "$valid_segstore_nodes" ]; then
+            if [ $num_nodes -eq 1 ]; then
+                # Just a single node specified so use it directly.
+                log_info "Detected single persistent volume for SPORT partition."
+                sport_partition="$valid_segstore_nodes"
+            else
+                # More than one node specified, so stripe the segstore
+                # across $valid_segstore_nodes using RAID-0.
+
+                # We only want to create a RAID-0 setup if all the valid
+                # device nodes are part of a RAID array, or none of them
+                # are.
+                log_info "Detected multiple persistent volumes for SPORT partition."
+                all_nodes_raided=1
+                no_nodes_raided=1
+
+                for node in $valid_segstore_nodes; do
+                    $MDADM --examine $node >/dev/null 2>&1
+                    if [ $? -eq 0 ]; then
+                        no_nodes_raided=0
+                        break
+                    fi
+                done
+
+                for node in $valid_segstore_nodes; do
+                    $MDADM --examine $node >/dev/null 2>&1
+                    if [ $? -eq 1 ]; then
+                        all_nodes_raided=0
+                        break
+                    fi
+                done
+
+                # Make the RAID device node...
+                if [ ! -e $RAID_SEGSTORE_NODE ]; then
+                    mknod -m 0660 $RAID_SEGSTORE_NODE b 9 0
+                fi
+
+                # Create the RAID configuration -- but only if there isn't a mix of
+                # of volumes.
+                if [ $no_nodes_raided -eq 1 ]; then
+                    $MDADM --create $RAID_SEGSTORE_NODE --force --level=0 --raid-devices=$num_nodes $valid_segstore_nodes
+                    sport_partition="$RAID_SEGSTORE_NODE"
+                elif [ $all_nodes_raided -eq 1 ]; then
+                    $MDADM --assemble $RAID_SEGSTORE_NODE --force $valid_segstore_nodes
+                    sport_partition="$RAID_SEGSTORE_NODE"
+                fi
+
+            fi
+        fi
+
+    fi
+
+    write_sport_partition "$sport_partition"
+
+    return 0
+}
+
+start() {
+	echo -n $"Executing $prog: "
+
+        mkdir -p $AWS_OUTPUT_DIR
+        mkdir -p $CLOUD_OUTPUT_DIR
+
+        # start() is synonomous with boot time.
+        $DATE +%s >$BOOTTIME_FILE
+
+        # Bring up $RSIS_IF so we can download launch data.
+        log_info "Requesting an IP addresses for interface $RSIS_IF."
+        /sbin/dhclient -1 -lf $DCLIENT_LEASES_FILE -pf $DHCLIENT_PID_FILE $RSIS_IF -sf $RSIS_DHCLIENT_SCRIPT
+
+        # Get the launch params and write them to a file. If the curl doesn't retrieve any data
+        # an empty file will indicate no user data.
+        echo "" >$USER_DATA_FILE
+        $CURL --retry 4 --retry-delay 5 --silent --fail -o $USER_DATA_FILE $USER_DATA_URL
+        do_customer_rsis $USER_DATA_FILE
+        do_customer_login $USER_DATA_FILE
+        do_customer_licensing $USER_DATA_FILE
+        do_customer_metadata $METADATA_FILE
+        do_customer_discovery $USER_DATA_FILE
+        do_customer_hostname $USER_DATA_FILE
+
+        # Get any key-pair that was passed in. Only if curl got a key should we process it.
+        rm -f $USER_KEY_FILE
+        $CURL --retry 4 --retry-delay 5 --silent --fail -o $USER_KEY_FILE $USER_KEY_URL
+        if [ -e $USER_KEY_FILE ]; then
+            do_customer_key_file $USER_KEY_FILE
+        fi
+
+        # Shut down the DHCP client
+        dhclient_pid=`cat $DHCLIENT_PID_FILE`
+        if [ -n "$dhclient_pid" ]; then
+            kill -s SIGTERM $dhclient_pid
+        fi
+        rm -f $DCLIENT_LEASES_FILE
+        rm -f $DHCLIENT_PID_FILE
+
+        # Flag that the RSIS service has run *at least* once.
+        touch $RVBD_SH_RSIS_FLAG
+
+	return 0
+}
+
+stop() {
+	echo -n $"Stopping $prog: "
+        if [ -e $DHCLIENT_PID_FILE ]; then
+            dhclient_pid=`cat $DHCLIENT_PID_FILE`
+            if [ -n "$dhclient_pid" ]; then
+                kill -s SIGTERM `$dhclient_pid`
+            fi
+        fi
+        rm -f $DCLIENT_LEASES_FILE
+        rm -f $DHCLIENT_PID_FILE
+	return $RETVAL
+}
+
+metadata() {
+    echo -n $"Generating metadata using $prog: "
+    if [ ! -e "$METADATA_FILE" ]; then
+        # Don't generate AWS metadata if it already exists.
+        do_customer_metadata $METADATA_FILE
+    fi
+    return 0
+}

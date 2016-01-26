@@ -1,0 +1,27 @@
+function FileData_Pairs(x)
+{
+x.t("appendix","steelhead");
+x.t("appendix","provides");
+x.t("appliance","secure");
+x.t("appliance","ports");
+x.t("steelhead","appliance");
+x.t("secure","ports");
+x.t("forwarded","steelhead");
+x.t("sections","default");
+x.t("default","ports");
+x.t("includes","following");
+x.t("provides","reference");
+x.t("ports","appendix");
+x.t("ports","steelhead");
+x.t("ports","forwarded");
+x.t("ports","interactive");
+x.t("ports","commonly");
+x.t("ports","used");
+x.t("interactive","ports");
+x.t("commonly","excluded");
+x.t("excluded","ports");
+x.t("reference","ports");
+x.t("used","system");
+x.t("system","includes");
+x.t("following","sections");
+}

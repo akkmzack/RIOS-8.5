@@ -1,0 +1,83 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: James Culveyhouse
+##
+## SSL Report
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupServiceProtocolsSSLMain',) %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/ssl_sum']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Rate (connections/sec)';
+    highstockOptions.series = [
+        { name: 'Requested Connection Rate',
+          color: RBT.Reports2.BLUE,
+          type: 'area' },
+        { name: 'Established Connection Rate',
+          color: RBT.Reports2.ORANGE,
+          type: 'area' }
+    ];
+
+    // Make the navigator shadow the first series (Requested Connection Rate).
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    // Create the chart!
+    var chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: '<%= Reports2.constructDataUrl("reportSSLStatistics") %>',
+        options: highstockOptions,
+        dataFormatterFn: dataFormatter,
+        statsFn: sslStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>
+    });
+});
+
+// A callback function that nicely formats a data point for readability.
+function dataFormatter(value, seriesName) {
+    return RBT.Reports2.scale(value, 1, 'si', 'connections/sec');
+}
+
+function sslStats(allSeriesData) {
+    var allStats = [];
+
+    // Calculate the total number of requested connections.
+    var totalRequested = Math.round(RBT.Reports2.integrate(allSeriesData[0]));
+    var totalRequestedText = 'Total: ' + RBT.Reports2.addThousandsSeparators(totalRequested) + ' connections';
+    allStats.push([totalRequestedText]);
+
+    // Calculate the total number of established connections.
+    var totalEstablished = Math.round(RBT.Reports2.integrate(allSeriesData[1]));
+    var totalEstablishedText = 'Total: ' + RBT.Reports2.addThousandsSeparators(totalEstablished) + ' connections';
+    allStats.push([totalEstablishedText]);
+
+    return allStats;
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

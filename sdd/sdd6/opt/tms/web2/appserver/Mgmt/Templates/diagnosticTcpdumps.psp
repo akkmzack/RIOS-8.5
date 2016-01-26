@@ -1,0 +1,495 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticTcpdumps
+## Display a table of tcpdumps.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="datetime, Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils, re" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.label-interface { padding: 0 20px 0 5px; }
+.standalone_check {
+    margin: 8px 0;
+}
+table#interfaces {
+    margin: 0px 0px 8px 0px;
+}
+table#interfaces thead tr th {
+    font-weight: bold;
+    padding-right: 20px;
+}
+td.interface-td {
+    vertical-align: top;
+}
+li.interface-list {
+    list-style-type: none;
+    margin: 2px 0;
+}
+#endpoint_set p {
+    font-style: italic;
+}
+#addDump_captureTable {
+    margin: 10px 0 5px 0;
+}
+#addDump_scheduleDiv {
+    margin: 6px 24px;
+}
+#tcpDumpsTable_main, #tcpDumpsRunningTable_main {
+    width: 835px;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'enableCascadeShark': FormUtils.NodeEntry(
+            path='/rbt/shark/config/enabled',
+            type='bool',
+            widget='checkboxLeft',
+            tooltip='Permit remote capture analysis using Cascade Pilot.',
+            label='Enable Cascade Shark'),
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/rbm_fake/debug/generate/tcpdump',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    now = datetime.datetime.now()
+    return {
+        'addDump_captureName': FormUtils.NodeEntry(
+            name='addDump_captureName',
+            label='Capture Name',
+            validate='name',
+            inputOptional=True),
+        'addDump_captureDuration': FormUtils.NodeEntry(
+            name='addDump_captureDuration',
+            widgetClass='small',
+            value='30',
+            label='Capture Duration',
+            units='seconds',
+            tooltip='Enter 0 for continuous capture.',
+            validate='uint32'),
+        'addDump_captureMax': FormUtils.NodeEntry(
+            name='addDump_captureMax',
+            widgetClass='small',
+            type='uint32',
+            value='100',
+            label='Maximum Capture Size',
+            units='MB'),
+        'addDump_bufferSize': FormUtils.NodeEntry(
+            name='addDump_bufferSize',
+            widgetClass='small',
+            type='uint32',
+            label='Buffer Size',
+            units='kB',
+            value='154'),
+        'addDump_snapLength': FormUtils.NodeEntry(
+            name='addDump_snapLength',
+            widgetClass='small',
+            type='uint32',
+            label='Snap Length',
+            units='bytes',
+            tooltip='0 is recommended for CIFS, MAPI, and SSL traces.',
+            value='1518'),
+        'addDump_rotation': FormUtils.NodeEntry(
+            name='addDump_rotation',
+            widgetClass='small',
+            type='uint32',
+            value='5',
+            label='Number of Files to Rotate'),
+        'addDump_vlanEnable': FormUtils.NodeEntry(
+            name='addDump_vlanEnable',
+            widget='checkbox',
+            label='Only Capture VLAN-Tagged Traffic',
+            tooltip='This option only applies to physical interfaces.'),
+        'addDump_srcIps': FormUtils.NodeEntry(
+            name='addDump_srcIps',
+            widgetClass='wide2',
+            value='All',
+            label='IPs',
+            validate='ipv4ListAll'),
+        'addDump_srcPorts': FormUtils.NodeEntry(
+            name='addDump_srcPorts',
+            widgetClass='wide2',
+            value='All',
+            label='Ports',
+            validate='portListAll'),
+        'addDump_dstIps': FormUtils.NodeEntry(
+            name='addDump_dstIps',
+            widgetClass='wide2',
+            value='All',
+            label='IPs',
+            validate='ipv4ListAll'),
+        'addDump_dstPorts': FormUtils.NodeEntry(
+            name='addDump_dstPorts',
+            widgetClass='wide2',
+            value='All',
+            label='Ports',
+            validate='portListAll'),
+        'addDump_flags': FormUtils.NodeEntry(
+            name='addDump_flags',
+            widgetClass='wide2',
+            label='Custom Flags'),
+        'addDump_schedule': FormUtils.NodeEntry(
+            name='addDump_schedule',
+            widgetClass='standalone_check',
+            widget='checkboxLeft',
+            label='Schedule Dump',
+            enableDiv='addDump_scheduleDiv'),
+        'addDump_scheduleDate': FormUtils.NodeEntry(
+            name='addDump_scheduleDate',
+            widgetClass='date',
+            validate='date',
+            value=now.strftime('%Y/%m/%d'),
+            label='Start Date'),
+        'addDump_scheduleTime': FormUtils.NodeEntry(
+            name='addDump_scheduleTime',
+            widgetClass='time',
+            label='Start Time',
+            labelClass='labelPaddedLeft labelPaddedRight',
+            value=now.strftime('%H:%M:%S'),
+            validate='time')
+    }
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+# Each of these is a list of (interface, label) tuples.
+baseInterfaces = []
+inpathInterfaces = []
+rspInterfaces = []
+dataInterfaces = []
+hostInterfaces = []
+
+allRiosInterfaces = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/tcpdump/state/interface')
+allRiosInterfaces = FormUtils.sortInterfacesByName(allRiosInterfaces)
+
+# Classify each RiOS interface into the appropriate bucket.
+for interface in allRiosInterfaces: {
+    if interface in ('aux', 'primary'): {
+        baseInterfaces.append((interface, interface))
+    } elif interface.startswith('lan') or interface.startswith('wan'): {
+        inpathInterfaces.append((interface, interface))
+    } elif interface.startswith('rios'): {
+        rspInterfaces.append((interface, interface))
+    } elif interface.startswith('eth'): {
+        dataInterfaces.append((interface, interface))
+    }
+}
+
+# Handle the host interfaces and VNIs on a BOB box.
+if RVBDUtils.isBOB(): {
+    # Safe to import the rsp3 module.
+    import rsp3
+
+    # Host interfaces
+    hostInterfaces = Nodes.getMgmtLocalChildrenNames(mgmt, '/host/tcpdump/state/interface')
+    hostInterfaces = FormUtils.sortInterfacesByName(hostInterfaces)
+    hostInterfaces = [('host_%s' % interface, interface) for interface in hostInterfaces]
+
+    # VNIs
+    vniDevnames = sorted(Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/rsp3/state/active_vni_devnames'))
+
+    # We expect the internal device name to be of the form 's[1-9]vni[0-9]'.
+    regex = re.compile('^s([1-9])(vni\d)$')
+
+    for vniDevname in vniDevnames: {
+        # Ignore the RiOS VNIs because they're already in the VSP interfaces list.
+        if vniDevname.startswith('rios_'): {
+            continue
+        }
+
+        mo = regex.match(vniDevname)
+        if mo: {
+            slotNumber, vni = mo.group(1, 2)
+            slotName = rsp3.getSlotName(slotNumber)
+            prettyVniName = '%s:%s' % (slotName, vni)
+            rspInterfaces.append((vniDevname, prettyVniName))
+        }
+    }
+}
+
+ifaceHtml = FormUtils.NodeEntry(name='iface_All',
+                                widget='checkboxLeft',
+                                widgetClass='standalone_check',
+                                action='selectAllInterfaces()',
+                                label='All Interfaces',
+                                labelClass='label-interface').html(self, format='block')
+
+# Write out the header for the interfaces table.
+ifaceHtml += '<table id="interfaces"><thead><tr>'
+if baseInterfaces: {
+    ifaceHtml += '<th>Base Interfaces:</th>'
+}
+if hostInterfaces: {
+    ifaceHtml += '<th>Hypervisor Interfaces:</th>'
+}
+if inpathInterfaces: {
+    ifaceHtml += '<th>In-Path Interfaces:</th>'
+}
+if rspInterfaces: {
+    if RVBDUtils.isBOB(): {
+        tooltip = 'The only interfaces listed here are optimization VNIs ' \
+                  'that are in a data flow and are attached to a VM that is ' \
+                  'powered on.'
+        ifaceHtml += '<th><span class="popupTitle" title="%s">VSP Interfaces:</span></th>' % tooltip
+    } else: {
+        if RVBDUtils.isSH(): {
+            import rsp
+            rspPublicName = rsp.publicName()
+        } else: {
+            rspPublicName = 'RSP'
+        }
+
+        ifaceHtml += '<th>%s Interfaces:</th>' % rspPublicName
+    }
+}
+if dataInterfaces: {
+    ifaceHtml += '<th>Data Interfaces:</th>'
+}
+ifaceHtml += '</tr></thead>'
+
+# Write out the body for the interfaces table.
+ifaceHtml += '<tbody><tr>'
+for interfaceList in (baseInterfaces, hostInterfaces, inpathInterfaces, rspInterfaces, dataInterfaces): {
+    if interfaceList: {
+        ifaceHtml += '<td class="interface-td"><ul>'
+        for interface, label in interfaceList: {
+            html = FormUtils.NodeEntry(name='iface_%s' % interface,
+                                       widget='checkboxLeft',
+                                       label=label,
+                                       action='updateAllInterfaces(this)',
+                                       labelClass='label-interface').html(self, format='inline')
+            ifaceHtml += '<li class="interface-list">%s</li>' % html
+        }
+        ifaceHtml += '</ul></td>'
+    }
+}
+ifaceHtml += '</tr></tbody></table>'
+
+tcpDumpsTable = ajaxentrytable.AjaxEntryTable('tcpDumps',
+    url='/mgmt/xmldata?p=tcpdumpFiles&errorRedirect=%s' %
+        HTTPUtils._makeQuerystringDestParameter(self.request()),
+    titleText='Stored TCP Dumps',
+    headerSpec=("",
+                ("Download Link", 'ajaxEntryTable_th table_diagnosticfile_name'),
+                ("Timestamp", 'ajaxEntryTable_th table_diagnosticfile_time'),
+                ("Size", 'ajaxEntryTable_th table_diagnosticfile_size'),
+                ("MD5 Sum", 'ajaxEntryTable_th table_diagnosticfile_md5sum')),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.td([AjaxEntryTable.a('href',
+                                     'click to download the file',
+                                     [AjaxEntryTable.attrText('name')])],
+                   'table_diagnosticfile_name'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('timestring')],
+                   'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('md5sum')],
+                   'table_diagnosticfile_md5sum')]""",
+    emptyMessage='No stored TCP dumps.',
+    removeName='removeFiles',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_')
+
+
+tcpDumpsRunningTable = ajaxentrytable.AjaxEntryTable('tcpDumpsRunning',
+    url='/mgmt/xmldata?p=tcpDumpsRunning',
+    titleText='TCP Dumps Currently Running',
+    headerSpec=('', 'Running Capture Name', 'Running On', 'Start Time'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('internalName', 'select_'),
+ AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdAttr('runningOn'),
+ AjaxEntryTable.tdAttr('start')]""",
+    emptyMessage='No TCP dumps currently running.',
+    addButtonText='Add a New TCP Dump',
+    addButtonName='addTcpDump',
+    removeName='removeTcpCaptures',
+    removeButtonText='Stop Selected Captures')
+
+tcpDumpsRunningTable.addDivContent = '''
+<div class="midLevel">
+  <fieldset>
+    <legend>Name</legend>
+    %s
+  </fieldset>
+  <fieldset id="endpoint_set">
+    <legend>Endpoints</legend>
+    <p>Capture traffic between:</p>
+    <table class="indent">
+      %s
+      %s
+    </table>
+    <p>and:</p>
+    <table class="indent">
+      %s
+      %s
+    </table>
+  </fieldset>
+  <fieldset id="interface_set">
+    <legend>Capture Interfaces</legend>
+    %s
+  </fieldset>
+  <fieldset>
+    <legend>Capture Parameters</legend>
+    <table id="addDump_captureTable">
+    %s
+    %s
+    %s
+    %s
+    %s
+    %s
+    %s
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>Schedule</legend>
+    %s
+    <div id="addDump_scheduleDiv">
+    %s
+    %s
+    </div>
+  </fieldset>
+</div>
+''' % (dialogEntries['addDump_captureName'].html(self, format='block'),
+       dialogEntries['addDump_srcIps'].html(self),
+       dialogEntries['addDump_srcPorts'].html(self),
+       dialogEntries['addDump_dstIps'].html(self),
+       dialogEntries['addDump_dstPorts'].html(self),
+       ifaceHtml,
+
+       dialogEntries['addDump_captureDuration'].html(self),
+       dialogEntries['addDump_captureMax'].html(self),
+       dialogEntries['addDump_bufferSize'].html(self),
+       dialogEntries['addDump_snapLength'].html(self),
+       dialogEntries['addDump_rotation'].html(self),
+       dialogEntries['addDump_vlanEnable'].html(self),
+       dialogEntries['addDump_flags'].html(self),
+
+       dialogEntries['addDump_schedule'].html(self, format='block'),
+       dialogEntries['addDump_scheduleDate'].html(self, format='inline'),
+       dialogEntries['addDump_scheduleTime'].html(self, format='inline')
+      )
+%>
+
+<% self.beginPagelet() %>
+
+<%
+    # Enable Shark Options when the feature is available by
+    # determining the existence of the shark status node.
+    isSharkAvailable = Nodes.present(mgmt, '/rbt/shark/state/status', None) != None
+    if isSharkAvailable: {
+%>
+<form id="sharkProbeForm" method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableCascadeShark'].html(self) %>
+      <input type="hidden" name="_action_" value="setFormNodes" />
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+<% } %>
+
+<form id="tcpDumpForm" method="post"
+      action="<%= self.thisPageletRequest() %>">
+
+  <div class="topLevel">
+    <input type="hidden" name="_action_" value="tcpDumps" />
+    <input type="hidden" name="dir" value="tcpdumps" />
+    <%= tcpDumpsTable.html(self, 'topLevel') %>
+  </div>
+
+  <div>
+    <%= tcpDumpsRunningTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<script type="text/javascript">
+
+// A list of ipv4 addresses or "all".
+function ipv4ListAll(val) {
+    var errMsg = 'A comma-delimited list of legal ipv4 addresses, or "all", is required.';
+    if ('all' == val.trim().toLowerCase()) {
+        return;
+    }
+    try {
+        RBT.Validator.Syntax.ipv4addr_list(val);
+    } catch (e) {
+        throw errMsg;
+    }
+}
+
+// A list of ports, including 0, or "all".
+function portListAll(val) {
+    if ('all' == val.trim().toLowerCase()) {
+        return;
+    }
+    try {
+        RBT.Validator.Syntax.portList(val);
+    } catch (e) {
+        throw 'A comma-delimited list of legal port numbers, or "all", is required.';
+    }
+}
+// Called when the iface_All checkbox is checked, so it checks all the other interfaces boxes
+function selectAllInterfaces() {
+    var ifaceChecks = Y.all('#interface_set input');
+    var selectAllCheck = ifaceChecks.filter('*[name=iface_All]').item(0);
+    ifaceChecks.each(function(node, index, list) {
+        if (node === selectAllCheck) {
+            return;
+        }
+        node.set('checked', selectAllCheck.get('checked'))
+    });
+}
+// Called when any of the checkboxes other than iface_All is checked
+// If all of these checkboxes are checked, then we check iface_All
+function updateAllInterfaces(el) {
+    var isChecked = el.checked;
+    var ifaceChecks = Y.all('#interface_set input');
+    var selectAllCheck = ifaceChecks.filter('*[name=iface_All]').item(0);
+    if (isChecked) {
+        var someUnChecked = false;
+        ifaceChecks.some(function(node, index, list) {
+            if (node === selectAllCheck) {
+                return;
+            }
+            someUnChecked = ! node.get('checked');
+            return someUnChecked;
+        });
+        if (!someUnChecked) {
+            selectAllCheck.set('checked', true);
+        }
+    }
+    else {
+        selectAllCheck.set('checked', false);
+    }
+}
+</script>
+
+<% self.endPagelet() %>

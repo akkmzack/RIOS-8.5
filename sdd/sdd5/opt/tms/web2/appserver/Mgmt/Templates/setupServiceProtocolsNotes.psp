@@ -1,0 +1,232 @@
+<%
+## Copyright 2008, Riverbed Technology, Inc., All rights reserved.
+## Author: Xiaopeng Wang
+##
+## setupServiceProtocolsNotes.psp
+## This is the template for the Notes protocol settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'notesEnable': FormUtils.NodeEntry(
+            path='/rbt/sport/notes/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Lotus Notes Optimization',
+            enableDiv='enableSubsection'),
+        'dominoPort': FormUtils.NodeEntry(
+            path='/rbt/sport/notes/config/port',
+            type='uint16',
+            widgetClass='port',
+            validate='port',
+            label='Lotus Notes Port'),
+        'optimizeEncryptedNotes': FormUtils.NodeEntry(
+            path='/rbt/sport/notes/config/encrypt_v2/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Optimize Encrypted Lotus Notes Connections',
+            action='updateUpdateables()',
+            enableDiv='optimizeSubsection'),
+        'unencryptedPort': FormUtils.NodeEntry(
+            path='/rbt/sport/notes/config/encrypt_v2/server_port',
+            type='uint16',
+            widgetClass='port',
+            validate='port',
+            tooltip='Optimization of encrypted Lotus Notes requires clear-text communication on the LAN between the Steelhead and the Domino server.',
+            label='Unencrypted Server Port')
+        }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'encryptionServerIdUrl': FormUtils.NodeEntry(
+            name='encryptionServerIdUrl',
+            widgetClass='wide3',
+            validate='url'),
+        'encryptionServerIdFile': FormUtils.NodeEntry(
+            name='encryptionServerIdFile',
+            widget='file',
+            validate='nonempty'),
+        'encryptionServerIdFilePassword': FormUtils.NodeEntry(
+            name='encryptionServerIdFilePassword',
+            widget='password',
+            label='Password'),
+        'uploadServerIdFrom': FormUtils.NodeEntry(
+            name='uploadServerIdFrom',
+            widget='radio',
+            label={'url': 'From URL',
+                   'file': 'From Local File'},
+            enableDiv={'url': 'fromURLDiv',
+                       'file': 'fromFileDiv'},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>ftp://user:password@host/relative/path/to/file</li>
+                        <li>ftp://user:password@host//absolute/path/to/file</li>
+                        <li>scp://user:password@host/absolute/path/to/file</li>
+                      </ul>
+                    </p>'''
+            },
+            value='url'),
+        'certUploadFile': FormUtils.NodeEntry(
+            name='certUploadFile',
+            widget='file',
+            label='Certifier ID File'),
+        'certKeyPassword': FormUtils.NodeEntry(
+            name='certKeyPassword',
+            widget='password',
+            validate='nonempty',
+            label='Decryption Password')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="notesForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['notesEnable'].html(self) %>
+      <div id="enableSubsection" class="indent">
+        <table>
+          <%= nodeEntries['dominoPort'].html(self) %>
+        </table>
+      </div>
+      <%= nodeEntries['optimizeEncryptedNotes'].html(self) %>
+      <div id="optimizeSubsection" class="indent">
+        <table>
+          <%= nodeEntries['unencryptedPort'].html(self) %>
+        </table>
+      </div>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+# Access to this table requires the secure vault to be unlocked.
+vaultUnlocked = 'true' == Nodes.present(mgmt, '/secure_vault/state/unlocked')
+
+if vaultUnlocked: {
+encryptionServersTable = ajaxentrytable.AjaxEntryTable('encryptionServer',
+    titleText='Encryption Optimization Servers',
+    headerSpec=('', 'Server'),
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=notesEncryptionServers'),
+    rowSpec= """
+[AjaxEntryTable.tdSelectCheckbox('id', 'select_'),
+ AjaxEntryTable.tdAttr('name')
+]""",
+    emptyMessage='No Encryption Servers.',
+    addButtonText='Add Server',
+    addButtonName='uploadServerIdUrl',
+    removeButtonText='Remove Selected',
+    removeName='removeOptimizedServer')
+
+encryptionServersTable.addDivContent='''
+  <div class="midLevel">
+    %s
+    <div id="fromURLDiv" class="indent">
+      %s
+    </div>
+  </div>
+  <div class="midLevel">
+    %s
+    <div id="fromFileDiv" class="indent">
+      %s
+    </div>
+  </div>
+  <div class="midLevel">
+    %s
+  </div>
+''' % (dialogEntries['uploadServerIdFrom'].html(self, value='url', format='block'),
+       dialogEntries['encryptionServerIdUrl'].html(self, format='block'),
+       dialogEntries['uploadServerIdFrom'].html(self, value='file', format='block'),
+       dialogEntries['encryptionServerIdFile'].html(self, format='block'),
+       dialogEntries['encryptionServerIdFilePassword'].html(self, format='block'))
+}
+%>
+
+<%
+if not policyType: {
+unoptimizedServersTable = ajaxentrytable.AjaxEntryTable('unoptimizedServers',
+    titleText='<span class="popupTitle" title="Optimization of encrypted traffic \
+could not be performed for these clients and servers.  Removing an entry from \
+this list will cause optimization to be attempted again for that client or server."> \
+Unoptimized IP Addresses</span>',
+    headerSpec=('', 'IP Address', 'Reason'),
+    url='/mgmt/xmldata?p=notesUnoptimizedServers',
+    rowSpec= """
+[AjaxEntryTable.tdSelectCheckbox('ip', 'select_'),
+ AjaxEntryTable.tdAttr('ip'),
+ AjaxEntryTable.tdAttr('reason')]""",
+    emptyMessage='No Unoptimized IP Addresses.',
+    removeButtonText='Remove Selected',
+    removeName='removeUnoptimizedIpAddresses')
+}
+%>
+
+<%
+if vaultUnlocked: {
+%>
+<div>
+  <form method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>">
+    <div>
+      <input type="hidden" name="_action_" value="setupServiceProtocolsNotesOptimizedServers" />
+      <%= encryptionServersTable.html(self, 'topLevel') %>
+    </div>
+  </form>
+  <% if not policyType: { %>
+  <form method="post"
+      action="<%= self.thisPageletRequest() %>">
+    <div>
+      <input type="hidden" name="_action_" value="setupServiceProtocolsNotesUnoptimizedServers" />
+      <%= unoptimizedServersTable.html(self, 'topLevel') %>
+    </div>
+  </form>
+<% } %>
+</div>
+<%
+}
+else: {
+%>
+<psp:include path="/Templates/incUnlockSecureVault.psp">
+<%
+if not policyType: {
+%>
+<div>
+  <form method="post"
+      action="<%= self.thisPageletRequest() %> ">
+    <div>
+      <input type="hidden" name="_action_" value="setupServiceProtocolsNotesUnoptimizedServers" />
+      <%= unoptimizedServersTable.html(self, 'topLevel') %>
+    </div>
+  </form>
+</div>
+<%
+ }
+}
+%>
+
+<% self.endPagelet() %>
+

@@ -1,0 +1,80 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportDataReduction.psp
+## This is the template for the Data Reduction report page.
+## Refactored to use common report code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:DataReductionPagelet" %>
+<%@page extends="DataReductionPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'dataredxForm',
+    'reportSpecs': {
+        'dr': {
+            'tableName': 'dataReductionTable',
+            'gfxId': 'dataReduction',
+            'gfxDisplayId': 'dataredxGraphImg'
+        }
+    }
+}
+dataReductionTable = ajaxentrytable.AjaxEntryTable('dataReduction',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Data Reduction.')
+
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div id="dataredxGraphDiv" class="graphDiv">
+  <img id="dataredxGraphImg" class="graphImg"
+    alt="Data Reduction Graph" />
+</div>
+
+<form id="dataredxForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Traffic:</th>
+          <th>Application:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['dir'].html(self, format='horiz') %>
+          <%= reportOpts['appCol'] %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= dataReductionTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+

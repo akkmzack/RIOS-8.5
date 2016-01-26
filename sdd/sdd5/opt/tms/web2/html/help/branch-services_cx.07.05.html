@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Installing and Configuring RSP</title>
+    <link rel="StyleSheet" href="css/branch-services_cx.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="branch-services_cx.07.01.html#283881">Chapter 5	Configuring Branch Services</a> : Installing and Configuring RSP</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="283881">Installing and Configuring RSP</a></div>
+      <div class="Body"><a name="283889">You can install, start, stop, and restart Riverbed Services Platform (RSP) in the Configure &gt; Branch Services </a>&gt; RSP Service page. </div>
+      <div class="Body"><a name="283896">RSP offers branch-office-in-a-box services with these benefits:</a></div>
+      <li class="Bullet"><a name="283897">A VMware-based virtualization platform provides the benefits of the most commonly deployed and </a>advanced virtualization tool set. </li>
+      <li class="Bullet"><a name="283900">Support for running up to five different additional services simultaneously on a single Steelhead </a>appliance, depending on the service and Steelhead appliance model.</li>
+      <li class="Bullet"><a name="283905">Support for more services and types of services. These include in-band packages that sit in-line with </a>optimization such as the Universal Threat Management (UTM) security services, proxy solutions such as video or network monitoring services, and improved support for out-of-band packages like Windows Active Directory, DNS and DHCP management software, and print services. </li>
+      <li class="Bullet"><a name="283909">A comprehensive, integrated, user management interface that provides granular control of RSP </a>including setup, reporting, and the definition of the data flow between services.</li>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="283913">RSP is supported on Models 250, 520, 550, 1020, 1050, 1520, 2020, 2050, 3020, 3520, 5050, 6050, and 7050.</a></div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="288131">RiOS v7.0 and later does not run on the </a><span style="font-style: italic">xx</span>20 models.</div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="288138">RSP is not supported on Steelhead appliance CX </a><span style="font-style: italic">xx</span>55 models.</div>
+      <div class="Body"><span style="font-size: 9.0pt"><a name="288154"><img class="Default" src="images/icon_CSH.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" />  <img class="Default" src="images/icon_VSH_3.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" /> </a></span>CSH and<span style="font-size: 9.0pt"> </span>Virtual Steelhead<span style="font-size: 9.0pt"> </span>appliances do not support RSP.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="283936">Do not configure both RSP and PFS on the same Steelhead appliance. Riverbed does not support this </a>configuration because PFS has no disk boundaries and can overwrite the space allocated to RSP. </div>
+      <div class="Body"><a name="283944">RSP uses VMware Server 2.0 as the virtualization platform. Both 32 and 64-bit versions of the RSP </a>installation image are available. </div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="283948"> 64-bit guest VMs (such as Windows Server 2008 R2) are not supported on Steelhead appliance models 250, </a>550, and the 1U xx20s because these models do not incorporate Virtual Technology (VT) support. </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="283973">For details on RSP, see the </a><span class="book_title">RSP User&#8217;s Guide</span>.</div>
+      <div class="Body"><a name="283977">After installing the RSP installation image, you can add packages to run more services and applications. </a>RSP includes configuration options that allow you to determine the data flow to and from a package, and the ability to chain packages together.</div>
+      <div class="Heading2"><a name="283981">RSP Support for Virtual-In Path Deployments</a></div>
+      <div class="Body"><a name="283990">RiOS v6.0 and later supports Virtual in-path RSP (VRSP). VRSP extends the Riverbed Services Platform to </a>allow RSP to operate with a single connection to the network while presenting an in-path view of the network to the optimization and virtual services running on the platform. </div>
+      <div class="Body"><a name="283992">VRSP supports these connection types: </a></div>
+      <li class="Bullet"><span class="Bold"><a name="283993">Virtual-in-Path connections</a></span> - connections going from client to the server, neither of which is running on the RSP platform. Routers redirect such connections to VRSP using one of these mechanisms: </li>
+      <li class="BulletSubBullet2"><a name="283994">L2 redirect. </a></li>
+      <li class="BulletSubBullet2"><a name="283995">Policy-Based Routing (PBR) allows you to define policies to route packets instead of relying on </a>routing protocols. You enable PBR to redirect traffic that you want optimized by a Steelhead appliance that is not in the direct physical path between the client and server. </li>
+      <li class="BulletSubBullet2"><a name="283999">Generic Routing Encapsulation (GRE) with Web Cache Communication Protocol (WCCP). </a></li>
+      <li class="Bullet"><span class="Bold"><a name="284000">Out-of-Path connections</a></span> - connections that originate from a system outside of RSP to a service running on the RSP platform (inbound) or connections that originate from an RSP service to an external system (outbound). </li>
+      <li class="Bullet"><span class="Bold"><a name="284001">Redirected Out-of-Path connections</a></span> - this is a variation of Out-of-Path connections where traffic to RSP is redirected to by a router using L2, PBR, or GRE with WCCP. </li>
+      <div class="Body"><a name="284002">VRSP, being an extension of RSP, inherits configuration/management mechanisms from RSP. The same </a>facilities are still present and operating as they were in RSP, with these exceptions:</div>
+      <li class="Bullet"><a name="284003">VNI types</a></li>
+      <li class="Bullet"><a name="284004">VNI rules </a></li>
+      <div class="Body"><a name="284010">For details on configuring VRSP, see </a><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules">Configuring Subnet Side Rules</a></span>, <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'branch-services_cx.07.14.html#285999', '');" title="Adding Rules to an Optimization VNI">To add a DNAT rule to a virtual in-path VNI</a></span>, and <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_wccp.html#282093', '');" title="Configuring WCCP">Configuring WCCP</a></span>.</div>
+      <div class="ref_BasicSteps"><a name="284015">Basic Steps for Installing and Configuring RSP</a></div>
+      <div class="Body"><a name="284020">This section provides an overview of the basic steps to install and configure RSP, followed by detailed </a>procedures.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="284166">Follow these steps in the order given to avoid traffic disruption.</a> </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 207.65232pt">
+            <div class="CellHeading"><a name="284023">Task</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 261.22392pt">
+            <div class="CellHeading"><a name="284025">Reference</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep1_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep1_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">1.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep1_inner"><a name="284027">Verify that your </a>Steelhead appliance supports RSP requirements.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="book_title"><a name="284035">RSP User&#8217;s Guide</a></span></div>
+            <div class="CellBody"><a name="284036">&nbsp;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">2.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284041">Download and install the RSP image, which </a>contains the VMware server and the RSP service. The Steelhead appliance RiOS image does not include the RSP image. You must install the RSP image separately.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent2"><a name="284060">RSP is preinstalled on newly manufactured </a>Steelhead appliances if you ordered RSP.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupRSPService.html#284172', '');" title="Installing the RSP Image" name="284071">Installing the RSP Image</a></span></div>
+            <div class="CellBody"><a name="284072">&nbsp;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">3.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284079">Start the RSP service on the Steelhead </a>appliance.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'branch-services_cx.07.05.html#283881', '');" title="Installing and Configuring RSP" name="284085">Installing and Configuring RSP</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">4.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284090">Obtain an RSP package:</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="284094">Use an existing package from Riverbed, a </a>third-party vendor, or from within your organization.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellBulletSubBullet_outer" style="margin-left: 10.8pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellBulletSubBullet_inner" style="width: 7.199999999999999pt; white-space: nowrap;">&#8226;	</div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellBulletSubBullet_inner"><a name="284095">Create your own package.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="284096">The package files can be quite large and </a>can take up several GBs of disk space.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupRSPPackages.html#284329', '');" title="Adding RSP Packages" name="284101">Adding RSP Packages</a></span></div>
+            <div class="CellBody"><a name="284105">For details about creating an RSP Package for your application </a>or service, see the <span class="book_title" style="font-size: 10.0pt">RSP User&#8217;s Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">5.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284110">Install a package in a slot.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupRSPSlots.html#284497', '');" title="Installing a Package in a Slot" name="284115">Installing a Package in a Slot</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">6.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284117">Enable the slot.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'branch-services_cx.07.10.html#284673', '');" title="Enabling, Disabling, and Restarting Slots" name="284122">Enabling, Disabling, and Restarting Slots</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">7.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284124">Specify VM settings, specify watchdog </a>settings, create and manage virtual disks, manage Virtual Network Interfaces (VNIs), and perform operations such as uninstalling a slot or restoring RSP<span style="font-size: 10.0pt"> </span>backup.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'branch-services_cx.07.10.html#284673', '');" title="Enabling, Disabling, and Restarting Slots" name="284132">Enabling, Disabling, and Restarting Slots</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">8.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284134">Place the slotted package optimization VNI </a>into the data flow.</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent2"><span style="font-weight: bold"><a name="284135">Note</a></span>: This step is not required for out-of-band packages.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="284140">&nbsp;</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">9.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284142"> Create and add data flow rules to the VNI.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div class="CellIndent2"><span style="font-weight: bold"><a name="284143">Note</a></span>: This step is not required if you use the default rules for the package.</div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'branch-services_cx.07.14.html#285793', '');" title="Adding Rules to an Optimization VNI" name="284148">Adding Rules to an Optimization VNI</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">10.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284153"> Configure virtual in-path support for RSP</a><span style="font-size: 10.0pt">.</span></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules" name="284158">Configuring Subnet Side Rules</a></span></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellStep_outer" style="margin-left: 0pt">
+              <table border="0" cellspacing="0" cellpadding="0" summary="">
+                <tr style="vertical-align: baseline;">
+                  <td>
+                    <div class="CellStep_inner" style="width: 16.128pt; white-space: nowrap;">
+                      <span class="Bold">11.	</span>
+                    </div>
+                  </td>
+                  <td width="100%">
+                    <div class="CellStep_inner"><a name="284160"> Verify your configuration.</a></div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="284165">&nbsp;</a></div>
+          </td>
+        </tr>
+      </table>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## setupBranchStorage.psp
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet, ajaxentrytable, RVBDUtils, OSUtils, Logging, cgi, eva" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return self.pageletNodes_granite()
+</psp:method>
+
+<psp:method name="css">
+    return self.css_granite() + \
+           self.css_branchDetails()
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+edgeLaunched, edgeLaunchMsg, edgeRefresh = (False, None, False)
+if not policyType: {
+    # Only for EVA or Steelhead EX
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+}
+%>
+
+<% self.beginPagelet() %>
+
+<% if not policyType and not edgeLaunched: {
+    self.writeln('<p>%s</p>' % edgeLaunchMsg)
+    if edgeRefresh: {
+        self.addPageletJavascript('veRefreshLater();')
+    }
+    self.endPagelet()
+    return
+} %>
+
+<!-- Display Configured/Not configured granite core details -->
+<%@include file="includes/setupGraniteCoreSettings.psp" %>
+
+<% if not policyType and dva != '': { %>
+<br />
+<!-- Display branch storage (DVA) details if granite core configured -->
+<%@include file="includes/setupBranchStorageSettings.psp" %>
+<% } %>
+<% self.endPagelet() %>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_if_config                                           -->
+<!--   Module Root: /net/interface/customer/rbt                             -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_if_config.c      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/net/interface/customer/rbt/config/myconfig</name>        -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_if_config">
+    <config>
+       <name>/net/interface/customer/rbt/config/er_mtu_sync_override</name>
+       <description>Allow the override of MTU settings in ER mode</description>
+       <value type="bool">false</value>
+    </config>
+
+    <config>
+       <name>/net/interface/customer/rbt/config/icmp_errors_use_inbound_ifaddr</name>
+       <description>Use inbound interface to send icmp errors</description>
+       <value type="bool">true</value>
+    </config>
+
+    <config-wildcard>
+       <name>/net/interface/customer/rbt/config/gso/*</name>
+       <description>Interface name</description>
+       <value type="string" />
+    </config-wildcard>
+
+    <config>
+       <name>/net/interface/customer/rbt/config/gso/*/enable</name>
+       <description>Configure GSO and TSO for the given interface</description>
+       <value type="uint32">3</value>
+    </config>
+
+    <config-wildcard>
+       <name>/net/interface/customer/rbt/config/rx_hash_udp4_4tup/*</name>
+       <description>Interface name</description>
+       <value type="string" />
+    </config-wildcard>
+
+    <config>
+       <name>/net/interface/customer/rbt/config/rx_hash_udp4_4tup/*/enable</name>
+       <description>Configure rx-hash settings for IPv4 UDP of this interface</description>
+       <value type="bool">true</value>
+    </config>
+
+    <event>
+        <name>/net/interface/customer/rbt/event/mtu_sync_override_change</name>
+        <description>MTU sync override setting changed</description>
+        <parameter>enabled</parameter>
+    </event>
+</node-list>

@@ -1,0 +1,120 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportDataStoreIO.psp
+## This is the template for the Data Store IO report page.
+## Refactored to use common report code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:DataStoreIOPagelet" %>
+<%@page extends="DataStoreIOPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'dataStoreIOForm',
+    'reportSpecs': {
+        'dsiorc': {
+            'gfxId': 'dataStoreClusterReads',
+            'gfxDisplayId': 'dataStoreClusterReadsGraphImg',
+            'tableName': 'dataStoreClusterTable',
+            'order' : 1,
+        },
+        'dsiowc': {
+            'gfxId': 'dataStoreClusterWrites',
+            'gfxDisplayId': 'dataStoreClusterWritesGraphImg',
+            'order' : 2,
+        },
+        'dsiorp': {
+            'gfxId': 'dataStorePageReads',
+            'gfxDisplayId': 'dataStorePageReadsGraphImg',
+            'tableName': 'dataStorePageTable',
+            'order' : 3,
+        },
+        'dsiowp': {
+            'gfxId': 'dataStorePageWrites',
+            'gfxDisplayId': 'dataStorePageWritesGraphImg',
+            'order' : 4,
+         },
+    },
+    'supportedProds': ['sh', 'ex'] # Required for reports on the CMC
+}
+dataStoreClusterTable = ajaxentrytable.AjaxEntryTable('dataStoreCluster',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Data Store Cluster IO.')
+dataStorePageTable = ajaxentrytable.AjaxEntryTable('dataStorePage',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about Data Store Page IO.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div id="dataStoreClusterReadsGraphDiv" class="graphDiv">
+  <img id="dataStoreClusterReadsGraphImg" class="graphImg"
+    alt="Data Store Cluster Reads Graph" />
+</div>
+<div id="dataStoreClusterWritesGraphDiv" class="graphDiv">
+  <img id="dataStoreClusterWritesGraphImg" class="graphImg"
+    alt="Data Store Cluster Writes Graph" />
+</div>
+
+<%= dataStoreClusterTable.html(self) %>
+
+<br />
+
+<div id="dataStorePageReadsGraphDiv" class="graphDiv">
+  <img id="dataStorePageReadsGraphImg" class="graphImg"
+    alt="Data Store Page Reads Graph" />
+</div>
+<div id="dataStorePageWritesGraphDiv" class="graphDiv">
+  <img id="dataStorePageWritesGraphImg" class="graphImg"
+    alt="Data Store Page Writes Graph" />
+</div>
+<br />
+
+<form id="dataStoreIOForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= dataStorePageTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+

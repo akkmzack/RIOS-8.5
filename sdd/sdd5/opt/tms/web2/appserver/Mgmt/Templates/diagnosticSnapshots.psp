@@ -1,0 +1,205 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticSnapshots
+## This is the template to display a table of snapshots.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    entries = {
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/rbm_fake/debug/download/snapshot',
+            type='action')
+    }
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'upload_case': FormUtils.NodeEntry(
+            name='upload_case',
+            validate='uint32',
+            inputOptional=True,
+            widgetClass='medium',
+            label='Case Number')}
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<psp:method name="css">
+    return '''
+#snapshotsTable_main {
+        width:835px;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+dialogEntries = self.dialogEntries()
+
+snapshotsTable = ajaxentrytable.AjaxEntryTable('snapshots',
+    url='/mgmt/xmldata?p=snapshotFiles&errorRedirect=%s' %
+        HTTPUtils._makeQuerystringDestParameter(self.request()),
+    titleText='Process Dumps',
+    headerSpec=('',
+                'Process Dump',
+                ('Timestamp', 'table_diagnosticfile_time'),
+                ('Size', 'table_diagnosticfile_size'),
+                'Upload Status'),
+    rowSpec='''
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('timestring', 'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.tdDumpUploadStatus]''',
+    emptyMessage='No process dumps.',
+    removeName='removeFiles',
+    removeButtonText='Remove Selected',
+    removePrefix='ck_')
+
+snapshotsTable.editDivContent = '''
+  <div class="topLevel">
+    <table>
+      <tr><td class="labelPaddedRight">MD5 Checksum:</td><td id="editDump_md5sum">&nbsp;</td></tr>
+    </table>
+  </div>
+  <fieldset>
+    <legend>Download</legend>
+    <div class="midLevel">
+      <p>
+        Receive a copy of the snapshot file:
+        <b><a title="Click to download the file." id="editDump_download">Download</a></b>
+      </p>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Upload to Riverbed Support</legend>
+    <div class="midLevel" id="editDump_uploadDiv">
+      Previous Upload:
+      <div class="indent">
+        <table>
+          <tbody>
+            <tr><td class="labelPaddedRight">Status:</td><td id="editDump_uploadStatus">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Case Number:</td><td id="editDump_uploadCase">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_startTimeDiv">
+            <tr><td class="labelPaddedRight">Start Time:</td><td id="editDump_uploadStart">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_percentDiv">
+            <tr><td class="labelPaddedRight">Percent:</td><td id="editDump_uploadPercent">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_finishTimeDiv">
+            <tr><td class="labelPaddedRight">Finish Time:</td><td id="editDump_uploadFinish">&nbsp;</td></tr>
+          </tbody>
+          <tbody id="editDump_detailsDiv">
+            <tr><td class="labelPaddedRight">Details:</td><td id="editDump_uploadDetails">&nbsp;</td></tr>
+            <tr><td class="labelPaddedRight">Error Message:</td><td id="editDump_uploadError">&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="midLevel">
+      Upload:
+      <div id="uploadSysdumpLiveStatusAttachPoint" class="indent liveStatusAttachPoint">
+        %s
+        %s
+      </div>
+    </div>
+  </fieldset>
+''' % (dialogEntries['upload_case'].html(self, format='inline'),
+       FormUtils.renderButton(self, {'name': 'uploadFile', 'value': 'Upload'}))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="snapshotsForm">
+  <div>
+    <input type="hidden" name="_action_" value="diagnosticFile" />
+    <input type="hidden" name="dir" value="snapshots" />
+    <input type="hidden" name="upload_dir" value="snapshots" />
+    <input type="hidden" name="upload_name" />
+
+    <%= snapshotsTable.html(self) %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+
+<script type="text/javascript">
+// <![CDATA[
+
+snapshotsTable.editEntry = function(editName) {
+    var form = $('snapshotsForm');
+    form.elements['upload_name'].value = editName;
+
+    var req = newAjaxRequest('/mgmt/xmldata?p=dumpDetails&fileType=snapshot&dir=snapshots', 'block');
+    req.send('name=' + editName);
+    var dump = req.responseXML.documentElement.firstChild;
+
+    setElementText('editDump_md5sum', dump.getAttribute('md5sum'));
+    setElementText('editDump_uploadStatus', dump.getAttribute('status-pretty'));
+    setElementText('editDump_uploadCase', dump.getAttribute('case'));
+    setElementText('editDump_uploadStart', dump.getAttribute('start-time'));
+    setElementText('editDump_uploadFinish', dump.getAttribute('finish-time'));
+    setElementText('editDump_uploadPercent', dump.getAttribute('percent') + '%');
+    setElementText('editDump_uploadDetails', dump.getAttribute('details'));
+    setElementText('editDump_uploadError', dump.getAttribute('error_message'));
+
+    $('editDump_download').href = dump.getAttribute('downloadHref')
+
+    // update the editing iv
+    this.editXMLElement = dump;
+};
+
+snapshotsTable.updateHook = function() {
+    if (('edit' == this.editMode) && this.editXMLElement) {
+        status = this.editXMLElement.getAttribute('status');
+        if ('in progress' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', true);
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('finished' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', 'hide');
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', true);
+            enableElements('editDump_detailsDiv', 'hide');
+            enableElements('editDump_uploadError', 'hide');
+        } else if ('failed' == status) {
+            enableElements('editDump_uploadDiv', true);
+            enableElements('editDump_startTimeDiv', true);
+            enableElements('editDump_percentDiv', 'hide');
+            enableElements('editDump_finishTimeDiv', 'hide');
+            enableElements('editDump_detailsDiv', true);
+            enableElements('editDump_uploadError', true);
+        } else {
+            enableElements('editDump_uploadDiv', 'hide');
+        }
+    }
+}
+
+
+// ]]>
+</script>

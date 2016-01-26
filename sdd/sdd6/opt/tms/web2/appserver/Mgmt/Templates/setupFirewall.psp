@@ -1,0 +1,516 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupFirewall.psp
+##
+## Firewall Pagelet Template
+##
+##
+## The firewall feature is a little dangerous because it's easy to
+## create a rule that will prevent your packets from reaching the
+## appliance.  The backend action will fail if it detects that you're
+## about to disconnect yourself unless you pass it an override flag.
+##
+## The desired behavior is to allow the user to submit the form
+## without worrying about the override.  Then, if the action would
+## result in a disconnection, display a dialog with confirm/deny
+## buttons.
+##
+## The current implementation submits the form via ajax.  If
+## successful, JavaScript code triggers a page refresh.  If the action
+## failed, the override dialog is displayed.  Clicking the corfirm
+## button resubmits the original request with the override flag.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, Nodes, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<%
+# TODO:
+self.relatedPages = ()
+%>
+
+<psp:method name="css">
+    return '''
+p#overrideMessage {
+  margin: 0 2em;
+}
+
+div#addRule_dstPortSection,
+div#editRule_dstPortSection {
+  display: inline;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'firewallEnabled': NodeEntry(
+            path='/net/firewall/config/enable',
+            name='firewallEnable',
+            type='boolean',
+            widget='checkboxLeft',
+            label='Enable Management ACL'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    actionOptions = (('allow', 'Allow'),
+                     ('deny', 'Deny'))
+    serviceOptions = (('', 'All'),
+                      ('http', 'HTTP'),
+                      ('https', 'HTTPS'),
+                      ('soap', 'SOAP'),
+                      ('snmp', 'SNMP'),
+                      ('ssh', 'SSH'),
+                      ('telnet', 'Telnet'))
+    protocolOptions = (('0', 'All'),
+                       ('1', 'ICMP'),
+                       ('6', 'TCP'),
+                       ('17', 'UDP'))
+    return {
+        'addRule_action': NodeEntry(
+            name='addRule_action',
+            selectOptions=actionOptions,
+            label='Action',
+            enableDiv={'deny': 'addRule_logSection'}),
+        'addRule_service': NodeEntry(
+            name='addRule_service',
+            selectOptions=serviceOptions,
+            label='Service',
+            enableDiv={'': 'addRule_allServiceSection'}),
+        'addRule_protocol': NodeEntry(
+            name='addRule_protocol',
+            selectOptions=protocolOptions,
+            value='0',
+            label='Protocol',
+            action='updateUpdateables()'),
+        'addRule_dstPort': NodeEntry(
+            name='addRule_dstPort',
+            widgetClass='medium',
+            label='Destination Port',
+            validate='portRange',
+            inputOptional=True),
+        'addRule_srcSubnet': NodeEntry(
+            name='addRule_srcSubnet',
+            widgetClass='ipaddrm',
+            type='ipv4prefix',
+            label='Source Network',
+            inputOptional=True,
+            hint='(blank or 0.0.0.0/0 for all)'),
+        'addRule_interface': NodeEntry(
+            name='addRule_interface',
+            widget='select',
+            value='all',
+            label='Interface'),
+        'addRule_desc': NodeEntry(
+            name='addRule_desc',
+            widgetClass='wide3',
+            label='Description'),
+        'addRule_index': NodeEntry(
+            name='addRule_index',
+            widget='select',
+            value='',
+            label='Rule Number'),
+        'addRule_log': NodeEntry(
+            name='addRule_log',
+            value='true',
+            widget='checkbox',
+            label='Log Packets'),
+
+        'editRule_action': NodeEntry(
+            name='editRule_action',
+            selectOptions=actionOptions,
+            label='Action',
+            enableDiv={'deny': 'editRule_logSection'}),
+        'editRule_service': NodeEntry(
+            name='editRule_service',
+            selectOptions=serviceOptions,
+            label='Service',
+            enableDiv={'': 'editRule_allServiceSection'}),
+        'editRule_protocol': NodeEntry(
+            name='editRule_protocol',
+            selectOptions=protocolOptions,
+            label='Protocol',
+            action='updateUpdateables()'),
+        'editRule_dstPort': NodeEntry(
+            name='editRule_dstPort',
+            widgetClass='port',
+            label='Destination Port',
+            validate='portRange',
+            inputOptional=True),
+        'editRule_srcSubnet': NodeEntry(
+            name='editRule_srcSubnet',
+            widgetClass='ipaddrm',
+            type='ipv4prefix',
+            label='Source Network',
+            inputOptional=True,
+            hint='(blank or 0.0.0.0/0 for all)'),
+        'editRule_interface': NodeEntry(
+            name='editRule_interface',
+            widget='select',
+            label='Interface'),
+        'editRule_desc': NodeEntry(
+            name='editRule_desc',
+            widgetClass='wide3',
+            label='Description'),
+        'editRule_log': NodeEntry(
+            name='editRule_log',
+            widget='checkbox',
+            label='Log Packets'),
+    }
+</psp:method>
+
+<%
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+ids = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/net/firewall/config/tables/inbound/rules')
+maxId = ids and int(reduce(lambda x, y: max(int(x), int(y)), ids)) or 0
+
+ruleIndexSelects = [('1', 'Start')] + \
+                   map(str, range(1, maxId + 2)) + \
+                   [('', 'End')]
+dialogEntries['addRule_index'].selectOptions = ruleIndexSelects
+
+inpaths = Nodes.getMgmtLocalChildrenNames(mgmt,
+                                          '/rbt/sport/intercept/state/ifaces/inpath')
+
+mgmtInpaths = []
+for inpath in inpaths: {
+    if 'true' == Nodes.present(mgmt, '/rbt/sport/intercept/config/ifaces/inpath/%s/mgmt/enable' % inpath, ''): {
+        mgmtInpaths.append('mgmt' + inpath[len('inpath'):])
+    }
+}
+
+interfaces = [('', 'All')] + FormUtils.sortInterfacesByName(['primary', 'aux'] + inpaths + mgmtInpaths)
+
+dialogEntries['addRule_interface'].selectOptions = interfaces
+dialogEntries['editRule_interface'].selectOptions = interfaces
+
+firewallRulesTable = ajaxentrytable.AjaxEntryTable('firewallRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=firewallRules'),
+    headerSpec=(('',
+                 'ajaxEntryTable_selectCheckboxCell'),
+                 'Rule',
+                 'Action',
+                 'Service / Protocol:Port',
+                 'Source Network',
+                 'Interface',
+                 'Log Packets'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('id', 'selectedRule_', 'toRule_', ['default', ''], null, null, moveButtonAction),
+ AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default', ''])]),
+ AjaxEntryTable.tdAttr('action'),
+ AjaxEntryTable.tdAttr('servicePretty'),
+ AjaxEntryTable.tdAttr('srcNetworkPretty'),
+ AjaxEntryTable.tdAttr('interfacePretty'),
+ AjaxEntryTable.tdAttrStyle('logPretty', 'logPrettyTdClass')]""",
+    rowDescSpec=('desc', 'AjaxEntryTable.cellFillDesc("desc")', 2),
+    emptyMessage='No firewall rules.',
+    removePrefix='selectedRule_',
+    addButtonText='Add a New Rule',
+    addButtonName='addFirewallRule',
+    addButtonOnclick='submitForm(this.form, this.name, this); return false;',
+    editDivTitle='Editing Rule <b><span id="editFirewallRule_id"></span></b>',
+    editButtonName='editFirewallRule',
+    editButtonOnclick='submitForm(this.form, this.name, this); return false;',
+    removeName='removeFirewallRules',
+    removeButtonText='Remove Selected',
+    removeButtonAction='removeButtonAction',
+    moveName='moveRules',
+    moveButtonText='Move Selected...',
+    moveButtonCancelText='Cancel Move',
+    postProcessing='AjaxEntryTable.postReorderCheckbox("id", "toRule_", moveButtonAction)')
+
+firewallRulesTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    <tbody>
+      %s
+      %s
+      <tr>
+        <td class="label"></td>
+        <td>
+          <div class="indent" id="addRule_allServiceSection">
+            %s
+            <div id="addRule_dstPortSection">%s</div>
+          </div>
+        </td>
+      </tr>
+      %s
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="addRule_logSection">
+      %s
+    </tbody>
+  </table>
+</div>
+''' % (dialogEntries['addRule_action'].html(self),
+       dialogEntries['addRule_service'].html(self),
+
+       dialogEntries['addRule_protocol'].html(self, format='inline'),
+       dialogEntries['addRule_dstPort'].html(self, format='inline'),
+
+       dialogEntries['addRule_srcSubnet'].html(self),
+       dialogEntries['addRule_interface'].html(self),
+       dialogEntries['addRule_desc'].html(self),
+       dialogEntries['addRule_index'].html(self),
+       dialogEntries['addRule_log'].html(self))
+
+firewallRulesTable.editDivContent =  '''
+<div class="midLevel">
+  <table>
+    <tbody>
+      %s
+      %s
+      <tr>
+        <td class="label"></td>
+        <td>
+          <div class="indent" id="editRule_allServiceSection">
+            %s
+            <div id="editRule_dstPortSection">%s</div>
+          </div>
+        </td>
+      </tr>
+      %s
+      %s
+      %s
+    </tbody>
+    <tbody id="editRule_logSection">
+      %s
+    </tbody>
+  </table>
+  <input type="hidden" name="editRule_id" />
+</div>
+''' % (dialogEntries['editRule_action'].html(self),
+       dialogEntries['editRule_service'].html(self),
+
+       dialogEntries['editRule_protocol'].html(self, format='inline'),
+       dialogEntries['editRule_dstPort'].html(self, format='inline'),
+
+       dialogEntries['editRule_srcSubnet'].html(self),
+       dialogEntries['editRule_interface'].html(self),
+       dialogEntries['editRule_desc'].html(self),
+       dialogEntries['editRule_log'].html(self))
+
+%>
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="firewallSettingsForm">
+  <fieldset>
+    <legend>Management ACL Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['firewallEnabled'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="setupFirewall" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self, {'name': 'apply', 'value': 'Apply', 'onclick': 'submitForm(this.form, this.name, this); return false;' }) %>
+</form>
+
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="firewallRulesTableForm">
+  <div class="topLevel">
+    <%= firewallRulesTable.html(self) %>
+    <input type="hidden" name="_action_" value="setupFirewall" />
+  </div>
+</form>
+
+<!-- safety check override warning -->
+<div id="overrideDialog" style="width: 30em; display: none;">
+  <p>
+    The operation that you are attempting to perform may make the
+    management console unreachable:
+  </p>
+  <p id="overrideMessage" class="warning"></p>
+  <div class="submitButtons">
+    <input type="submit" name="override" value="Override and Disconnect" onclick="submitForm.apply(null, savedSubmitParams); return false;" />
+    <input type="submit" name="cancel" value="Cancel" onclick="if (overrideCancelFn) { overrideCancelFn(); } overrideDialog.hide(); return false;"/>
+  </div>
+</div>
+
+<script type="text/javascript">
+
+// Submit the form when the Remove button is clicked.
+function removeButtonAction(aet) {
+    submitForm(
+        $('firewallRulesTableForm'),
+        'removeFirewallRules',
+        'firewallRulesTable_button_remove');
+}
+
+// Submit the form when the Move button is clicked.  This overrides
+// the normal click handler.
+function moveButtonAction(aet, buttonEl) {
+
+    // save these references for use in the cancelFn closure
+    var aet2 = aet;
+    var buttonEl2 = buttonEl;
+
+    // prepare the form for submission, then submit
+    aet.moveSubmitPrep(buttonEl);
+    submitForm(
+        $('firewallRulesTableForm'),
+        'moveFirewallRules',
+        buttonEl,
+        function() {
+
+            // moveSubmitPrep() does a whole bunch of stuff to prepare
+            // the form so that submitting it will send the proper
+            // fields to perform a move.  The intention is that a form
+            // submit will immediately follow moveSubmitPrep().  But
+            // if the user cancels the override, the form will still
+            // be in a post-moveSubmitPrep() state and things won't
+            // work right.  Canceling and then enabling move mode
+            // fixes this.
+            AjaxEntryTable.toggleMoveMode(aet2);
+            AjaxEntryTable.toggleMoveMode(aet2);
+
+            // One more thing:  moveSubmitPrep() also adds a hidden
+            // input element indicating which button was clicked.
+            // (This tells it where to move the selected rows to.)  We
+            // need to remove it.
+            Y.one('#firewallRulesTableForm').one(
+                'input[name="' + buttonEl2.name + '"]').remove();
+        });
+
+    // return false to prevent the normal handler from running
+    return false;
+}
+
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+
+// enabling of the Destination Port widget
+addRule_protocolControl = new DisplayControl();
+addRule_protocolControl.display = function(div) {
+    var val = $('firewallRulesTableForm').addRule_protocol.value;
+    return ('6' == val) || ('17' == val);
+}
+addUpdateable('enable', addRule_protocolControl, 'addRule_dstPortSection');
+
+editRule_protocolControl = new DisplayControl();
+editRule_protocolControl.display = function(div) {
+    var val = $('firewallRulesTableForm').editRule_protocol.value;
+    return ('6' == val) || ('17' == val);
+}
+addUpdateable('enable', editRule_protocolControl, 'editRule_dstPortSection');
+
+
+firewallRulesTable.editEntry = function(name) {
+    var form = $('firewallRulesTableForm')
+    var el = this.getEntryElement('id', name)
+    setFormValue(form, 'editRule_id', name);
+    setFormValue(form, 'editRule_action', el.getAttribute('action'));
+    setFormValue(form, 'editRule_service', el.getAttribute('service'))
+    setFormValue(form, 'editRule_protocol', el.getAttribute('protocol'));
+    setFormValue(form, 'editRule_dstPort', el.getAttribute('dstPort'));
+    setFormValue(form, 'editRule_srcSubnet', el.getAttribute('srcNetwork'));
+    setFormValue(form, 'editRule_interface', el.getAttribute('interface'));
+    setFormValue(form, 'editRule_log', el.getAttribute('log'));
+    setFormValue(form, 'editRule_desc', el.getAttribute('desc'));
+}
+
+// create a modal dialog for showing the override switch
+var overrideDialog = null;
+Y.on('domready', function() {
+    overrideDialog = new ModalDialog(
+        'overrideDialog',
+        POPUP_AFFINITY_LOWER_LEFT,
+        1000);
+});
+
+// If the user clicks the Cancel button on the override dialog, this
+// function is run.  Currently this is only does something meaningful
+// when cancelling a move operation.
+var overrideCancelFn = null;
+
+// If the user chooses to override, we have to submit the form again.
+// This variable remembers the parameters to submitForm() so that they
+// can be reused.
+var savedSubmitParams = null;
+
+// Submit a form to configure the firewall.
+//
+//   - formEl:  The form to submit.
+//
+//   - buttonName:  The name of the button to simulate clicking.  This
+//     tells the server-side code which action we're trying to
+//     perform.  We add a parameter to the form data that looks like
+//     this: buttonName='true'.
+//
+//   - alignEl:  The DOM element that the confirm dialog should align
+//     with.  This may also be an ID.
+//
+//   - cancelFn:  A callback to run if the user cancels the confirm
+//     dialog.  It doesn't make sense to provide this when override is
+//     true.
+//
+//   - override:  true to override and false otherwise.  Most callers
+//     should provide false, which shows the confirm dialog if the
+//     action fails.
+function submitForm(formEl, buttonName, alignEl, cancelFn, override) {
+
+    // create a dictionary of form fields, add an entry for the
+    // button, and add the override flag if necessary
+    var args = collectFormFields(formEl);
+    args[buttonName] = 'true';
+    if (override) {
+        args['override'] = 'true';
+    }
+
+// on CMC send the policy info too so we know what nodes to set
+<% if 'editPolicy' in self.request().fields(): { %>
+    args['editPolicy'] = '<%= self.request().fields()['editPolicy'] %>';
+<% } %>
+    
+    // Check to prevent against duplicate calls
+    if (window.submitCalled === undefined || window.submitCalled == false) {
+        submitCalled = true;
+
+        // ajax the form submission
+        performRemoteCall('setupFirewall', args, function(responseEl) {
+
+            // if the backend method failed, show the confirm dialog
+            if (responseEl.getAttribute('errorMsg')) {
+
+                // if a cancel function was supplied, save it
+                overrideCancelFn = (cancelFn) ? cancelFn : null;
+
+                // save the parameters too, in case the user decides to
+                // override; note that we set override to true here
+                savedSubmitParams = [formEl, buttonName, null, null, true];
+
+                // set error text, position the bubble, and show
+                var msg = responseEl.getAttribute('errorMsg');
+                setElementText('overrideMessage', msg);
+                overrideDialog.setPositionEl(alignEl);
+                overrideDialog.show();
+                submitCalled = false;
+            }
+
+            // if successful, reload the page
+            else {
+                window.location = '<%= self.thisPageletRequest(escape='jsString') %>';
+            }
+        });
+    }
+}
+
+</script>

@@ -1,0 +1,602 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupSSLMain.psp
+##
+## SSL Service Settings, main page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, ajaxentrytable, certdialog, PagePresentation:Pagelet, SSLUtils" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupServiceInpathRules',
+                     'setupAdvNet_peering',
+                     'setupServiceProtocolsHTTP',
+                     'setupVault',
+                     'reportSSLStatistics')
+%>
+
+<psp:method name="css">
+    return '''
+div#chainCertTable_main { width: 560px; }
+div#serverCertTable_main { width: 100%; }
+div#discoveredServerTable_main { width: 100%; }
+div#bypassedServerTable_main {width: 100%; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableSsl': NodeEntry(
+            path='/rbt/sport/ssl/config/global/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable SSL Optimization',
+            tooltip='Must be enabled on both the client-side and server-side Steelheads for SSL traffic to be optimized.')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries"  params="cmc">
+    if cmc:
+        # Certificate name is required on the CMC.
+        addCert_nodeEntry = NodeEntry(
+             name='addCert_certName',
+             label='Name',
+             validate='nonempty')
+
+    else:
+        # Certificate name is not required on the SH.
+        addCert_nodeEntry = NodeEntry(
+             name='addCert_certName',
+             label='Name',
+             hint=' required when generating a new key',
+             inputOptional=True)
+
+    return {
+
+        'addCert_certName': addCert_nodeEntry,
+
+        # somewhat of a hack, add an additional radio button to the cert dialog.
+        'editCertModeAddon': NodeEntry(
+                name='changeCert_certMode',
+                widget='radio',
+                label={'rename': 'Rename Certificate'},
+                displayDiv={'rename': 'changeCert_renameSection'}),
+        'changeCert_newName': NodeEntry(
+                name='changeCert_newName',
+                label='Name',
+                validate='nonempty'),
+
+        'export_includeKey': NodeEntry(
+            name='export_includeKey',
+            widget='checkboxLeft',
+            label='Include Private Key',
+            enableDiv='exportCert_passwordSection'),
+        'export_password': NodeEntry(
+            name='export_password',
+            widget='password',
+            label='Password',
+            hint='(at least 4 characters)',
+            validate=('password', '[4]')),
+        'export_passwordConfirm': NodeEntry(
+            name='export_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[4]')),
+
+        'addChain_existing': NodeEntry(
+            name='addChain_Existing',
+            widget='radio',
+            label={'true': 'Use Existing CA',
+                   'false': 'Use New Certificate(s) (PEM or DER formats)'},
+            enableDiv={'true': 'addChain_existingContainer',
+                        'false': 'addChain_newContainer'},
+            value='true'),
+        'addChain_ca': NodeEntry(
+            name='addChain_ca',
+            widget='select',
+            enableKeyNav=True,
+            action='return updateCANameIssuer(this)'),
+        'addChain_name': NodeEntry(
+            name='addChain_name',
+            label='Optional Local Name',
+            hint='(ignored if importing multiple certificates)'),
+        'addChain_fileMode': NodeEntry(
+            name='addChain_fileMode',
+            widget='radio',
+            value='true',
+            label={'true': 'Local File', 'false': 'Cert Text'},
+            enableDiv={'true': 'addChain_fileContainer',
+                       'false': 'addChain_certTextContainer'}),
+        'addChain_file': NodeEntry(
+            name='addChain_file',
+            widget='file',
+            validate='nonempty'),
+        'addChain_certText': NodeEntry(
+            name='addChain_certText',
+            widget='textarea',
+            validate='nonempty')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+cmc = policyType
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries(cmc)
+if policyType: {
+    # if policy page on CMC, show a tooltip for CA list
+    dialogEntries['addChain_existing'].tooltip = {'true': 'The CAs listed here are from the ' \
+                                                          'certificate authorities policy pages ' \
+                                                          'contained in this policy.'}
+}
+
+self.beginPagelet()
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="sslEnable">
+  <fieldset>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+    <legend>General SSL Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['enableSsl'].html(self) %>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+
+<%
+# The rest of this page requires the secure vault to be unlocked.
+vaultUnlocked = 'true' == Nodes.present(mgmt, '/secure_vault/state/unlocked')
+if not vaultUnlocked: {
+%>
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+<%
+    self.endPagelet()
+} else: {
+
+certsExportable = Nodes.present(mgmt, '/rbt/sport/ssl/state/server_certs/global_exportable', 'false')
+caNames = SSLUtils.getCANameSelectOptions(mgmt, cmcPolicyName=policyName)
+dialogEntries['addChain_ca'].selectOptions = caNames
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %> "
+      id="exportDisable">
+  <div class="topLevel">
+    <fieldset>
+        <legend>SSL Server Certificate Export Settings</legend>
+      <% if 'true' == certsExportable: { %>
+        <div class="midLevel">
+          <%= FormUtils.formSubmitButtons(self,
+                                          {'id': 'exportButton',
+                                           'name': 'exportButton',
+                                           'value': 'Disable Exporting of SSL Server Certificates',
+                                           'onclick': 'showDialog(); return false;'}) %>
+        </div>
+      <% } else: { %>
+        <div class="midLevel">
+          <p>
+            Exporting of SSL Server Certificates has been disabled.
+          </p>
+      <% } %>
+      </fieldset>
+    </div>
+</form>
+
+<%
+chainCertTable = ajaxentrytable.AjaxEntryTable('chainCert',
+    headerSpec=('',
+                ('Name', '', "sortAttrib('name')"),
+                ('Issued To', '', "sortAttrib('subject_common_name')"),
+                ('Expiration Date', '', "sortAttrib('expiry_sort')")),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'chainSelected_'),
+ AjaxEntryTable.tdClick('name', viewChained),
+ AjaxEntryTable.tdAttrStyle('subject_common_name', 'style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'style')]""",
+    emptyMessage='No chain certificates configured',
+    addButtonText='Add New Chain Certificate(s)',
+    addButtonName='chainAdd',
+    removeName='chainRemove',
+    removeButtonText='Remove Selected',
+    removePrefix='chainSelected_')
+
+chainCertTable.addDivContent = '''
+  <div class="midLevel">
+    %s
+    <div id="addChain_existingContainer" class="indent">
+      %s
+      %s
+    </div>
+    %s
+    <div id="addChain_newContainer" class="indent">
+      %s
+      %s
+      <div id="addChain_fileContainer" class="indent">
+        %s
+      </div>
+      %s
+      <div id="addChain_certTextContainer" class="indent">
+        %s
+      </div>
+    </div>
+  </div>
+  ''' % (dialogEntries['addChain_existing'].html(self, value='true'),
+         dialogEntries['addChain_ca'].html(self, format='inline'),
+         certdialog.caNameIssuer(),
+
+         dialogEntries['addChain_existing'].html(self, value='false'),
+         dialogEntries['addChain_name'].html(self, format='block'),
+
+         dialogEntries['addChain_fileMode'].html(self, value='true'),
+         dialogEntries['addChain_file'].html(self, format='block'),
+
+         dialogEntries['addChain_fileMode'].html(self, value='false'),
+         dialogEntries['addChain_certText'].html(self, format='block'))
+
+serverCertTableHeaderSpec = [
+    '',
+   ('Name', '', "sortAttrib('name')"),
+   ('Issuer', '', "sortAttrib('issuer_common_name')"),
+   ('Issued To', '', "sortAttrib('subject_common_name')"),
+   ('Expiration Date', '', "sortAttrib('expiry_sort')")]
+
+serverCertTableRowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('name', 'selected_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttrStyle('issuer_common_name', 'style'),
+ AjaxEntryTable.tdAttrStyle('subject_common_name', 'style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'style')]"""
+
+serverCertTable = ajaxentrytable.AjaxEntryTable('serverCert',
+    titleText='<span class="popupTitle" title="Server certificates should be added to the server-side Steelhead.">SSL Server Certificates</span>',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslServerCerts'),
+    headerSpec=serverCertTableHeaderSpec,
+    rowSpec=serverCertTableRowSpec,
+    emptyMessage='No current SSL Certificates',
+    addButtonText='Add a New SSL Certificate',
+    addButtonName='addSSLServerCert',
+    removeName='removeSSLServerCerts',
+    removeButtonText='Remove Selected',
+    removePrefix='seletedCert')
+
+serverCertTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+    </table>
+    %s
+  </div>
+  ''' % (dialogEntries['addCert_certName'].html(self),
+         certdialog.certDialog(self, prefix = 'addCert_',
+                               exportableOption = ('true' == certsExportable),
+                               isSubmitButtonNeeded = False))
+
+serverCertTable.editDivContent = '''
+  <div class="midLevel">
+    <input type="hidden" name="serverCert_name" />
+    <div class="tabControl">
+    <div class="grayBorder">
+      %s
+      <div class="midLevel" id="serverCertTab_details">
+        %s
+      </div>
+      <div class="midLevel" id="serverCertTab_change">
+        %s
+        %s
+        <fieldset id="changeCert_renameSection" class="topLevel">
+          <legend>Rename Certificate</legend>
+          <div class="midLevel">
+            <table>
+              %s
+            </table>
+          </div>
+        </fieldset>
+        %s
+      </div>
+      <div class="midLevel" id="serverCertTab_export">
+        <div id="editCert_exportable">
+          %s
+          <div id="exportCert_passwordSection" class="indent">
+            <table>
+              %s
+              %s
+            </table>
+          </div>
+          %s
+        </div>
+        <div id="editCert_notExportable">
+          <i>This certificate is not exportable.</i>
+        </div>
+      </div>
+      <div class="midLevel" id="serverCertTab_csr">
+        %s
+        %s
+      </div>
+      <div class="midLevel" id="serverCertTab_chain">
+        %s
+      </div>
+    </div>
+    </div>
+  </div>''' % (FormUtils.radioTabControl(
+                   self,
+                   'serverCertTabs',
+                   ('details', 'Details', 'serverCertTab_details'),
+                   ('change', 'Modify', 'serverCertTab_change'),
+                   ('export', 'Export', 'serverCertTab_export'),
+                   ('csr', 'Generate CSR', 'serverCertTab_csr'),
+                   ('chain', 'Chain', 'serverCertTab_chain')),
+
+               # cert display
+               certdialog.certDisplay(),
+
+               # change cert
+               dialogEntries['editCertModeAddon'].html(self, value='rename'),
+               certdialog.certDialog(self, prefix = 'changeCert_',
+                                     exportableOption = ('true' == certsExportable),
+                                     isSubmitButtonNeeded = False),
+               dialogEntries['changeCert_newName'].html(self),
+               FormUtils.formSubmitButtons(self, {'name': 'changeCert', 'value': 'Change'}),
+
+               # export
+               dialogEntries['export_includeKey'].html(self),
+               dialogEntries['export_password'].html(self),
+               dialogEntries['export_passwordConfirm'].html(self),
+               FormUtils.formSubmitButtons(self,
+                   {'name': 'exportCert',
+                    'value': 'Export',
+                    'onclick': 'return exportClick(this);'}),
+
+               # csr
+               certdialog.csrDialog(self, 'csr_'),
+
+               FormUtils.formSubmitButtons(self,
+                   {'name': 'generateCSR',
+                     'value': 'Generate CSR',
+                     'onclick': 'return csrClick(this)'}),
+
+               # chain
+               chainCertTable.html(self))
+
+discoveredServerTable = ajaxentrytable.AjaxEntryTable('discoveredServer',
+    titleText='Discovered SSL Servers (Optimizable)',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslDiscoveredServers'),
+    headerSpec=(('Server IP:Port', '', "sortAttrib('ipPortServer')"),
+                ('Server Common Name', '', "sortAttrib('serverName')"),
+                ('Certificate Name', '', "sortAttrib('certName')")),
+    rowSpec= """
+[AjaxEntryTable.tdAttr('ipPortServer'),
+ AjaxEntryTable.tdAttr('serverName'),
+ AjaxEntryTable.tdEdit('certName', 'certName')]""",
+    emptyMessage='No current Discovered SSL Servers',
+    editDivOffset=0)
+
+discoveredServerTable.editDivContent = certdialog.certDisplay('discCert_')
+
+
+bypassedServerTable = ajaxentrytable.AjaxEntryTable('bypassedServer',
+    titleText='Discovered Servers (bypassed, not optimizable for SSL)',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslBypassedServers'),
+    headerSpec=('',
+                ('Client IP', '', "sortAttrib('ipClient')"),
+                ('Server IP:Port', '', "sortAttrib('ipPortServer')"),
+                ('Server Common Name', '', "sortAttrib('commonName')"),
+                ('Reason', '', "sortAttrib('reason')"),
+                ('Timeout', '', "sortAttrib('timeout_sort')")),
+    rowSpec= """
+[AjaxEntryTable.tdSelectCheckbox('identifier', 'selected_'),
+ AjaxEntryTable.tdAttr('ipClient'),
+ AjaxEntryTable.tdAttr('ipPortServer'),
+ AjaxEntryTable.tdAttr('commonName'),
+ AjaxEntryTable.tdAttr('reason'),
+ AjaxEntryTable.tdLines('timeout')]""",
+    emptyMessage='No current Bypassed Servers',
+    removeName='removeBypassedServers',
+    removeButtonText='Remove Selected',
+    removePrefix='server')
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      enctype="multipart/form-data"
+      id="serverCertForm">
+  <div>
+    <input type="hidden" name="_action_" value="sslServerCerts" />
+  </div>
+  <%= serverCertTable.html(self, 'topLevel') %>
+</form>
+
+<% if not cmc: { %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="sslServerCerts" />
+  </div>
+  <%= discoveredServerTable.html(self, 'topLevel') %>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="sslServerCerts" />
+  </div>
+  <%= bypassedServerTable.html(self, 'topLevel') %>
+</form>
+
+<% } %>
+
+<script type="text/javascript">
+<!--
+function viewChained(element) {
+    var name = element.getAttribute('name');
+    var sid = serverCertTable.editName;
+    return popupCert(name, 'chain', name, 'sid=' + sid);
+}
+
+function showDialog() {
+    new RBT.Dialog({alignNode: '#exportButton',
+                    content: 'For security reasons, once certificate export \
+                              has been disabled, it cannot be re-enabled.  \
+                              Do you wish to continue?',
+                    buttons: [{label: 'Disable Export',
+                               clickFn: submitForm},
+                              {label: 'Cancel',
+                               clickFn: RBT.Dialog.dismiss}]}).render();
+}
+
+function submitForm() {
+    var el = document.createElement('input');
+    el.type = 'hidden';
+    el.name = '_action_';
+    el.value = 'disableCertExports';
+    $('exportDisable').appendChild(el);
+    $('exportDisable').submit();
+}
+
+// -->
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+<%
+# Create a JavaScript table of issuer names.
+
+caIssuers = SSLUtils.getCAIssuersJS(mgmt, [ca[0] for ca in caNames])
+self.writeln('var caIssuers = %s;' % caIssuers)
+%>
+
+Y.on('domready', function() {
+    // Refresh the full name & issuer text when the page loads.
+    updateCANameIssuer($('serverCertForm').elements.addChain_ca);
+});
+
+serverCertTable.editEntry = function(name) {
+
+    // set up the Chain Cert table.
+    var form = $('serverCertForm');
+    form.serverCert_name.value = name;
+    form.changeCert_newName.value = name;
+    chainCertTable.sendRequest('/mgmt/xmldata?p=sslServerChainCerts&name=' + name);
+
+    // set up the cert display.
+    var cert = this.getEntryElement('name', name);
+    var certies = ['subject_common_name',
+                   'subject_org',
+                   'subject_org_unit',
+                   'subject_locality',
+                   'subject_state',
+                   'subject_country',
+                   'serial_number',
+                   'issuer_common_name',
+                   'issuer_org',
+                   'issuer_org_unit',
+                   'issuer_locality',
+                   'issuer_state',
+                   'issuer_country',
+                   'issued_date',
+                   'expiry_date',
+                   'sha1_fingerprint',
+                   'key_type',
+                   'key_size'];
+    for (var i = 0; i < certies.length; i++) {
+        setElementText('cert_' + certies[i], cert.getAttribute(certies[i]));
+    }
+    // CSR widgets
+    var certies = ['common_name',
+                   'org',
+                   'org_unit',
+                   'locality',
+                   'state',
+                   'country',
+                   'email'];
+    for (var i = 0; i < certies.length; i++) {
+        setFormValue(form, 'csr_' + certies[i], cert.getAttribute('subject_' + certies[i]));
+    }
+    if ('true' == cert.getAttribute('exportable')) {
+        adjustElementClass('editCert_exportable', null, 'hidden');
+        adjustElementClass('editCert_notExportable', 'hidden', null);
+    } else {
+        adjustElementClass('editCert_exportable', 'hidden', null);
+        adjustElementClass('editCert_notExportable', null, 'hidden');
+    }
+    setFormValue(form, 'changeCert_certMode', 'rename');
+}
+
+function exportClick(el) {
+    el.form._action_.value = 'exportServerCert';
+    var actionSav = el.form.action;
+    el.form.action = '/mgmt/ssldata';
+    el.form.submit();
+    // put'm back, in case the user wants to do more.
+    el.form._action_.value = 'sslServerCerts';
+    el.form.action = actionSav;
+    return false;
+}
+
+function csrClick(el) {
+    el.form._action_.value = 'serverCertCSR';
+    var actionSav = el.form.action;
+    el.form.action = '/mgmt/ssldata';
+    el.form.submit();
+    // put'm back, in case the user wants to do more.
+    el.form._action_.value = 'sslServerCerts';
+    el.form.action = actionSav;
+    return false;
+}
+
+<%
+# not for cmc
+if not cmc: {
+%>
+
+discoveredServerTable.editEntry = function(name) {
+    var cert = this.getEntryElement('certName', name);
+    var certies = ['subject_common_name',
+                   'subject_org',
+                   'subject_org_unit',
+                   'subject_locality',
+                   'subject_state',
+                   'subject_country',
+                   'serial_number',
+                   'issuer_common_name',
+                   'issuer_org',
+                   'issuer_org_unit',
+                   'issuer_locality',
+                   'issuer_state',
+                   'issuer_country',
+                   'issued_date',
+                   'expiry_date',
+                   'sha1_fingerprint',
+                   'key_type',
+                   'key_size'];
+    for (var i = 0; i < certies.length; i++) {
+        setElementText('discCert_' + certies[i], cert.getAttribute(certies[i]));
+    }
+}
+
+<%
+}  # end not for cmc.
+%>
+
+// ]]>
+
+</script>
+<%
+
+} # end secure vault check.
+%>
+

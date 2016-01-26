@@ -1,0 +1,174 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_services.psp
+##
+## Start and stop services.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils:NodeEntry, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'actionStop': NodeEntry(
+            path='/pm/actions/terminate_process'),
+        'actionStart': NodeEntry(
+            path='/rbt/sport/main/action/restart_service')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'serviceClean': NodeEntry(
+            name='serviceClean',
+            widget='checkboxLeft',
+            label='Clear Data Store',
+            hint='(applies only to starting and restarting the service)')
+    }
+
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+sdrPolicy = Nodes.present(mgmt, '/rbt/sport/datastore/config/sdr_policy', '')
+dialogEntries = self.dialogEntries()
+
+if sdrPolicy == 'sdr-m': {
+    dialogEntries['serviceClean'].tooltip = 'This option is not available in SDR-M mode.'
+} else: {
+    dialogEntries['serviceClean'].tooltip = 'Client performance will be degraded until the data store is repopulated.'
+}
+
+restartNoticeStyle = 'style="display: none;"'
+restartNeeded = Nodes.present(mgmt, '/rbt/sport/status/restart_needed') == 'true'
+if restartNeeded: {
+    restartNoticeStyle = ''
+}
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="/mgmt/xmldata?p=serviceControl"
+      id="serviceControlForm">
+  <fieldset>
+    <legend>Optimization Service</legend>
+
+    <p>
+      Restarting the optimization service will disrupt existing network
+      connections being proxied through this appliance. Restarting may
+      take a few seconds.
+    </p>
+    <p class="warning" id="restart_notice" <%= restartNoticeStyle %>>
+      The optimization service needs to be restarted due to a
+      configuration change.
+    </p>
+
+    <div class="midLevel" id="clearDataStoreDiv">
+      <%= dialogEntries['serviceClean'].html(self) %>
+    </div>
+
+    <div class="interactiveCommand">
+      <div class="serviceStatus">
+        Status: <span id="currentState"></span>
+      </div>
+      <div class="serviceButtons">
+        <input type="button" name="serviceStop" value="Stop"
+               onclick="changeServiceState(this)" />
+        <input type="button" name="serviceStart" value="Start"
+               onclick="changeServiceState(this)" />
+        <input type="button" name="serviceRestart" value="Restart"
+               onclick="changeServiceState(this)" />
+      </div>
+    </div>
+  </fieldset>
+</form>
+
+<%
+serviceAlarmTriggered = Nodes.present(mgmt, '/stats/state/alarm/service_error/node/\\/rbt\\/health\\/service\\/error/rising/error', 'false')
+if serviceAlarmTriggered == 'true': {
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="serviceAlarmForm">
+  <fieldset>
+    <input type="hidden" name="_action_" value="resetServiceAlarm" />
+    <legend>Reset Service Alarm</legend>
+    <div style="text-align: right;">
+      <input type="submit" name="resetServiceAlarm" value="Reset" />
+    </div>
+  </fieldset>
+</form>
+
+<%
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    enableElements('clearDataStoreDiv', '<%= sdrPolicy %>' != 'sdr-m');
+});
+
+var updater = new AjaxUpdater('/mgmt/xmldata?p=serviceState');
+updater.update = function(response) {
+    var state = response.responseXML.documentElement.firstChild.getAttribute('state');
+    var currentStateEl = $('currentState');
+
+    // Update the service state.
+    setElementText('currentState', state);
+    if (state == 'running') {
+        setElementClass(currentStateEl, 'stateRunning');
+    } else if (state == 'stopped') {
+        setElementClass(currentStateEl, 'stateStopped');
+    } else if (state == 'stopping') {
+        setElementClass(currentStateEl, 'stateTransitioning');
+    } else if (state == 'unknown') {
+        setElementClass(currentStateEl, 'stateUnknown');
+    }
+
+    // Update the state of the buttons.
+    var form = $('serviceControlForm');
+    enableElements(form.serviceStop, (state == 'running'));
+    enableElements(form.serviceStart, (state == 'stopped'));
+    enableElements(form.serviceRestart, (state == 'running'));
+}
+
+function changeServiceState(obj) {
+    var form = $('serviceControlForm');
+    var currentStateEl = $('currentState');
+
+    // Hide the restart notice.
+    $('restart_notice').style.display = "none";
+
+    // Update the service state appropriately.
+    setElementClass(currentStateEl, 'stateTransitioning');
+    if (obj == form.serviceStop) {
+        setElementText('currentState', 'stopping');
+    } else if (obj == form.serviceStart) {
+        setElementText('currentState', 'starting');
+    } else if (obj == form.serviceRestart) {
+        setElementText('currentState', 'restarting');
+    }
+
+    // Disable all the buttons.
+    enableElements(form.serviceStop, false);
+    enableElements(form.serviceStart, false);
+    enableElements(form.serviceRestart, false);
+
+    // Send the AJAX POST.
+    return ajaxPostForm(obj);
+}
+
+// ]]>
+</script>

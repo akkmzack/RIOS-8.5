@@ -1,0 +1,288 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: Derek Chu
+##
+## setupHWAssistRules
+## The Hardware Rules table.
+##
+## Valid only on interceptors that have the right hardware.
+###
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    # Conveniently, related pages are ignored if they don't exist for a particular
+    # platform.
+    self.relatedPages = (
+        # for SH
+        'setupServiceInpathRules',
+        # for Interceptor
+        'setupInpathRules',
+        'setupLoadRules',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+#hwAssistRulesTable_main { width: 100%; }
+.table_hwAssist_ord { width: 8em; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return { 'hwAssist_rules': FormUtils.NodeEntry(
+                 path='/rbt/hwAssist/config/rule/*'),
+             'udp_en': FormUtils.NodeEntry(
+                 path='/rbt/hwassist/config/passthru/udp/enable',
+                 type='bool',
+                 widget='checkboxLeft',
+                 label='Enable Hardware Passthrough of All UDP Traffic'),
+             'tcp_en': FormUtils.NodeEntry(
+                 path='/rbt/hwassist/config/passthru/tcp/enable',
+                 type='bool',
+                 widget='checkboxLeft',
+                 label='Enable Hardware Passthrough of TCP Traffic Defined in the Rules Below'),
+           }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    actionOptions = (('accept', 'Accept'),
+                     ('pass-through', 'Pass-Through'))
+    return {
+        'addHWAssist_action': FormUtils.NodeEntry(
+            name='addHWAssist_action',
+            selectOptions=actionOptions,
+            value='accept',
+            label='Type'),
+        'addHWAssist_idx': FormUtils.NodeEntry(
+            name='addHWAssist_idx',
+            widget='select',
+            label='Position'),
+        'addHWAssist_subnet_a': FormUtils.NodeEntry(
+            name='addHWAssist_subnet_a/network',
+            type='ipv4prefix',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Subnet A'),
+        'addHWAssist_subnet_b': FormUtils.NodeEntry(
+            name='addHWAssist_subnet_b/network',
+            type='ipv4prefix',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Subnet B'),
+        'addHWAssist_vlan': FormUtils.NodeEntry(
+            name='addHWAssist_vlan',
+            value='all',
+            label='VLAN Tag ID',
+            validate='validateVlanExcludeDefault'),
+        'addHWAssist_desc': FormUtils.NodeEntry(
+            name='addHWAssist_description',
+            widgetClass='wide',
+            label='Description'),
+        'editHWAssist_action': FormUtils.NodeEntry(
+            name='editHWAssist_action',
+            selectOptions=actionOptions,
+            value='accept',
+            label='Type'),
+        'editHWAssist_subnet_a': FormUtils.NodeEntry(
+            name='editHWAssist_subnet_a/network',
+            type='ipv4prefix',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Subnet A'),
+        'editHWAssist_subnet_b': FormUtils.NodeEntry(
+            name='editHWAssist_subnet_b/network',
+            type='ipv4prefix',
+            widgetClass='ipaddrm',
+            value='0.0.0.0/0',
+            label='Subnet B'),
+        'editHWAssist_vlan': FormUtils.NodeEntry(
+            name='editHWAssist_vlan',
+            value='all',
+            label='VLAN Tag ID',
+            validate='validateVlanExcludeDefault'),
+        'editHWAssist_desc': FormUtils.NodeEntry(
+            name='editHWAssist_description',
+            widgetClass='wide',
+            label='Description'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+nodeEntries = self.nodeEntries()
+
+ruleIndices = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/hwassist/config/rule')
+ruleIndices.sort(FormUtils.compareStringInts)
+ruleIndices.append(ruleIndices and str(1 + int(ruleIndices[-1])) or '1')
+dialogEntries['addHWAssist_idx'].selectOptions = [('1', 'Start')] + ruleIndices + [(ruleIndices[-1], 'End')]
+dialogEntries['addHWAssist_idx'].value = ruleIndices[-1]
+
+self.beginPagelet()
+
+if not RVBDUtils.has10GigNic() and not policyType: {
+    self.write('<p>Hardware assist rules require a 10Gb network interface card.</p>')
+    self.endPagelet()
+    return
+}
+%>
+
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>10G NIC Hardware Assist Rules Settings</legend>
+    <div class="midLevel">
+      <%= nodeEntries['udp_en'].html(self) %>
+      <%= nodeEntries['tcp_en'].html(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<%
+hwAssistRulesTable = ajaxentrytable.AjaxEntryTable('hwAssistRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=hwAssistRules'),
+    titleText='TCP Hardware Assist Rules',
+    headerSpec=(('', 'table_hwAssist_ord'), 'Rule', 'Type', 'Subnet A', 'Subnet B', 'VLAN'),
+    rowSpec="""
+[AjaxEntryTable.tdReorderCheckbox('id',
+                                 'movefrom_',
+                                 'moveto_',
+                                 ['default']),
+ AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+ AjaxEntryTable.tdAttr('type'),
+ AjaxEntryTable.tdAttr('subnet-a-pretty'),
+ AjaxEntryTable.tdAttr('subnet-b-pretty'),
+ AjaxEntryTable.tdAttr('vlan-pretty')]""",
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage='No current Hardware Assist rules.',
+    removeName='removeRules',
+    removeButtonText='Remove Selected Rules',
+    moveName='moveRules',
+    moveButtonText='Move Selected Rules...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add a New Rule',
+    addButtonName='addHWAssistRule',
+    editDivTitle='Edit Hardware Assist Rule',
+    editButtonName='editHWAssistRule')
+
+hwAssistRulesTable.addDivContent = '''
+  <div class="midLevel" id="addRuleiv">
+    <table>
+      <tbody>
+        %s
+        %s
+        %s
+        %s
+      </tbody>
+      <tbody>
+        %s
+        <tr><td colspan="2">&nbsp;</td></tr>
+      </tbody>
+      <tbody>
+        %s
+      </tbody>
+    </table>
+  </div>
+''' % (dialogEntries['addHWAssist_action'].html(self),
+       dialogEntries['addHWAssist_idx'].html(self),
+       dialogEntries['addHWAssist_subnet_a'].html(self),
+       dialogEntries['addHWAssist_subnet_b'].html(self),
+
+       dialogEntries['addHWAssist_vlan'].html(self),
+
+       dialogEntries['addHWAssist_desc'].html(self))
+
+hwAssistRulesTable.editDivContent = '''
+  <div class="midLevel" id="editRuleDiv">
+    <table>
+      <tbody>
+        %s
+        %s
+        %s
+      </tbody>
+      <tbody>
+        %s
+        <tr><td colspan="2">&nbsp;</td></tr>
+      </tbody>
+      <tbody>
+        %s
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <input type="hidden" name="editHWAssist_idx" />
+  </div>
+''' % (dialogEntries['editHWAssist_action'].html(self),
+       dialogEntries['editHWAssist_subnet_a'].html(self),
+       dialogEntries['editHWAssist_subnet_b'].html(self),
+
+       dialogEntries['editHWAssist_vlan'].html(self),
+
+       dialogEntries['editHWAssist_desc'].html(self))
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="hwAssistRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupHWAssistRules" />
+    <%= hwAssistRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+
+// <![CDATA[
+
+hwAssistRulesTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = document.getElementById('hwAssistRulesForm');
+    setFormValue(form, 'editHWAssist_idx', editName);
+    setFormValue(form, 'editHWAssist_action', el.getAttribute('action'));
+    setFormValue(form, 'editHWAssist_subnet_a/network', el.getAttribute('subnet-a'));
+    setFormValue(form, 'editHWAssist_subnet_b/network', el.getAttribute('subnet-b'));
+    setFormValue(form, 'editHWAssist_vlan', el.getAttribute('vlan'));
+    setFormValue(form, 'editHWAssist_description', el.getAttribute('description'));
+    return true;
+}
+
+function validateVlanExcludeDefault (val) {
+    val = val.toLowerCase();
+    var lb = 1;
+    var ub = 4094;
+    var vlan_default = <%= Nodes.present(mgmt, '/rbt/hwassist/config/nic_def_vlan_id', 1) %>;
+    if (vlan_default == 1) {
+        // The default vlan id is 1, so we are giving it a special case
+        // in order to make the error message less clumsy.
+        lb = 2;
+        var error_message = '\u201Call\u201D, \u201Cuntagged\u201D, or an integer ' +
+                  'between ' + lb + ' and ' + ub + ' is required.';
+    } else {
+        var error_message = '\u201Call\u201D, \u201Cuntagged\u201D, or an integer ' +
+                  'between ' + lb + ' and ' + ub + ' (excluding ' + vlan_default + ') is required.';
+    }
+
+    if ((val != 'all') && (val != 'untagged')) {
+        if (!/^\-?\d+$/.test(val)) {
+            throw error_message;
+        } else if ((val < lb) || (val > ub)) {
+            throw error_message;
+        } else if (val == vlan_default) {
+            throw error_message;
+        }
+    }
+};
+
+// ]]>
+
+</script>

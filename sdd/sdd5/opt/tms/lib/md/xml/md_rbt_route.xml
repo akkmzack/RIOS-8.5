@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_route                                               -->
+<!--   Module Root: /rbt/route                                              -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_route.c          -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/route/config/myconfig</name>                         -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_route">
+    <config-wildcard>
+        <name>/rbt/route/config/*/ipv6/prefix/*</name>
+        <description>In-path Route IPv6 Network</description>
+        <value type="ipv6prefix"/>
+        <commit-descriptor>
+            <check-func>mr_route_check_prefix6</check-func>
+        </commit-descriptor>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/route/config/*/ipv6/prefix/*/gw</name>
+        <description>In-path Route Gateway IPv6 Address</description>
+        <value type="ipv6addr">::</value>
+        <commit-descriptor>
+            <check-func>mr_route_check_addr6</check-func>
+        </commit-descriptor>
+    </config>
+
+    <config-wildcard>
+        <name>/rbt/route/config/fwmark_target/*</name>
+        <description>FWMark Target of In-path Interface</description>
+        <value type="string"/>
+     </config-wildcard>
+
+    <config>
+        <name>/rbt/route/config/fwmark_target/*/ipv6/gw</name>
+        <description>In-path Route Fwmark Target IPv6 Address</description>
+        <value type="ipv6addr">::</value>
+    </config>
+
+    <config>
+        <name>/rbt/route/config_fw6/enable</name>
+        <description>In-path Route Fwmark Target IPv6 Address</description>
+        <value type="bool">false</value>
+    </config>
+
+    <state-wildcard>
+        <name>/rbt/route/state/*/ipv6/prefix/*</name>
+        <description>In-path Route IPv6 Network</description>
+        <value type="ipv6prefix"/>
+        <get-func>mr_rts_get_prefix6</get-func>
+        <iterate-func>mr_rts_iterate_prefix6</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/route/state/*/ipv6/prefix/*/gw</name>
+        <description>In-path Route Gateway IPv6 Address</description>
+        <value type="ipv6addr"/>
+        <get-func>mr_rts_get_route6</get-func>
+    </state>
+
+</node-list>

@@ -1,0 +1,282 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAppliance_upgrade.psp
+##
+## Software Upgrade Manager
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="gclsession:NonZeroReturnCodeException, re, os, Nodes, FormUtils, PagePresentation:Pagelet, time, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupAdministrationJobs',) %>
+
+<psp:method name="nodeEntries">
+    return {
+        'actionSwitch': FormUtils.NodeEntry(
+            path='/image/boot_location/nextboot/set'),
+        'actionInstall': FormUtils.NodeEntry(
+            path='/image/install')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'installUpgradeUrl': FormUtils.NodeEntry(
+            name='installUpgradeUrl',
+            widgetClass='wide3',
+            validate='checkRiverbedSupportUrl'),
+        'installUpgradeFile': FormUtils.NodeEntry(
+            name=FormUtils.makeUploadFieldName('applianceUpgradesTmpDir', 'installUpgradeFile'),
+            widget='file',
+            validate='nonempty'),
+        'installUpgradeDate': FormUtils.NodeEntry(
+            name='installUpgradeDate',
+            widgetClass='date',
+            value=time.strftime('%Y/%m/%d'),
+            label='Date',
+            hint='(YYYY/MM/DD)',
+            validate='date'),
+        'installUpgradeTime': FormUtils.NodeEntry(
+            name='installUpgradeTime',
+            widgetClass='time',
+            value=time.strftime("%H:%M:%S"),
+            label='Time',
+            hint='(HH:MM:SS)',
+            validate='time_hms'),
+        'installUpgradeFrom': FormUtils.NodeEntry(
+            name='installUpgradeFrom',
+            widget='radio',
+            label={'url': 'From URL',
+                   'support': 'From Riverbed Support Site',
+                   'file': 'From Local File'},
+            enableDiv={'url': 'fromURLDiv',
+                       'support': 'fromSupportDiv',
+                       'file': 'fromFileDiv'},
+            tooltip={
+                'url': '''
+                    <p>One of the following:</p>
+                    <p>
+                      <ul>
+                        <li>http://host/path/to/file</li>
+                        <li>https://host/path/to/file</li>
+                        <li>ftp://user:password@host/path/to/file</li>
+                        <li>scp://user:password@host/path/to/file</li>
+                      </ul>
+                    </p>'''
+            },
+            value='url'),
+        'installUpgradeLater': FormUtils.NodeEntry(
+            name='installUpgradeLater',
+            widget='checkboxLeft',
+            label='Schedule Upgrade for Later',
+            enableDiv='upgradeLaterDiv')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+
+dialogEntries = self.dialogEntries()
+
+configNames = Nodes.getMgmtLocalChildrenNames(mgmt, '/mgmtd/db/info/saved')
+activeConfig = mgmt.get('/mgmtd/db/info/running/db_name')
+configDirty = mgmt.get('/mgmtd/db/info/running/unsaved_changes')
+upgradeMeterWidget = FormUtils.Meter(self, 'upgradeMeter')
+
+# Querying the boot info fails if the flash disk is down (bug 78299,
+# affects 5050, 6050, and 7050).  Actually, we're screwed if that's
+# the case so just show an error message instead of the normal page
+# contents.
+if Nodes.present(mgmt, '/hw/hal/get/curr/boot/partition') == '-1': {
+    self.getPagePresentationServlet().setActionMessage("Flash disk failed. It is not writable and possibly not readable. Perform a 'reload' to fix this issue.")
+    self.beginPagelet()
+    self.writeln('This page is currently unavailable.')
+    self.endPagelet()
+    return
+}
+
+def generateSupportSiteUpgradeWidgetHTML(): {
+    noConnectivityWarning = '''
+        <p class="warning">
+          Could not reach the Riverbed Support site.
+        </p>
+        '''
+
+    noAvailableVersionsWarning = '''
+        <p class="warning">
+         No images available for upgrade.
+        </p>
+        '''
+
+    try: {
+        targetVersions = Nodes.action(mgmt, '/image/check_upgrades')
+    }
+    except NonZeroReturnCodeException: {
+        return noConnectivityWarning
+    }
+
+    if targetVersions: {
+        return FormUtils.NodeEntry(
+            name='targetUpgradeVersion',
+            selectOptions=[version[1] for version in sorted(targetVersions.items())],
+            label='Target Version').html(self, format='inline')
+    }
+    else: {
+        return noAvailableVersionsWarning
+    }
+}
+
+self.beginPagelet()
+%>
+
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_upgrade">
+  <fieldset>
+    <legend>Software Upgrade</legend>
+<%
+
+bootPart = Nodes.present(mgmt, '/image/boot_location/booted/location_id')
+nextPart = Nodes.present(mgmt, '/image/boot_location/nextboot/location_id') or bootPart
+otherPart = ('1' == bootPart) and '2' or '1'
+
+bootVersion = Nodes.present(mgmt,
+    '/image/info/installed_image/curr_device/location_id/%s/build_prod_version' % bootPart)
+bootVersion = RVBDUtils.cleanVersionString(bootVersion)
+
+otherVersion = Nodes.present(mgmt,
+    '/image/info/installed_image/curr_device/location_id/%s/build_prod_version' % otherPart)
+otherVersion = RVBDUtils.cleanVersionString(otherVersion)
+
+otherVersionLabel = (bootPart == nextPart) and 'Backup Version:' or 'Next Boot Version:'
+
+if bootPart != nextPart: {
+%>
+    <!-- TODO: make this better -->
+    <div class="">
+      <p>
+        Switching to partition <b><%= otherPart %></b> on next boot.
+      </p>
+    </div>
+<%
+}
+%>
+
+    <div class="midLevel">
+      <b>Booted Version:</b>
+      <br />
+      <%= bootVersion %>
+    </div>
+    <div class="midLevel">
+      <b><%= otherVersionLabel %></b>
+      <br />
+      <%= otherVersion %>
+    </div>
+
+<%
+if bootPart == nextPart: {
+%>
+    <div class="submitButtons">
+      <input type="submit" name="switch" value="Switch to Backup Version" />
+    </div>
+<%
+}
+else: {
+%>
+    <div class="submitButtons">
+      <input type="submit" name="cancelSwitch" value="Cancel Version Switch" />
+    </div>
+<%
+}
+%>
+    <input type="hidden" name="_action_" value="setupApplianceUpgrade" />
+  </fieldset>
+</form>
+
+<form method="post"
+      action="/mgmt/gui?p=setupAppliance_upgrade"
+      enctype="multipart/form-data"
+      accept-charset="UTF-8"
+      id="upgradeMeterForm">
+  <fieldset>
+    <legend>Install Upgrade</legend>
+    <div class="midLevel">
+
+        <%= dialogEntries['installUpgradeFrom'].html(self, value='url') %>
+
+        <div id="fromURLDiv" class="indent">
+            <%= dialogEntries['installUpgradeUrl'].html(self, format='inline') %>
+        </div>
+
+        <%= dialogEntries['installUpgradeFrom'].html(self, value='support') %>
+
+        <div id="fromSupportDiv" class="indent">
+            <%= generateSupportSiteUpgradeWidgetHTML() %>
+        </div>
+
+        <%= dialogEntries['installUpgradeFrom'].html(self, value='file') %>
+
+        <div id="fromFileDiv" class="indent">
+            <%= dialogEntries['installUpgradeFile'].html(self, format='inline') %>
+        </div>
+
+    </div>
+    <div class="midLevel">
+      <div class="nodeEntry">
+        <%= dialogEntries['installUpgradeLater'].html(self, format='inline') %>
+      </div>
+      <div class="indent" id="upgradeLaterDiv">
+        <%= dialogEntries['installUpgradeDate'].html(self, format='inline') %>
+        &nbsp;&nbsp;&nbsp;&nbsp;
+        <%= dialogEntries['installUpgradeTime'].html(self, format='inline') %>
+      </div>
+    </div>
+      <input type="hidden" name="_action_" value="setupApplianceUpgrade" />
+      <%= upgradeMeterWidget.buttonHtml() %>
+  </fieldset>
+
+<%
+if os.path.exists('/var/opt/tms/image_history') == True: {
+    versions = []
+    try: {
+        tf = open('/var/opt/tms/image_history')
+        versions = tf.readlines()
+    } finally: {
+        tf.close()
+    }
+%>
+  <fieldset>
+    <legend>Software Version History</legend>
+    <div class="midLevel">
+    <%
+    for version in versions: {
+      if len(version.strip()) > 0: {
+        idx = version.find(' on ')
+        if idx == -1: {
+          parts = re.match('.*rbt_[a-z]+ ([^ ]+) .*', version)
+          %>
+          <%= parts.group(1) %> (date not available)<br />
+          <%
+        } else: {
+          parts = re.match('.*rbt_[a-z]+ ([^ ]+) .* on (.*)', version)
+          %>
+          <%= parts.group(1) %> (<%= parts.group(2) %>)<br />
+          <%
+        }
+      }
+    }
+    %>
+    </div>
+  </fieldset>
+<%
+}
+%>
+</form>
+
+<% self.endPagelet() %>
+
+

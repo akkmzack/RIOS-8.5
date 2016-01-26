@@ -1,0 +1,118 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupAdvNet_ports.psp
+##
+## Service Ports page
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupServiceGeneral',)
+%>
+
+<psp:method name="nodeEntries">
+    return {
+        'defaultPort': NodeEntry(
+            path='/rbt/sport/inner/config/default-port',
+            widget='select',
+            type='uint16',
+            label='Default Port'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'servicePorts': NodeEntry(
+            name='ports',
+            validate='portList',
+            widgetClass='wide3',
+            label='Service Ports',
+            hint='(comma separated)'),
+        'addDestPort': NodeEntry(
+            name='addPortMapping_destinationPort',
+            widgetClass='port',
+            validate='port',
+            label='Destination Port'),
+        'addServicePort': NodeEntry(
+            name='addPortMapping_servicePort',
+            widgetClass='port',
+            validate='port',
+            label='Service Port')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+ports = Nodes.getMgmtLocalChildrenNames(mgmt,
+                                        pathPrefix + '/rbt/sport/inner/config/port')
+ports.sort(FormUtils.alphanumericCompare)
+dialogEntries['servicePorts'].value = ', '.join(ports)
+nodeEntries['defaultPort'].selectOptions = ports
+
+
+# Port Maps Table
+portMapsTable = ajaxentrytable.AjaxEntryTable('portMaps',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=servicePortMap'),
+    titleText='Service Ports',
+    headerSpec=('', 'Destination Port', 'Service Port'),
+    removeName='removePortMapping',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedPort_',
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('destinationport', 'selectedPort_'),
+ AjaxEntryTable.tdAttr('destinationport'),
+ AjaxEntryTable.tdAttr('serviceport')]""",
+    emptyMessage='No current port mappings.',
+    addButtonName='addPortMapping',
+    addButtonText='Add a New Service Port Mapping')
+
+portMapsTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+      %s
+    </table>
+  </div>''' % (dialogEntries['addDestPort'].html(self),
+               dialogEntries['addServicePort'].html(self))
+
+self.beginPagelet()
+%>
+
+<p>
+  Configure ports used for communication between Steelhead appliances.
+</p>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <input type="hidden" name="_action_" value="setupServicePorts" />
+    <legend>Service Port Settings</legend>
+    <div class="midLevel">
+      <table>
+        <%= dialogEntries['servicePorts'].html(self) %>
+        <%= nodeEntries['defaultPort'].html(self) %>
+      </table>
+    </div>
+  </fieldset>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupServicePorts" />
+  </div>
+  <%= portMapsTable.html(self, 'topLevel') %>
+</form>
+
+<% self.endPagelet() %>

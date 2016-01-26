@@ -1,0 +1,350 @@
+<%
+## Copyright 2011, Riverbed Technology, Inc., All rights reserved.
+
+# This page governs the RSP3 Datastores page
+# Author: Warren Gee
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<% self.relatedPages = ('setupBranchStorage', 'setupRSP3Slots') %>
+
+<psp:method name="css">
+    return '''
+#datastoreTable_main { width: 638; }
+#vmsTable_main { width: 400px; }
+th.diskSizeTh,
+td.diskSizeTd { padding-right: 10px !important; text-align: right; }
+th.dsAttrTh,
+td.diskAttrTd { padding-left: 10px; }
+td.dsHelpText { padding: 8px 20px; }
+th.lunTh { white-space : nowrap; }
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning.
+    return ['/rbt/rsp3/config/rbm',
+            '/rbt/eva/main/config/licensed']
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        # Datastore Table NodeEntries
+        'datastoreName': FormUtils.NodeEntry(
+            name='datastoreName',
+            validate='name',
+            label='Name',
+            widgetClass='wide2'),
+    }
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<%
+dialogEntries = self.dialogEntries()
+
+mgmt = self.session().value('mgmt')
+veLicensed = Nodes.present(mgmt, '/rbt/eva/main/config/licensed', 'false')
+
+vmsTable = ajaxentrytable.AjaxEntryTable('vms',
+    titleText='Virtual Machines (VMs)',
+    headerSpec=['Name', 'Slot Name'],
+    rowSpec="[AjaxEntryTable.tdAttr('name'), AjaxEntryTable.tdAttr('slotName')]",
+    emptyMessage='No VMs.')
+
+datastoreTable = ajaxentrytable.AjaxEntryTable('datastore',
+    url='/mgmt/xmldata?p=rsp3Datastores',
+    headerSpec=['Datastore',
+                ('LUN ID / Alias', 'lunTh'),
+                ('Status', 'diskAttrTh'),
+                ('Free', 'diskSizeTh'),
+                ('Used', 'diskSizeTh'),
+                ('Total', 'diskSizeTh')],
+    rowSpec= """
+[
+AjaxEntryTable.td([dsEditOrOffline()]),
+AjaxEntryTable.tdAttr('lunDisplay'),
+AjaxEntryTable.tdAttr('status', 'diskAttrTd'),
+AjaxEntryTable.tdAttr('free', 'diskSizeTd'),
+AjaxEntryTable.tdAttr('used', 'diskSizeTd'),
+AjaxEntryTable.tdAttr('total', 'diskSizeTd')
+]
+""",
+    emptyMessage='No Datastores or LUNs.',
+    editDivOffset=0)
+
+datastoreTable.editDivContent = '''
+
+<input type="hidden" name="lunId" />
+<input type="hidden" name="dsName" />
+
+<div id="unnamedDiv">
+  <fieldset>
+    <legend>Add Datastore</legend>
+    <div class="midLevel">
+      Convert this LUN into a remote datastore.
+    </div>
+    <div class="midLevel">
+      %(datastoreName)s
+    </div>
+    %(addDatastore)s
+  </fieldset>
+</div>
+
+<div id="unmountedDiv" class="midLevel">
+  <fieldset>
+    <legend>Mount Datastore</legend>
+    <div class="midLevel">
+      Make this datastore available to the appliance for read/write operations.
+      %(mountDatastore)s
+    </div>
+  </fieldset>
+</div>
+
+<div id="mountedDiv">
+  <div id="vmTableDiv" class="midLevel">
+    %(vmsTable)s
+  </div>
+  <div id="datastoreOperationsDiv" class="midLevel">
+    <fieldset>
+      <legend>Datastore Operations</legend>
+      <table>
+        <tr>
+          <td>
+            %(unmountDatastore)s
+          </td>
+          <td class="dsHelpText">
+            Unmounting this datastore will make it transferable to another
+            appliance or accessible by an administrator.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            %(deleteDatastore)s
+          </td>
+          <td class="dsHelpText">
+            Deleting this datastore will remove all the VMs stored on it and
+            release the underlying LUN back to Granite.
+          </td>
+        </tr>
+      </table>
+    </fieldset>
+  </div>
+</div>
+''' % {
+        'datastoreName': dialogEntries['datastoreName'].html(self, format='inline'),
+        'mountDatastore': FormUtils.formSubmitButtons(self,
+                                                {'name': 'mountDatastore',
+                                                 'validate': False,
+                                                 'onclick': 'showMountDatastoreLiveStatus()',
+                                                 'value': 'Mount'}),
+        'unmountDatastore': FormUtils.formSubmitButtons(self,
+                                                {'name': 'unmountDatastore',
+                                                 'filter': 'checkUnmountDatastore',
+                                                 'onclick': 'showUnmountDatastoreLiveStatus()',
+                                                 'value': 'Unmount'}),
+        'addDatastore': FormUtils.formSubmitButtons(self,
+                                                {'name': 'addDatastore',
+                                                 'value': 'Add',
+                                                 'onclick': 'return showAddConfirmation()'}),
+        'deleteDatastore': FormUtils.formSubmitButtons(self,
+                                                {'name': 'deleteDatastore',
+                                                 'filter': 'checkDeleteDatastore',
+                                                 'onclick': 'return showDeleteDatastoreConfirmation()',
+                                                 'value': 'Delete'}),
+        'vmsTable': vmsTable.html(self)
+}
+%>
+
+<form id="datastoreForm" method="post" action="<%= self.thisPageletRequest() %>"
+        class="liveStatusAttachPoint">
+  <div>
+    <%= datastoreTable.html(self, 'midLevel') %>
+    <input type="hidden" name="_action_" value="setupRsp3Datastores" />
+    <div id="scanLunsDiv">
+      <input type="submit" name="scanLuns" value="Scan LUNs" onclick="showScanLunsLiveStatus()"/>
+    </div>
+  </div>
+</form>
+
+<script type="text/javascript">
+// <![CDATA[
+function dsEditOrOffline() {
+    var validDsEdit = AjaxEntryTable.edit('lunDisplay', 'dsName');
+
+    return function(entryTable, parent, element) {
+        if (element.getAttribute('status') == 'Offline') {
+            var dsName = element.getAttribute('dsName');
+            var tooltip = 'This datastore is not available for read/write access.';
+            AjaxEntryTable.populateInvalidEntryTd(parent, dsName, tooltip);
+        }
+        else {
+            validDsEdit(entryTable, parent, element);
+        }
+    }
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var liveStatus = null;
+
+Y.on('domready', function() {
+    liveStatus = new LiveStatus({attachPoint:'#datastoreForm'}).render();
+});
+
+function showScanLunsLiveStatus() {
+    setTimeout('liveStatus.show("Scanning LUNs.")', 0);
+    return true;
+}
+
+function showMountDatastoreLiveStatus() {
+    setTimeout('liveStatus.show("Mounting datastore.")', 0);
+    return true;
+}
+
+function showUnmountDatastoreLiveStatus() {
+    setTimeout('liveStatus.show("Unmounting datastore.")', 0);
+    return true;
+}
+
+var unmountableDatastore = false;
+var deleteableDatastore = false;
+
+function checkUnmountDatastore(el, isValid)
+{
+    return unmountableDatastore;
+}
+
+function checkDeleteDatastore(el, isValid)
+{
+    return deleteableDatastore;
+}
+
+function scanLuns()
+{
+    this.hide();
+    AjaxEntryTable.submitCommandField(datastoreTable.tableId, 'scanLuns', 'scanLuns');
+}
+
+function showAddConfirmation()
+{
+    var content = 'Performing this operation may require formatting the LUN '
+                + 'and thereby destroying all existing data.';
+    addDatastoreDD = new RBT.Dialog({
+                        alignNode: Y.one('input[name="addDatastore"]'),
+                        buttons: [{label: 'Add', clickFn: addDatastore},
+                                  {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                        content: content
+                    }).render();
+    return false;
+}
+
+function addDatastore()
+{
+    setTimeout('liveStatus.show("Adding new datastore.")', 0);
+    this.hide();
+    AjaxEntryTable.submitCommandField(datastoreTable.tableId,
+                                    'addDatastore', 'addDatastore');
+}
+
+function showDeleteDatastoreConfirmation()
+{
+    if (Y.one('input[name="deleteDatastore"]').hasClass('dimmed')) {
+        return;
+    }
+
+    var content = 'Performing this operation will permanently delete '
+                + 'this datastore. This means:'
+                + '<div class="midLevel">'
+                + '  <ul>'
+                + '    <li>All VMs on this datastore will be erased.</li>'
+                + "    <li>The datastore's name will be removed from the LUN.</li>"
+                + '    <li>This datastore will be unmounted.</li>'
+                + '  </ul>'
+                + '</div>';
+    deleteDatastoreDD = new RBT.Dialog({
+                            alignNode: Y.one('input[name="deleteDatastore"]'),
+                            buttons: [{label: 'Delete', clickFn: deleteDatastore},
+                                      {label: 'Cancel', clickFn: RBT.Dialog.dismiss}],
+                            content: content
+                        }).render();
+    return false;
+}
+
+function deleteDatastore()
+{
+    setTimeout('liveStatus.show("Deleting datastore.")', 0);
+    this.hide();
+    AjaxEntryTable.submitCommandField(datastoreTable.tableId,
+                                    'deleteDatastore', 'deleteDatastore');
+}
+
+datastoreTable.editEntry = function(lunDisplay) {
+    var form = $('datastoreForm')
+    var el = this.getEntryElement('lunDisplay', lunDisplay);
+    var lunId = el.getAttribute('lunId');
+    var dsName = el.getAttribute('dsName');
+
+    setFormValue(form, 'lunId', lunId);
+    setFormValue(form, 'dsName', dsName);
+
+    switch (el.getAttribute('editType')) {
+        case 'unnamed':
+            Y.one('#unnamedDiv').removeClass('hidden');
+            Y.one('#unmountedDiv').addClass('hidden');
+            Y.one('#mountedDiv').addClass('hidden');
+            Y.one('#datastoreOperationsDiv').removeClass('hidden');
+            break;
+        case 'lun':
+            Y.one('#unnamedDiv').addClass('hidden');
+            Y.one('#unmountedDiv').removeClass('hidden');
+            Y.one('#mountedDiv').addClass('hidden');
+            Y.one('#datastoreOperationsDiv').removeClass('hidden');
+            break;
+        case 'datastore':
+            Y.one('#unnamedDiv').addClass('hidden');
+            Y.one('#unmountedDiv').addClass('hidden');
+            Y.one('#mountedDiv').removeClass('hidden');
+            if (el.getAttribute('dsType') == 'Default') {
+                Y.one('#datastoreOperationsDiv').addClass('hidden');
+                break;
+            }
+            Y.one('#datastoreOperationsDiv').removeClass('hidden');
+
+            if (el.getAttribute('status') == 'Ready' &&
+               el.getAttribute('slottedVmCount') > 0) {
+                unmountableDatastore = false;
+                deleteableDatastore = false;
+                Y.one('#vmTableDiv').removeClass('hidden');
+            }
+            else {
+                unmountableDatastore = true;
+                if (el.getAttribute('status') == 'Offline') {
+                    deleteableDatastore = false;
+                    Y.one('#vmTableDiv').addClass('hidden');
+                }
+                else {
+                    deleteableDatastore = true;
+                    Y.one('#vmTableDiv').removeClass('hidden');
+                }
+            }
+            break;
+    }
+    var url='/mgmt/xmldata?p=rsp3DatastoreVMs';
+    vmsTable.sendRequest(url + '&dsName=' + encodeURIComponent(dsName));
+}
+
+enableElements('scanLunsDiv', <%= veLicensed %>);
+
+// ]]>
+</script>

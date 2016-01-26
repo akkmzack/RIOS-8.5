@@ -1,0 +1,16 @@
+#%PAM-1.0
+auth       sufficient   /lib/security/$ISA/pam_rootok.so
+# Uncomment the following line to implicitly trust users in the "wheel" group.
+#auth       sufficient   /lib/security/$ISA/pam_wheel.so trust use_uid
+# Uncomment the following line to require a user to be in the "wheel" group.
+#auth       required     /lib/security/$ISA/pam_wheel.so use_uid
+auth       required	/lib/security/$ISA/pam_stack.so service=system-auth
+account    sufficient	/lib/security/$ISA/pam_succeed_if.so uid = 0 use_uid quiet
+account    required	/lib/security/$ISA/pam_stack.so service=system-auth
+password   required	/lib/security/$ISA/pam_stack.so service=system-auth
+# pam_selinux.so close must be first session rule
+session	   required	/lib/security/$ISA/pam_selinux.so close
+session    required	/lib/security/$ISA/pam_stack.so service=system-auth
+# pam_selinux.so open and pam_xauth must be last two session rules
+session	   required	/lib/security/$ISA/pam_selinux.so open 
+session    optional	/lib/security/$ISA/pam_xauth.so

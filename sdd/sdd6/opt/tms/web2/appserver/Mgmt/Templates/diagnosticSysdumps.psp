@@ -1,0 +1,171 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Robin Schaufler
+##
+## diagnosticSysdumps
+## This is the template to display a table of sysdumps.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="cgi, Nodes, FormUtils, HTTPUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    if RVBDUtils.isSH():
+        import rsp
+        rspPublicName = rsp.publicName()
+    else:
+        rspPublicName = 'RSP'
+
+    return {
+        'IncludeStats': FormUtils.NodeEntry(
+            type='bool',
+            name='includeStats',
+            widget='checkboxLeft',
+            label='Include Statistics',
+            value='true'),
+        'IncludeAllLogs': FormUtils.NodeEntry(
+            type='bool',
+            name='includeAllLogs',
+            widget='checkboxLeft',
+            label='Include All Logs',
+            tooltip= \
+                'Include all logs regardless of size. Normally, system ' \
+                'dumps are limited to 50 MB of compressed logs.'),
+        'IncludeRsp': FormUtils.NodeEntry(
+            type='bool',
+            name='includeRsp',
+            widget='checkboxLeft',
+            label='Include %s' % rspPublicName,
+            tooltip='This will substantially increase the size of the system ' \
+                    'dump and should be used only if specifically requested ' \
+                    'by Riverbed support.',
+            value='false'),
+        'IncludeVsp': FormUtils.NodeEntry(
+            type='bool',
+            name='includeRsp',
+            widget='checkboxLeft',
+            label='Include Hypervisor',
+            tooltip='It is strongly recommended to leave this option enabled ' \
+                    'so that the system dump contains a more complete view ' \
+                    'of the appliance.',
+            value='true'),
+        'GenerateSysdumpAction': FormUtils.NodeEntry(
+            path='/debug/generate/dump',
+            type='action')
+    }
+</psp:method>
+
+<psp:method name="pageIsReadable">
+    ses = self.session()
+    localUser = ses.value('localId')
+    if 'monitor' == localUser:
+        return False
+    else:
+        return super(self.__class__, self).pageIsReadable()
+</psp:method>
+
+<psp:method name="css">
+    return '''
+#sysdumpsTable_main {
+    width: 835px;
+}
+fieldset {
+    width: 500px;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+fields = req.fields()
+
+# on CMC, make sure it's clear that the "Include Statistics" option
+# only saves the CMC stats, not the managed appliances
+if RVBDUtils.isCMC(): {
+    nodeEntries['IncludeStats'].tooltip = \
+        'Applies to statistics for the CMC itself, not managed appliances.'
+}
+
+sysdumpsTable = ajaxentrytable.AjaxEntryTable('sysdumps',
+   url='/mgmt/xmldata?p=sysdumpFiles&errorRedirect=%s' %
+       HTTPUtils._makeQuerystringDestParameter(self.request()),
+   headerSpec=("",
+               ("Download Link", 'ajaxEntryTable_th table_diagnosticfile_name'),
+               ("Timestamp", 'ajaxEntryTable_th table_diagnosticfile_time'),
+               ("Size", 'ajaxEntryTable_th table_diagnosticfile_size'),
+               ("MD5 Sum", 'ajaxEntryTable_th table_diagnosticfile_md5sum')),
+   rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.td([AjaxEntryTable.a('href',
+                                     'click to download the file',
+                                     [AjaxEntryTable.attrText('name')])],
+                   'table_diagnosticfile_name'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('timestring')],
+                   'table_diagnosticfile_time'),
+ AjaxEntryTable.tdAttr('sizeStr', 'table_diagnosticfile_size'),
+ AjaxEntryTable.td([AjaxEntryTable.attrText('md5sum')],
+                   'table_diagnosticfile_md5sum')]""",
+   emptyMessage='No System Dumps.',
+   removeName='removeFiles',
+   removeButtonText='Remove Selected',
+   removePrefix='ck_')
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="sysdumpsForm">
+  <div>
+    <input type="hidden" name="_action_" value="removeDiagnosticFile" />
+    <input type="hidden" name="dir" value="sysdumps" />
+    <%= sysdumpsTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<form method="post"
+      id="diagnosticSysdumpsForm"
+      action="<%= self.thisPageletRequest() %>"
+      onsubmit="return generateSysdump();"
+      class="liveStatusAttachPoint">
+  <fieldset class="topLevel">
+  <legend>Generate System Dump</legend>
+  <div class="midLevel">
+    <%= nodeEntries['IncludeStats'].html(self) %>
+    <%= nodeEntries['IncludeAllLogs'].html(self) %>
+    <%= RVBDUtils.isRspSupported() and nodeEntries['IncludeRsp'].html(self) or ''%>
+    <%= RVBDUtils.isBOB() and nodeEntries['IncludeVsp'].html(self) or ''%>
+  </div>
+  <div class="submitButtons">
+    <input type="hidden" name="_action_" value="generateSysdump" />
+    <input type="submit" name="genSysdump" value="Generate System Dump" />
+  </div>
+  </fieldset>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var liveStatus = null;
+
+Y.on('domready', function() {
+    liveStatus = new LiveStatus({attachPoint: '#diagnosticSysdumpsForm'}).render();
+});
+
+function generateSysdump() {
+    setTimeout('showLiveStatus()', 0);
+    $('diagnosticSysdumpsForm').submit();
+}
+
+function showLiveStatus() {
+    liveStatus.show('Generating system dump.');
+}
+
+// ]]>
+</script>

@@ -1,0 +1,1140 @@
+<%
+## (C) Copyright 2002-2012, Riverbed Technology, Inc., All rights reserved.
+##
+## Author: Kevin Morrell
+##
+## This is the page for the ESXi Push Wizard for BOBv2.  It functions as both
+## the Initial Config Wizard, and for pushing ESXi configs after the initial
+## config, with very slightly different functionality depending.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="RVBDUtils, FormUtils, Nodes, PagePresentation:Pagelet, NicFactory" %>
+<%@page extends="Pagelet" %>
+
+<psp:method name="nodeEntries_wizard">
+    return {
+        'license': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/license/license_key',
+            name='license',
+            widgetClass='wide2pt5 yui3-wizard-included-input',
+            validate='esxiLicense',
+            type='string'),
+        'ntp': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/ntp/push_config',
+            widget='checkboxLeft',
+            widgetClass='yui3-wizard-included-input',
+            type='bool',
+            label='Push RiOS NTP Settings to ESXi'),
+        'managementInterface': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/management/vmk/interface',
+            name='managementInterface',
+            widget='select',
+            type='string',
+            selectOptions=(('vmk1', 'vmk1 (ESXi primary)'), ('vmk2', 'vmk2 (ESXi aux)')),
+            widgetClass='yui3-wizard-included-input',
+            label='ESXi Management Interface'),
+        'gateway': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/routes/ipv4/prefix/0.0.0.0\/0/nh/1/gw',
+            type='ipv4addr',
+            label='IPv4 Gateway',
+            tooltip='If provided, this gateway will apply to the ESXi \
+                     management interface only.',
+            inputOptional=True,
+            name='gateway',
+            widgetClass='ipaddr yui3-wizard-included-input'),
+        'wizVncPort': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/vmx/vnc/port',
+            type='uint32',
+            widgetClass='small yui3-wizard-included-input',
+            label='Port'),
+        'wizVncPassword': FormUtils.NodeEntry(
+            name='wizVncPassword',
+            value=FormUtils.bogusPassword,
+            widget='password',
+            widgetClass='yui3-wizard-included-input',
+            label='Password',
+            validate=('password', '[null, 8]')),
+        'wizVncPasswordConfirm': FormUtils.NodeEntry(
+            name='wizVncPasswordConfirm',
+            value=FormUtils.bogusPassword,
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[null, 8]')),
+        'wizVncEnabled': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/vmx/vnc/enable',
+            type='bool',
+            widget='checkboxLeft',
+            widgetClass='yui3-wizard-included-input',
+            label='Enable VNC',
+            enableDiv='wizVncSubsection'),
+        'wizEsxiPassword': FormUtils.NodeEntry(
+            widget='password',
+            widgetClass='yui3-wizard-included-input',
+            type='password',
+            validate=('password', '[6, null]'),
+            name='wizEsxiPassword',
+            label='Password'),
+        'wizEsxiPasswordConfirm': FormUtils.NodeEntry(
+            widget='password',
+            type='password',
+            name='wizEsxiPasswordConfirm',
+            validate=('password', '[6, null]'),
+            label='Password Confirm'),
+        'vmk0Dhcp': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/ip/interface/vmk0/addr/ipv4/dhcp'),
+        'vmk0Ddns': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/ip/interface/vmk0/addr/ipv4/dns'),
+        'vmk0IP': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/ip/interface/vmk0/addr/ipv4/static/ip'),
+        'vmk0Netmask': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/ip/interface/vmk0/addr/ipv4/static/netmask'),
+        'domainNames': FormUtils.NodeEntry(
+            path='/rbt/vsp/proxy/resolver/domain_search'),
+        'vswitches': FormUtils.NodeEntry(
+            path='/rbt/vsp/config/esxi/network/vswitch'),
+        'nameServers': FormUtils.NodeEntry(
+            path='/rbt/vsp/proxy/resolver/nameserver')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries_wizard">
+    return {
+        'licenseEnable': FormUtils.NodeEntry(
+            widget='checkboxLeft',
+            widgetClass='yui3-wizard-included-input',
+            type='bool',
+            name='licenseEnable',
+            label='Override Default License',
+            tooltip='If you have a vCenter license from VMWare, enter it \
+                     here.  The default license does not allow vCenter to \
+                     connect to this host.',
+            enableDiv='licenseDiv'),
+        'wipeDatastore': FormUtils.NodeEntry(
+            widget='radio',
+            widgetClass='yui3-wizard-included-input',
+            type='bool',
+            name='wipeDatastore',
+            value='false',
+            label={'true': 'Erase Local Datastore',
+                   'false': 'Do Not Erase Local Datastore'},
+            displayDiv={'true': 'datastoreWarning'})
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries_wizard = self.nodeEntries_wizard()
+dialogEntries_wizard = self.dialogEntries_wizard()
+initialWizard = Nodes.present(mgmt, '/rbt/vsp/config/esxi_wizard_completed') == 'false'
+interfaces = []
+
+wizardWidgetClass = 'yui3-wizard-included-input'
+
+# Create interfaces for the user-configurable VMNics
+for ifaceName in ['vmk1', 'vmk2']: {
+    basePath='/rbt/vsp/config/esxi/network/ip/interface/%s/' % ifaceName
+    vmk = NicFactory.NicFactory(
+        interface=ifaceName,
+        interfaceEnable={'path': basePath + 'enable',
+                         'widgetClass': wizardWidgetClass,
+                         'name': ifaceName + 'Enable',
+                         'action': 'switchManagementInterface();'},
+        ipv4Address={'path': basePath + 'addr/ipv4/static/ip',
+                     'widgetClass': 'ipaddr ' + wizardWidgetClass,
+                     'name': ifaceName + 'IP'},
+        ipv4Subnet={'path': basePath + 'addr/ipv4/static/netmask',
+                    'type': 'ipv4addr',
+                    'filter': None,
+                    'name': ifaceName + 'Netmask',
+                    'widgetClass': 'ipaddr ' + wizardWidgetClass},
+        ipv4Dhcp={'path': basePath + 'addr/ipv4/dhcp',
+                  'name': ifaceName + 'Dhcp',
+                  'widgetClass': wizardWidgetClass},
+        ipv4DynamicDNS={'path': basePath + 'addr/ipv4/dhcp_dyn_dns',
+                        'widgetClass': wizardWidgetClass,
+                        'name': ifaceName + 'Ddns',
+                        'label': 'Enable IPv4 DHCP DNS',
+                        'tooltip': 'Use the DNS settings published via DHCP for this interface.'}
+    )
+
+    interfaces.append(vmk)
+}
+
+if initialWizard: {
+    # The VNC password has a default value, but we should make the password
+    # field empty in the initial wizard so that the user has to choose their
+    # own password.
+    nodeEntries_wizard['wizVncPassword'].value = ''
+    nodeEntries_wizard['wizVncPasswordConfirm'].value = ''
+}
+
+# In addition to the user-configurable settings, we're also pushing a bunch of
+# non-configurable settings, which we want to display to the user on the
+# confirmation page.  This section gets those values.
+vmkNamePrefix = '/rbt/vsp/config/esxi/network/ip/interface/'
+
+vmk0Dhcp = Nodes.present(mgmt, vmkNamePrefix + 'vmk0/addr/ipv4/dhcp')
+vmk0Dns = Nodes.present(mgmt, vmkNamePrefix + 'vmk0/addr/ipv4/dns')
+vmk0IPAddress = Nodes.present(mgmt, vmkNamePrefix + 'vmk0/addr/ipv4/static/ip')
+vmk0SubnetMask = Nodes.present(mgmt, vmkNamePrefix + 'vmk0/addr/ipv4/static/netmask')
+vmk0MacAddress = Nodes.present(mgmt, vmkNamePrefix + 'vmk0/state/mac')
+
+vmk1MacAddress = Nodes.present(mgmt, vmkNamePrefix + 'vmk1/state/mac')
+vmk2MacAddress = Nodes.present(mgmt, vmkNamePrefix + 'vmk2/state/mac')
+
+vSwitchDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/vsp/config/esxi/network/vswitch')
+domainNameDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/vsp/proxy/resolver/domain_search')
+nameServerDetails = Nodes.getTreeifiedSubtree(mgmt, '/rbt/vsp/proxy/resolver/nameserver')
+
+vSwitchNames = vSwitchDetails.keys()
+vSwitchNames.sort(FormUtils.alphanumericCompare)
+
+domainNames = []
+for index in sorted(domainNameDetails.keys(), cmp=FormUtils.alphanumericCompare): {
+    domainNames.append(domainNameDetails[index]['domainname'])
+}
+
+nameServers = []
+for index in sorted(nameServerDetails.keys(), cmp=FormUtils.alphanumericCompare): {
+    nameServers.append(nameServerDetails[index]['address'])
+}
+
+%>
+
+<div id="wizWelcome" class="midLevel yui3-wizard-loading">
+  <p class="settingHeaders">Welcome</p>
+
+<% if initialWizard: { %>
+
+  <p>
+    This wizard will guide you through the initial configuration of VSP and
+    install ESXi.  Before continuing, you should have access to your network
+    settings and ESXi license (if applicable).
+  </p>
+
+<% } else: { %>
+
+  <p>
+    This wizard will reinstall ESXi and allow you to reconfigure your VSP and
+    ESXi settings.  Before continuing, you should have access to your network
+    settings and ESXi license (if applicable).
+  </p>
+  <p>
+    Since ESXi is being reinstalled, all current ESXi settings will be lost.
+  </p>
+
+<% } %>
+
+</div>
+
+<div id="wizVmk" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>" id="networkForm">
+    <p class="settingHeaders">Network Settings</p>
+    <div class="midLevel">
+      <table>
+        <%= nodeEntries_wizard['gateway'].html(self, widgetId="gateway") %>
+        <%= nodeEntries_wizard['managementInterface'].html(self) %>
+      </table>
+    </div>
+    <fieldset class="wizard">
+      <legend>
+        <span class="popupTitle"
+              title="The ESXi vmk1 interface is bridged to the physical primary port.">
+          vmk1 (ESXi primary)
+        </span>
+      </legend>
+      <%= interfaces[0].html(self) %>
+    </fieldset>
+    <fieldset class="wizard">
+      <legend>
+        <span class="popupTitle"
+              title="The ESXi vmk2 interface is bridged to the physical aux port.">
+          vmk2 (ESXi aux)
+        </span>
+      </legend>
+      <%= interfaces[1].html(self) %>
+    </fieldset>
+    <div id="validationDiv">
+      <img src="/images/icon_test_running.gif" alt="" />
+      Checking network configuration...
+    </div>
+  </form>
+</div>
+<div id="wizMisc" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>">
+    <p class="settingHeaders">Miscellaneous Settings</p>
+    <div class="midLevel">
+      <fieldset class="wizard">
+        <legend>License</legend>
+          <%= dialogEntries_wizard['licenseEnable'].html(self) %>
+          <div id="licenseDiv" class="indent">
+            <table>
+              <%= nodeEntries_wizard['license'].html(self) %>
+            </table>
+          </div>
+      </fieldset>
+      <fieldset class="wizard">
+        <legend>NTP</legend>
+        <%= nodeEntries_wizard['ntp'].html(self) %>
+      </fieldset>
+      <fieldset class="wizard">
+        <legend>VNC</legend>
+        <div class="midLevel">
+          <%= nodeEntries_wizard['wizVncEnabled'].html(self) %>
+          <div id="wizVncSubsection" class="indent">
+            <table>
+              <tr>
+                <td class="nodeEntry">IP Address:</td>
+                <td class="nodeEntry"><%= vncIP %></td>
+              </tr>
+              <%= nodeEntries_wizard['wizVncPort'].html(self) %>
+              <%= nodeEntries_wizard['wizVncPassword'].html(self) %>
+              <%= nodeEntries_wizard['wizVncPasswordConfirm'].html(self) %>
+            </table>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset class="wizard">
+        <legend>ESXi Credentials</legend>
+        <div class="midLevel">
+          <div id="passwordWarning" class="warningMessage" style="display: none">
+            The password you have entered does not meet ESXi's default
+            password complexity requirements.
+          </div>
+          <table>
+            <tr>
+              <td class="nodeEntry">Username:</td>
+              <td class="nodeEntry">root</td>
+            </tr>
+            <%= nodeEntries_wizard['wizEsxiPassword'].html(self) %>
+            <%= nodeEntries_wizard['wizEsxiPasswordConfirm'].html(self) %>
+          </table>
+        </div>
+      </fieldset>
+    </div>
+  </form>
+</div>
+<div id="wizDatastore" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>">
+    <p class="settingHeaders">Local Datastore</p>
+    <div class="midLevel">
+      <%= dialogEntries_wizard["wipeDatastore"].html(self, format = 'block', value = 'false') %>
+      <%= dialogEntries_wizard["wipeDatastore"].html(self, format = 'block', value = 'true') %>
+      <div id="datastoreWarning" class="warningMessage">
+        Erasing the local datastore will erase all ESXi data
+        stored in the local datastore, including any virtual machines.
+      </div>
+    </div>
+  </form>
+</div>
+<div id="wizReview" class="midLevel yui3-wizard-loading">
+  <form method="post" action="<%= self.thisPageletRequest() %>">
+    <p class="settingHeaders">Review Changes</p>
+    <p> The following user-configured settings will be pushed to ESXi: </p>
+    <table id="confirmationTable1" class="confirmationTable">
+
+      <% for num in ['1', '2']: { %>
+
+      <tr>
+        <td class="wizardLabel">vmk<%= num %> Enabled:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>Enable"></td>
+      </tr>
+      <tr class="vmk<%= num %>settings_dynamic">
+        <td class="wizardLabel">vmk<%= num %> DHCP Enabled:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>Dhcp"></td>
+      </tr>
+      <tr class="vmk<%= num %>settings_dynamic">
+        <td class="wizardLabel">vmk<%= num %> Dynamic DNS Enabled:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>DhcpDdns"></td>
+      </tr>
+      <tr class="vmk<%= num %>settings_manual">
+        <td class="wizardLabel">vmk<%= num %> IP Address:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>IPAddress"></td>
+      </tr>
+      <tr class="vmk<%= num %>settings_manual">
+        <td class="wizardLabel">vmk<%= num %> Subnet Mask:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>SubnetMask"></td>
+      </tr>
+      <tr class="vmk<%= num %>settings_mac">
+        <td class="wizardLabel">vmk<%= num %> MAC Address:</td>
+        <td class="wizardField" id="confirmVmk<%= num %>MacAddress"></td>
+      </tr>
+
+      <% } %>
+
+      <tr>
+        <td class="wizardLabel">Management Interface:</td>
+        <td class="wizardField" id="confirmManagementInterface"></td>
+      </tr>
+      <tr class="gateway">
+        <td class="wizardLabel">Default Gateway:</td>
+        <td class="wizardField" id="confirmGateway"></td>
+      </tr>
+
+      <% if initialWizard == False: { %>
+
+      <tr>
+        <td class="wizardLabel">Erase Datastore:</td>
+        <td class="wizardField" id="confirmWipeDatastore"></td>
+      </tr>
+
+      <% } %>
+
+      <tr>
+        <td class="wizardLabel">License:</td>
+        <td class="wizardField" id="confirmLicense"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">Push RiOS NTP Settings:</td>
+        <td class="wizardField" id="confirmNtp"></td>
+      </tr>
+
+      <% if initialWizard: { %>
+
+      <tr>
+        <td class="wizardLabel">VNC Enabled:</td>
+        <td class="wizardField" id="confirmVncEnabled"></td>
+      </tr>
+      <tr class="vncSettingRow">
+        <td class="wizardLabel">VNC Port:</td>
+        <td class="wizardField" id="confirmVncPort"></td>
+      </tr>
+      <tr class="vncSettingRow">
+        <td class="wizardLabel">VNC Password:</td>
+        <td class="wizardField"><i>Created</i></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">ESXi Password:</td>
+        <td class="wizardField"><i>Created</i></td>
+      </tr>
+
+    <% } %>
+
+    </table>
+
+    <p>In addition, the following default configuration will be pushed to
+    ESXi.  Any changes made to these values from inside ESXi will be
+    overwritten.</p>
+    <table id="confirmationTable2" class="confirmationTable">
+      <tr class="vmk0settings_dynamic">
+        <td class="wizardLabel">vmk0 DHCP Enabled:</td>
+        <td class="wizardField" id="vmk0Dhcp"></td>
+      </tr>
+      <tr class="vmk0settings_dynamic">
+        <td class="wizardLabel">vmk0 Dynamic DNS Enabled:</td>
+        <td class="wizardField" id="vmk0DhcpDdns"></td>
+      </tr>
+      <tr class="vmk0settings_manual">
+        <td class="wizardLabel">vmk0 IP Address:</td>
+        <td class="wizardField" id="vmk0IPAddress"></td>
+      </tr>
+      <tr class="vmk0settings_manual">
+        <td class="wizardLabel">vmk0 Subnet Mask:</td>
+        <td class="wizardField" id="vmk0SubnetMask"></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel">vmk0 MAC Address:</td>
+        <td class="wizardField" id="vmk0MacAddress"></td>
+      </tr>
+
+      <% for vSwitch in vSwitchNames: { %>
+
+      <tr class="<%= vSwitch %>Settings">
+        <td class="wizardLabel"><%= vSwitch %> Number of Ports:</td>
+        <td class="wizardField" id="<%= vSwitch %>Ports"></td>
+      </tr>
+      <tr class="<%= vSwitch %>Settings">
+        <td class="wizardLabel"><%= vSwitch %> MTU:</td>
+        <td class="wizardField" id="<%= vSwitch %>MTU"></td>
+      </tr>
+      <tr class="<%= vSwitch %>Settings">
+        <td class="wizardLabel"><%= vSwitch %> Active NIC:</td>
+        <td class="wizardField" id="<%= vSwitch %>NIC"></td>
+      </tr>
+
+      <% portGroupNames = vSwitchDetails[vSwitch]['port_grp'].keys()
+         portGroupNames.sort(FormUtils.alphanumericCompare)
+         for portGroup in portGroupNames: { %>
+
+      <tr class="<%= vSwitch %>Settings">
+        <td class="wizardLabel"><%= portGroup %> Type:</td>
+        <td class="wizardFields" id="<%= portGroup.replace(' ', '') %>Type"></td>
+      </tr>
+
+      <% } %>
+
+    <% } %>
+
+      <tr>
+        <td class="wizardLabel alignTop">Name Servers:</td>
+        <td class="wizardFields"><%= '<br />'.join(nameServers) %></td>
+      </tr>
+      <tr>
+        <td class="wizardLabel alignTop">Domain Names:</td>
+        <td class="wizardFields"><%= '<br />'.join(domainNames) %></td>
+      </tr>
+    </table>
+    <div>
+      <input type="hidden" name="_action_" value="setupWizardESXiPush" class="yui3-wizard-included-input"/>
+    </div>
+  </form>
+</div>
+
+<% if not initialWizard: { %>
+
+<div id="wizConfirm" class="midLevel yui3-wizard-loading">
+  <p class="settingHeaders">Confirmation</p>
+  <div id="wizardWarning">
+    <img id="warningImg" src="/images/exclamation_warning_large.png" alt="" style="visibility:hidden"/>
+    <p id="confirmationWarning">
+    &nbsp;
+    </p>
+  </div>
+</div>
+
+<% } %>
+
+<div id="wizFinish" class="midLevel yui3-wizard-loading">
+  <div id="responseDiv" class="">
+  </div>
+  <div id="installationStatus">
+    <table id="installSteps">
+
+      <% if not initialWizard: { %>
+
+      <tr id="step0" class="installStatusRow">
+        <td class="installStatusImageCell">
+          <img src="/images/icon_test_running.gif" alt="" />
+        </td>
+        <td>Shutting down ESXi</td>
+      </tr>
+
+      <% } %>
+
+      <tr id="step1" class="installStatusRow">
+        <td class="installStatusImageCell">
+          <img src="/images/icon_test_running.gif" alt="" />
+        </td>
+        <td class="dimmed">Creating disks</td>
+      </tr>
+      <tr id="step2" class="installStatusRow">
+        <td class="installStatusImageCell" >
+          <img src="/images/icon_test_running.gif" alt="" />
+        </td>
+        <td class="dimmed">Installing ESXi</td>
+      </tr>
+      <tr id="step3" class="installStatusRow">
+        <td class="installStatusImageCell" >
+          <img src="/images/icon_test_running.gif" alt="" />
+        </td>
+        <td class="dimmed">Configuring ESXi</td>
+      </tr>
+    </table>
+  </div>
+  <p id="finishedMessage" class="hidden">The wizard has finished successfully.</p>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var wizInstalling = false;
+var enableClose = false;
+var enableNext = true;
+var wizardTitle = "<%= initialWizard and 'ESXi Installation Wizard' or 'ESXi Reinstallation Wizard' %>";
+var reviewNextText = "<%= initialWizard and 'Install ESXi' or 'Next' %>";
+var submitAfterConfirm = <%= initialWizard and 'true' or 'false' %>;
+var resetInstallStatus = true;
+var validPassword = false;
+var warningFinished = false;
+
+var wizConfig = {
+    titleText: wizardTitle,
+    submitURL: '/mgmt/xmldata?p=setupWizardESXiPush',
+    responseContainer: '#responseDiv',
+    steps: [
+             { name: 'Welcome',
+               node: '#wizWelcome' },
+             { name: 'Network Settings',
+               node: '#wizVmk',
+               after: validateNetworkStep,
+               alternateValidator: nextButtonEnabled },
+             { name: 'Miscellaneous Settings',
+               node: '#wizMisc',
+               alternateValidator: isPasswordValid },
+
+             <% if not initialWizard: { %>
+
+             { name: 'Local Datastore',
+               node: '#wizDatastore'},
+
+             <% } %>
+
+             { name: 'Review Changes',
+               node: '#wizReview',
+               before: collectConfirmValues,
+               nextText: reviewNextText,
+
+               <% if initialWizard: { %>
+
+               after: checkStatus,
+
+               <% } else: { %>
+
+               after: confirmationWarning,
+
+               <% } %>
+
+               submitAfter: submitAfterConfirm },
+
+             <% if not initialWizard: { %>
+
+             { name: 'Confirmation',
+               node: '#wizConfirm',
+               nextText: "Install ESXi",
+               submitAfter: true,
+               alternateValidator: hasWarningReturned,
+               after: checkStatus },
+
+             <% } %>
+
+             { name: 'Finish',
+               node: '#wizFinish',
+               alternateValidator: closeButtonEnabled,
+               nextText: "Close",
+               after: wizardFinished }
+           ],
+    cancelImg: '/images/icon_wizard_close_bob.png',
+    cancelAction: cancelButtonClicked,
+    helpPage: 'setupWizardESXiPush',
+    helpImg: '/images/icon_wizard_help_bob.png',
+    topOffset: 10,
+    width: 645,
+    zIndex: 300
+};
+
+Y.on('domready', interfaceSwitched);
+Y.one('[name=managementInterface]').on("change", interfaceSwitched);
+
+Y.one('input[name=wizEsxiPassword]').on("change", checkPasswordComplexity);
+
+function interfaceSwitched() {
+    var interface = Y.one('[name=managementInterface]').get('value');
+
+    // Move the default gateway field to the correct vmk.
+    var gateway = $('gateway').parentNode.parentNode;
+    var tableRow = $('manualSection_' + interface).children[0].children[0];
+    tableRow.appendChild(gateway);
+
+    // Make sure that the management interface is enabled.
+    Y.one('[name=' + interface + 'Enable]').set('checked', true);
+
+    updateUpdateables(this.form);
+}
+
+function switchManagementInterface() {
+    var interfaceNode = Y.one('[name=managementInterface]');
+    var selectedInterface = interfaceNode.get('value');
+    var otherInterface = (selectedInterface == 'vmk1') ? 'vmk2' : 'vmk1';
+
+    if (!Y.one('[name=' + selectedInterface + 'Enable]').get('checked')) {
+
+        // We only want to switch if the other interface is the only one that's
+        // enabled.
+        if (Y.one('[name=' + otherInterface + 'Enable]').get('checked')) {
+            interfaceNode.set('value', otherInterface);
+        }
+    }
+}
+
+function esxiLicense(val) {
+    var re = /^([A-Za-z0-9]{5})-([A-Za-z0-9]{5})-([A-Za-z0-9]{5})-([A-Za-z0-9]{5})-([A-Za-z0-9]{5})$/;
+    if (!re.test(val)) {
+        throw "The correct format for a license is XXXXX-XXXXX-XXXXX-XXXXX-XXXXX.";
+    }
+}
+
+function cancelButtonClicked() {
+    // If the user has finished the wizard, clicking cancel doesn't make any
+    // sense, so we should prevent them from doing it, unless errors occurred
+    // on the push action or in the install process.
+    var finished = Y.one('.wizActionMessage');
+    var pushError = Y.one('.formErrorMessage');
+    var installError = Y.one('#finishedMessage') && Y.one('#finishedMessage').hasClass('warning');
+    if (!finished || pushError || installError) {
+        var exitWizard = confirm("Are you sure you want to exit the wizard?");
+        if (exitWizard) {
+            wizard.destroy();
+        }
+    }
+}
+
+function wizardFinished() {
+    enableClose = false;
+    $('wizNextButton').innerHTML = 'Loading VSP Page...';
+    enableElements($('wizNextButton'), false);
+    window.location = '/mgmt/gui?p=setupVSP';
+}
+
+// Collects the values entered on the previous pages and displays them in a
+// confirmation table.
+function collectConfirmValues() {
+
+    // Collect the values of all of the user-configurable settings
+    var interfaceEnabled = Y.one("input[name=vmk1Enable]").get("checked");
+    var dhcpNode = Y.one("input[name=vmk1Dhcp]").get("checked");
+    var dhcpDynDnsNode = Y.one("[name=vmk1Ddns]").get("checked");
+    var ipNode = Y.one("[name=vmk1IP]").get("value");
+    var subnetMaskNode = Y.one("[name=vmk1Netmask]").get("value");
+
+    Y.one("#confirmVmk1Enable").setContent(interfaceEnabled == true ? "Yes" : "No");
+    Y.one("#confirmVmk1Dhcp").setContent(dhcpNode == true ? "Yes" : "No");
+    Y.one("#confirmVmk1DhcpDdns").setContent(dhcpDynDnsNode == true ? "Yes" : "No");
+    Y.one("#confirmVmk1IPAddress").setContent(ipNode);
+    Y.one("#confirmVmk1SubnetMask").setContent(subnetMaskNode);
+    Y.one("#confirmVmk1MacAddress").setContent("<%= vmk1MacAddress %>");
+
+    if (!interfaceEnabled) {
+        Y.all("tr.vmk1settings_manual").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.all("tr.vmk1settings_dynamic").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.one("tr.vmk1settings_mac").setStyle("display", "none");
+        Y.all("tr.rvbd_vswitch_priSettings").each(function() {
+            this.setStyle("display", "none");
+        });
+    } else if (dhcpNode) {
+        Y.all("tr.vmk1settings_manual").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.all("tr.vmk1settings_dynamic").each(function() {
+            this.setStyle("display", "");
+        });
+        Y.one("tr.vmk1settings_mac").setStyle("display", "");
+        Y.all("tr.rvbd_vswitch_priSettings").each(function() {
+            this.setStyle("display", "");
+        });
+    } else {
+        Y.all("tr.vmk1settings_manual").each(function() {
+            this.setStyle("display", "");
+        });
+        Y.all("tr.vmk1settings_dynamic").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.one("tr.vmk1settings_mac").setStyle("display", "");
+        Y.all("tr.rvbd_vswitch_priSettings").each(function() {
+            this.setStyle("display", "");
+        });
+    }
+
+    interfaceEnabled = Y.one("input[name=vmk2Enable]").get("checked");
+    dhcpNode = Y.one("input[name=vmk2Dhcp]").get("checked");
+    dhcpDynDnsNode = Y.one("[name=vmk2Ddns]").get("checked");
+    ipNode = Y.one("[name=vmk2IP]").get("value");
+    subnetMaskNode = Y.one("[name=vmk2Netmask]").get("value");
+
+    Y.one("#confirmVmk2Enable").setContent(interfaceEnabled == true ? "Yes" : "No");
+    Y.one("#confirmVmk2Dhcp").setContent(dhcpNode == true ? "Yes" : "No");
+    Y.one("#confirmVmk2DhcpDdns").setContent(dhcpDynDnsNode == true ? "Yes" : "No");
+    Y.one("#confirmVmk2IPAddress").setContent(ipNode);
+    Y.one("#confirmVmk2SubnetMask").setContent(subnetMaskNode);
+    Y.one("#confirmVmk2MacAddress").setContent("<%= vmk2MacAddress %>");
+
+    if (!interfaceEnabled) {
+        Y.all("tr.vmk2settings_manual").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.all("tr.vmk2settings_dynamic").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.one("tr.vmk2settings_mac").setStyle("display", "none");
+        Y.all("tr.rvbd_vswitch_auxSettings").each(function() {
+            this.setStyle("display", "none");
+        });
+    } else if (dhcpNode) {
+        Y.all("tr.vmk2settings_manual").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.all("tr.vmk2settings_dynamic").each(function() {
+            this.setStyle("display", "");
+        });
+        Y.one("tr.vmk2settings_mac").setStyle("display", "");
+        Y.all("tr.rvbd_vswitch_auxSettings").each(function() {
+            this.setStyle("display", "");
+        });
+    } else {
+        Y.all("tr.vmk2settings_manual").each(function() {
+            this.setStyle("display", "");
+        });
+        Y.all("tr.vmk2settings_dynamic").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.one("tr.vmk2settings_mac").setStyle("display", "");
+        Y.all("tr.rvbd_vswitch_auxSettings").each(function() {
+            this.setStyle("display", "");
+        });
+    }
+
+    var managementInterface = Y.one("[name=managementInterface]").get("value");
+    Y.one("#confirmManagementInterface").setContent(managementInterface);
+
+    var gateway = Y.one("[name=gateway]").get("value");
+    Y.one("#confirmGateway").setContent(gateway);
+
+    if (gateway != "") {
+        Y.one("tr.gateway").setStyle("display", "");
+    } else {
+        Y.one("tr.gateway").setStyle("display", "none");
+    }
+
+    <% if not initialWizard : { %>
+
+    var datastore = "";
+    Y.all("input[name=wipeDatastore]").each(function() {
+        if (this.get("checked")) {
+          datastore = this.get("value");
+        }
+    });
+
+    Y.one("#confirmWipeDatastore").setContent(datastore == "true" ? "Yes" : "No");
+
+    <% } %>
+
+    var license = "Default";
+
+    if (Y.one("input[name=licenseEnable]").get("checked")) {
+        license = Y.one("[name=license]").get("value");
+    }
+
+    Y.one("#confirmLicense").setContent(license);
+
+    var ntp = Y.one("input[name=b/rbt/vsp/config/esxi/ntp/push_config]").get("checked");
+
+    Y.one("#confirmNtp").setContent(ntp == true ? "Yes" : "No");
+
+    <% if initialWizard: { %>
+
+    vncEnabled = Y.one("input[name=b/rbt/vsp/config/esxi/vmx/vnc/enable]").get("checked");
+    vncPort = Y.one("input[name=u32/rbt/vsp/config/esxi/vmx/vnc/port]").get("value");
+
+    Y.one("#confirmVncEnabled").setContent(vncEnabled == true ? 'Yes' : 'No');
+    Y.one("#confirmVncPort").setContent(vncPort);
+
+    if (vncEnabled) {
+        Y.all("tr.vncSettingRow").each(function() {
+            this.setStyle("display", "");
+        });
+    } else {
+        Y.all("tr.vncSettingRow").each(function() {
+            this.setStyle("display", "none");
+        });
+    }
+
+    <% } %>
+
+    // And also display all of the settings which are not user-configurable
+    Y.one("#vmk0Dhcp").setContent("<%= vmk0Dhcp and 'Yes' or 'No' %>");
+    Y.one("#vmk0DhcpDdns").setContent("<%= vmk0Dns and 'Yes' or 'No' %>");
+    Y.one("#vmk0IPAddress").setContent("<%= vmk0IPAddress %>");
+    Y.one("#vmk0SubnetMask").setContent("<%= vmk0SubnetMask %>");
+    Y.one("#vmk0MacAddress").setContent("<%= vmk0MacAddress %>");
+
+    dhcpNode = <%= vmk0Dhcp %>;
+
+    if (dhcpNode == true) {
+        Y.all("tr.vmk0settings_manual").each(function() {
+            this.setStyle("display", "none");
+        });
+        Y.all("tr.vmk0settings_dynamic").each(function() {
+            this.setStyle("display", "");
+        });
+    } else {
+        Y.all("tr.vmk0settings_manual").each(function() {
+            this.setStyle("display", "");
+        });
+        Y.all("tr.vmk0settings_dynamic").each(function() {
+            this.setStyle("display", "none");
+        });
+    }
+
+    var vSwitchDetails = <%= RVBDUtils.jsonizeAndEscapeForJs(vSwitchDetails) %>;
+    for (var vSwitch in vSwitchDetails) {
+        if (vSwitchDetails[vSwitch]) {
+            Y.one('#' + vSwitch + 'MTU').setContent(vSwitchDetails[vSwitch]['state']['mtu']);
+            Y.one('#' + vSwitch + 'NIC').setContent(vSwitchDetails[vSwitch]['adapter']['active']['1']['name']);
+            Y.one('#' + vSwitch + 'Ports').setContent(vSwitchDetails[vSwitch]['max_ports']);
+            for (var portGroup in vSwitchDetails[vSwitch]['port_grp']) {
+                Y.one('#' + portGroup.replace(/\s/g, '') + 'Type').setContent(vSwitchDetails[vSwitch]['port_grp'][portGroup]['type'])
+            }
+        }
+    }
+
+    // Zebra stripe the two confirmation tables.  Elements might be hidden, so
+    // we want to skip over those without breaking the striping.
+    var tables = new Array(document.getElementById("confirmationTable1"),
+                           document.getElementById("confirmationTable2"));
+    for (var t = 0; t < tables.length; t++) {
+        var rows = tables[t].getElementsByTagName("tr");
+        var odd = false;
+
+        // Because rows can get added and deleted to this table as the
+        // confirmation page is reloaded, we want to delete all current row
+        // information before adding the classes.
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].style.display != "none") {
+                rows[i].className = rows[i].className.replace("evenRow", "");
+                rows[i].className = rows[i].className.replace("oddRow", "");
+            }
+        }
+
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].style.display != "none") {
+                if (odd) {
+                    rows[i].className += " oddRow";
+                } else {
+                    rows[i].className += " evenRow";
+                }
+                odd = !odd;
+            }
+        }
+    }
+}
+
+
+function checkPasswordComplexity() {
+    var esxiPassword = Y.one('input[name=wizEsxiPassword]').get("value");
+
+    if (esxiPassword.length < 6) {
+        return;
+    }
+
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkPasswordComplexity',
+        fields: { password: esxiPassword },
+        successFn: function() {
+            $('passwordWarning').style.display = "none";
+            validPassword = true;
+        },
+        errorFn: function() {
+            $('passwordWarning').style.display = "";
+            validPassword = false;
+        }
+    });
+}
+
+function validateNetworkStep() {
+    enableNext = false;
+    $('validationDiv').style.visibility = "visible";
+    checkNetworkConfig();
+    return true;
+}
+
+function confirmationWarning() {
+    warningFinished = false;
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkIfSafeToShutDownESXi',
+        successFn: function(response) {
+            warningFinished = true;
+            var warning = '<p>' + response + '</p>';
+            Y.one('#confirmationWarning').setContent('<p>This will perform a complete reinstall of ESXi.  Any settings changed in ESXi will be lost.</p>' + warning);
+            $('warningImg').style.visibility = '';
+        },
+        errorFn: function() {
+            warningFinished = true;
+        }
+    });
+}
+
+function checkNetworkConfig() {
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=checkNetworkConfiguration',
+        form: $('networkForm'),
+        successFn: function(response) {
+            if (response == '') {
+                enableNext = true;
+                $('validationDiv').style.visibility = "hidden";
+                wizard.advanceStep();
+            }
+            else {
+                new RBT.Dialog({alignNode: '#wizNextButton',
+                                affinity: RBT.Dialog.AFFINITY_SE,
+                                content: response}).render();
+                enableNext = true;
+                $('validationDiv').style.visibility = "hidden";
+            }
+        },
+        errorFn: function(errorMsg) {
+            new RBT.Dialog({alignNode: '#wizNextButton',
+                            affinity: RBT.Dialog.AFFINITY_SE,
+                            content: errorMsg}).render();
+            enableNext = true;
+            $('validationDiv').style.visibility = "hidden";
+        }
+    });
+}
+
+function isPasswordValid() {
+    return validPassword;
+}
+
+function hasWarningReturned() {
+    return warningFinished;
+}
+
+function checkStatus() {
+
+    var cancelButton = Y.one('.yui3-wizard-cancel-button a');
+    var cancelImage = cancelButton.one('.yui3-wizard-cancel-image');
+
+    wizard.backButton.setStyle('display', '');
+
+    if (resetInstallStatus) {
+          cancelImage.setAttribute('src', '/images/icon_wizard_close_dimmed_bob.png');
+          cancelButton.setStyle('cursor', 'default');
+          enableElements('wizBackButton', false);
+          wizInstalling = false;
+          var statusImages = Y.all('td.installStatusImageCell img');
+          statusImages.setAttribute('src', '/images/icon_test_running.gif');
+          statusImages.setStyle('visibility', 'hidden');
+
+          var installTable = document.getElementById("installSteps");
+          var rows = installTable.getElementsByTagName("tr");
+
+          for (var i = 0; i < rows.length; i++) {
+              rows[i].children[1].className = "dimmed";
+          }
+
+          $('responseDiv').innerHTML = '';
+          $('finishedMessage').className = "hidden";
+          resetInstallStatus = false;
+          enableClose = false;
+    }
+
+    // We would only get an error like this before installation has actually
+    // started, so if it has successfully stop checking for it.
+    if (!wizInstalling) {
+        var responseDivNode = Y.one('div#responseDiv');
+
+        if (responseDivNode.one('p.formErrorMessage')) {
+            // There was an error during the pre-installation activities.
+            $('installationStatus').className = "hidden";
+            enableClose = true;
+            enableElements('wizBackButton', true);
+            cancelButton.setStyle('cursor', 'pointer');
+            cancelImage.setAttribute('src', '/images/icon_wizard_close_bob.png');
+            resetInstallStatus = true;
+            return;
+        }
+
+        if (!responseDivNode.one('p.wizActionMessage')) {
+            // We haven't received a response yet.
+            setTimeout("checkStatus()", 50);
+            return;
+        }
+    }
+
+    RBT.rpc({
+        url: '/mgmt/jsondata?p=vspInstallStatus',
+        successFn: function(response) {
+
+            if (response == 'powering off') {
+                $('step0').cells[0].children[0].style.visibility = "visible";
+                $('step0').cells[1].className = "";
+
+            } else if (response == 'creating disks') {
+
+                <% if not initialWizard: { %>
+
+                $('step0').cells[0].children[0].src = "/images/icon_wizard_checkmark.png";
+
+                <% } %>
+
+                $('step1').cells[0].children[0].style.visibility = "visible";
+                $('step1').cells[1].className = "";
+                wizInstalling = true;
+
+            } else if (response == 'installing') {
+                $('step1').cells[0].children[0].src = "/images/icon_wizard_checkmark.png";
+                $('step2').cells[0].children[0].style.visibility = "visible";
+                $('step2').cells[1].className = "";
+
+            } else if (response == 'pushing configs') {
+                $('step2').cells[0].children[0].src = "/images/icon_wizard_checkmark.png";
+                $('step3').cells[0].children[0].style.visibility = "visible";
+                $('step3').cells[1].className = "";
+
+            // For a split second after the user clicks finish, the VSP status
+            // is still "available", which means that the RPC check will
+            // succeed immediately and enable the button and then never check
+            // the status again, which is a problem.  To fix this, we only
+            // accept the "available" status if it's already gone through the
+            // install process.
+            } else if (response == 'available' && wizInstalling) {
+                $('step3').cells[0].children[0].src = "/images/icon_wizard_checkmark.png";
+                $('step3').cells[0].children[0].style.visibility = "visible";
+                $('finishedMessage').innerHTML = 'The wizard has finished successfully.';
+                $('finishedMessage').className = "";
+                enableClose = true;
+
+            // If the installation failed and the user is relaunching the
+            // wizard, we'll have the same problem as above where the status is
+            // still old, so we need to wait for the installation to start in
+            // order to accept any of these failure states.
+            } else if (response == 'failed creating disks' && wizInstalling) {
+                $('step1').cells[0].children[0].src = "/images/icon_wizard_x.png";
+                $('finishedMessage').innerHTML = 'There was an error while creating disks.  See the <a href="/mgmt/gui?p=logDisplay&logPrefix=">System Logs</a> for details.';
+                $('finishedMessage').className = "warning";
+                enableClose = true;
+                enableElements('wizBackButton', true);
+                cancelButton.setStyle('cursor', 'pointer');
+                cancelImage.setAttribute('src', '/images/icon_wizard_close_bob.png');
+                resetInstallStatus = true;
+                return;
+
+            } else if (response == 'failed installation' && wizInstalling) {
+                $('step2').cells[0].children[0].src = "/images/icon_wizard_x.png";
+                $('finishedMessage').innerHTML = 'There was an error while installing ESXi.  See the <a href="/mgmt/gui?p=logDisplay&logPrefix=">System Logs</a> for details.';
+                $('finishedMessage').className = "warning";
+                enableClose = true;
+                enableElements('wizBackButton', true);
+                cancelButton.setStyle('cursor', 'pointer');
+                cancelImage.setAttribute('src', '/images/icon_wizard_close_bob.png');
+                resetInstallStatus = true;
+                return;
+
+            } else if (response == 'failed initial config' && wizInstalling) {
+                $('step3').cells[0].children[0].src = "/images/icon_wizard_x.png";
+                $('finishedMessage').innerHTML = 'There was an error while configuring ESXi.  See the <a href="/mgmt/gui?p=logDisplay&logPrefix=">System Logs</a> for details.';
+                $('finishedMessage').className = "warning";
+                enableClose = true;
+                enableElements('wizBackButton', true);
+                cancelButton.setStyle('cursor', 'pointer');
+                cancelImage.setAttribute('src', '/images/icon_wizard_close_bob.png');
+                resetInstallStatus = true;
+                return;
+            }
+
+            // There are a couple other intermediate stages that last too short
+            // to display an actual step for, like "powered off" and
+            // "unavailable".  We still want to run this check again even if we
+            // run into one of those, so just check if we're not available once
+            // the install has actually started.
+            if (response != 'available' || wizInstalling == false) {
+                setTimeout("checkStatus()", 5000);
+            }
+        }
+    });
+}
+
+function nextButtonEnabled() {
+    return enableNext;
+}
+
+function closeButtonEnabled() {
+    return enableClose;
+}
+
+// ]]>
+</script>

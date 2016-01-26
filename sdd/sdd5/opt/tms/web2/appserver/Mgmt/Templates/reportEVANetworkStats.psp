@@ -1,0 +1,89 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Sindhura Balireddi
+##
+## Network Stats
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, json, eva" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="pageletNodes">
+    return [ '/rbt/eva/ext/*' ]
+</psp:method>
+
+<%
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+self.beginPagelet()
+# only for EVA or Steelhead EX
+if not eva.isCMC: {
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('RBT.VE.refreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<psp:include path="/Templates/evaHAHeader.psp">
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+Y.on('domready', function () {
+    var chart,
+        highstockOptions = RBT.Reports2.defaultHighstockOptions(false),
+        seriesNames = <%= json.dumps(eva.REPORTS['NETWORK']) %>;
+
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+    highstockOptions.navigator.series.lineColor = RBT.Reports2.ORANGE;
+    highstockOptions.series = [{name: seriesNames.READ_TPUT,
+                                color: RBT.Reports2.ORANGE},
+                               {name: seriesNames.WRITE_TPUT,
+                                color: RBT.Reports2.GRAY_DARK}];
+    highstockOptions.yAxis[0].title.text = 'Throughput (B/s)';
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl:  <%= json.dumps(Reports2.constructDataUrl("edgeNetworkIO")) %>,
+        dataFormatterFn: formatThroughput,
+        options: highstockOptions,
+        statsFn: avgThroughput,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        boundariesChangedFn: setReports2ChartWindow
+    });
+});
+
+function formatThroughput(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'B/s');
+}
+function formatBytesTransferred(value) {
+    return RBT.Reports2.scale(value, 1, 'si', 'B');
+}
+
+function avgThroughput(allSeriesData) {
+    var allStats = [],
+        sum = 0,
+        avg = 0,
+        avgString,
+        sumString;
+    Y.each(allSeriesData, function (data) {
+        sum = RBT.Reports2.integrate(data);
+        avg = RBT.Reports2.avg(data);
+        sumString = 'Total: ' + formatBytesTransferred(sum);
+        avgString = 'Average: ' + formatThroughput(avg);
+        allStats.push([sumString, avgString]);
+    });
+    return allStats;
+}
+// ]]>
+</script>
+
+<% self.endPagelet() %>

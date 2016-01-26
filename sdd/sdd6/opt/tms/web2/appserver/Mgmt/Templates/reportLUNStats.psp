@@ -1,0 +1,198 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+## Author: John Cho
+##
+## reportLUNStats.psp
+## This is the template for the EVA LUN Stats report page.
+##
+%>
+
+<%@page imports="Nodes, RVBDUtils, ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:EVALUNStatsPagelet, ProductReportContext:ProductGfxContext" %>
+<%@page extends="EVALUNStatsPagelet" %>
+<%@page indentType="braces" %>
+
+
+<psp:method name="css">
+    return '''
+table.reportParameters select {
+    margin-right: 20px;
+}
+'''
+</psp:method>
+
+
+<psp:method name="getLUNOptions">
+    options = [('0', 'All')]
+    session = self.session()
+    mgmt = session.value('mgmt')
+    fields = self.request().fields()
+    basePath = ''
+    if RVBDUtils.isCMC():
+        # Get selected appliance
+        app, app_prod, app_sn = Nodes.parseApplianceParam(fields.get('appliance', session.value('appliance', '')))
+        if app_sn:
+            # Setup the base node path for the state of the selected appliance
+            basePath = '/cmc/state/appliance/%s/%s' % (app_prod, app_sn)
+        else:
+            return options
+    luns = Nodes.getMgmtLocalChildrenNames(mgmt, '%s/rbt/eva/ext/vlun/state' % basePath)
+    for lun in luns:
+        lunId = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/state/%s/subclass_id' % (basePath, lun))
+        alias = Nodes.present(mgmt, '%s/rbt/eva/ext/vlun/config/%s/alias' % (basePath, lun))
+        lun = lun.replace("\\/", "/")
+        lun = lun.replace("\\\\", "\\")
+        if alias:
+            options.append((lunId, '%s (%s)' % (alias, lun)))
+        else:
+            options.append((lunId, lun))
+    return options
+</psp:method>
+
+<psp:method name="dialogEntries" params="reportOpts">
+    dialogEntries = super(EVALUNStatsPagelet, self).dialogEntries(reportOpts)
+    controlFormId = reportOpts.get('controlFormId')
+    formSubmitAction = "document.getElementById('%s').submit();" % controlFormId
+    req = self.request()
+    fields = req.fields()
+    session = req.session()
+    lunOptions = self.getLUNOptions()
+    lunField = fields.get('lun', session.value('lun', '0'))
+    self.updateGfxParams(reportOpts, {'lun': lunField})
+    dialogEntries['lun'] = FormUtils.NodeEntry(
+        name = 'lun',
+        widget = 'select',
+        action = formSubmitAction,
+        selectOptions = lunOptions,
+        value = lunField,
+        )
+    return dialogEntries
+</psp:method>
+
+<%
+reportOpts = {
+    'controlFormId': 'evaLunStatsForm',
+    'reportSpecs': {
+        'evaLunStatsIO': {
+            'tableName': 'evaLunStatsIOTable',
+            'gfxId': 'evaLunStatsIO',
+            'gfxDisplayId': 'evaLunStatsIOGraphImg',
+            'order': 1
+        },
+        'evaLunStatsIOPS': {
+            'tableName': 'evaLunStatsIOPSTable',
+            'gfxId': 'evaLunStatsIOPS',
+            'gfxDisplayId': 'evaLunStatsIOPSGraphImg',
+            'order': 2
+        },
+        'evaLunStatsLatency': {
+            'tableName': 'evaLunStatsLatencyTable',
+            'gfxId': 'evaLunStatsLatency',
+            'gfxDisplayId': 'evaLunStatsLatencyGraphImg',
+            'order': 3
+        }
+    },
+    'onApplianceChange': '$("evaLunStatsForm").submit()'
+}
+evaLunStatsIOTable = ajaxentrytable.AjaxEntryTable(
+    'evaLunStatsIO',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaLunStatsIOPSTable = ajaxentrytable.AjaxEntryTable(
+    'evaLunStatsIOPS',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+evaLunStatsLatencyTable = ajaxentrytable.AjaxEntryTable(
+    'evaLunStatsLatency',
+    headerSpec = [],
+    rowSpec = '''[
+AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+AjaxEntryTable.tdAttr('value', 'reportValueTD')
+    ]''',
+    emptyMessage = 'No information available.'
+)
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+lun = self.request().session().value('lun', '0')
+self.hasHelp = True
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+
+# only for EVA or Steelhead EX
+if not RVBDUtils.isCMC(): {
+    import eva
+    edgeLaunched, edgeLaunchMsg, edgeRefresh = eva.edgeLaunchCheck(mgmt)
+    if not edgeLaunched: {
+        self.writeln('<p>%s</p>' % edgeLaunchMsg)
+        if edgeRefresh: {
+            self.addPageletJavascript('veRefreshLater();')
+        }
+        self.endPagelet()
+        return
+    }
+}
+%>
+<div id="evaLunStatsIOGraphDiv" class="graphDiv">
+  <img id="evaLunStatsIOGraphImg" src="" class="graphImg"
+    alt="LUN I/O Data" />
+</div>
+<%= evaLunStatsIOTable.html(self, cssClass="midLevel") %>
+
+<div id="evaLunStatsIOPSGraphDiv" class="graphDiv">
+  <img id="evaLunStatsIOPSGraphImg" src="" class="graphImg"
+    alt="LUN IOPS Data" />
+</div>
+<%= evaLunStatsIOPSTable.html(self, cssClass="midLevel") %>
+
+<div id="evaLunStatsLatencyGraphDiv" class="graphDiv">
+  <img id="evaLunStatsLatencyGraphImg" src="" class="graphImg"
+    alt="LUN Latency Data" />
+</div>
+<%= evaLunStatsLatencyTable.html(self, cssClass="midLevel") %>
+
+<form id="evaLunStatsForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <%= reportOpts.get('groupHdr', '') %>
+          <th>LUN:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+            <%= reportOpts.get('groupCol', '') %>
+            <%= dialogEntries['lun'].html(self, format='horiz') %>
+            <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+  </div>
+</form>
+<%
+self.endPagelet()
+%>

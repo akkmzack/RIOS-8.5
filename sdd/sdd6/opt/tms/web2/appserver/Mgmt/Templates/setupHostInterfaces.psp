@@ -1,0 +1,279 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupHostInterfaces.psp
+## This is the template for the host interface settings.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, FormUtils:NodeEntry, OSUtils, RVBDUtils, HostUtils, interfacewidget, ajaxentrytable, PagePresentation:Pagelet, wsm" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+#routeTable_main { width: 100%; }
+#routeIPv6Table_main { width: 100%; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    mgmt = self.session().value('mgmt')
+    entries = {
+        'routingTable': NodeEntry(
+            path='/net/routes/config/ipv4/prefix/*')}
+    entries.update(interfacewidget.getNodeEntries(mgmt, 'primary'))
+    entries.update(interfacewidget.getNodeEntries(mgmt, 'aux'))
+    return entries
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    routableInterfaces = HostUtils.getRoutableInterfaces(mgmt)
+    routableInterfaces = FormUtils.sortInterfacesByName(routableInterfaces)
+    interfaceOptions = [(x, x) for x in routableInterfaces]
+    interfaceOptions.insert(0, ('auto', 'Auto'))
+
+    return {
+        'dest': NodeEntry(
+            name='dest',
+            type='ipv4addr_opt',
+            label='Destination IPv4 Address'),
+        'netmask': NodeEntry(
+            name='netmask',
+            validate='subnetMask',
+            label='IPv4 Subnet Mask'),
+        'gateway': NodeEntry(
+            name='gateway',
+            type='ipv4addr',
+            label='Gateway IPv4 Address',
+            inputOptional=True),
+        'interface': NodeEntry(
+            name='interface',
+            selectOptions=interfaceOptions,
+            value='',
+            label='Interface'),
+        'destIPv6': NodeEntry(
+            name='destIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr_opt',
+            label='Destination IPv6 Address'),
+        'prefixIPv6': NodeEntry(
+            name='prefixIPv6',
+            widgetClass='ipv6prefix',
+            validate='ipv6prefix_opt',
+            label='IPv6 Prefix'),
+        'gatewayIPv6': NodeEntry(
+            name='gatewayIPv6',
+            widgetClass='ipv6addr',
+            validate='ipv6addr',
+            label='Gateway IPv6 Address'),
+        'enableIPv6StackMode': FormUtils.NodeEntry(
+            path='/net/config/ipv6/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable IPv6 on Base Interfaces',
+            action='updateUpdateables("baseInterfaceConfigForm"); updateUpdateables("mainRoutingTableIPv6Form")')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+fromPolicyPage = (policyType != None) # For CMC
+showIpv6 = RVBDUtils.ipv6Supported(self.request().fields())
+self.beginPagelet()
+%>
+<div class="midLevel">
+  <form method="post"
+        action="<%= self.thisPageletRequest() %>" id="baseInterfaceConfigForm">
+<%
+if showIpv6: {
+%>
+    <fieldset>
+      <legend>IPv6</legend>
+      <%= dialogEntries['enableIPv6StackMode'].html(self) %>
+    </fieldset>
+<%
+}
+%>
+    <fieldset>
+      <legend>Primary Interface</legend>
+      <%= interfacewidget.primaryHtml(nodeEntries, self, fromPolicyPage) %>
+    </fieldset>
+<%
+# In the presence of HP Procurve, the auxiliary interface does not exist.
+# Only SH may reside on an HP Procurve, so aux will always be present in the
+# native CMC node hierarchy.
+# For an appliance policy, the CMC cannot query the node for whether aux is
+# present or absent, so on a policy page, we always assume aux exists and
+# allow the user to configure it.
+auxExists = fromPolicyPage or 'aux' == Nodes.present(wsm.mgmt, '/net/interface/state/aux')
+if auxExists: {
+%>
+    <fieldset>
+      <legend>Auxiliary Interface</legend>
+      <%= interfacewidget.auxHtml(nodeEntries, self, fromPolicyPage) %>
+    </fieldset>
+<%
+}
+%>
+    <div>
+      <input type="hidden" name="_action_" value="setupHostInterfaces" />
+    </div>
+    <%= FormUtils.formSubmitButtons(self) %>
+  </form>
+</div>
+
+<%
+# IPv4 Routing table:
+
+addRoute = 'addRoute_'
+
+routeTable = ajaxentrytable.AjaxEntryTable('route',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=mainRoutes'),
+    titleText='Main IPv4 Routing Table',
+    emptyMessage='No current routes.',
+    addButtonText='Add a New Route',
+    addButtonName='addRoute',
+    removeName='removeRoutes',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedRoute_')
+
+# cmc appliance policy version doesn't have interface and status columns
+if policyType: {
+    routeTable.headerSpec = ('', 'Destination', 'Subnet Mask', 'Gateway')
+    routeTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRoute_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('mask'),
+ AjaxEntryTable.tdAttr('gateway')]"""
+} else: {
+    routeTable.headerSpec = ('', 'Destination', 'Subnet Mask', 'Gateway', 'Interface', 'Status')
+    routeTable.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRoute_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('mask'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('interface'),
+ AjaxEntryTable.tdAttr('status')]"""
+}
+
+routeTable.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['dest'].html(self, namePrefix=addRoute),
+       dialogEntries['netmask'].html(self, namePrefix=addRoute),
+       dialogEntries['gateway'].html(self, namePrefix=addRoute),
+       dialogEntries['interface'].html(self, namePrefix=addRoute))
+%>
+
+<a name="MainRoutingTable" id="MainRoutingTable"></a>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <input type="hidden" name="_action_" value="setupHostInterfaces" />
+    <%= routeTable.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<%
+if showIpv6: {
+
+    # IPv6 Routing table:
+    addRouteIPv6 = 'addRouteIPv6_'
+
+    routeTableIPv6 = ajaxentrytable.AjaxEntryTable('routeIPv6',
+        url=self.urlForCmcEdit('/mgmt/xmldata?p=mainRoutesIPv6'),
+        titleText='Main IPv6 Routing Table',
+        emptyMessage='No current routes.',
+        addButtonText='Add a New Route',
+        addButtonName='addRouteIPv6',
+        removeName='removeRoutesIPv6',
+        removeButtonText='Remove Selected',
+        removePrefix='selectedRouteIPv6_')
+
+    # cmc appliance policy version doesn't have interface and status columns
+    if policyType: {
+        routeTableIPv6.headerSpec = ('', 'Destination', 'Prefix', 'Gateway')
+        routeTableIPv6.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRouteIPv6_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('prefix'),
+ AjaxEntryTable.tdAttr('gateway')]"""
+    } else: {
+        routeTableIPv6.headerSpec = ('', 'Destination', 'Prefix', 'Gateway', 'Interface', 'Status')
+        routeTableIPv6.rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'selectedRouteIPv6_'),
+ AjaxEntryTable.tdAttr('destination'),
+ AjaxEntryTable.tdAttr('prefix'),
+ AjaxEntryTable.tdAttr('gateway'),
+ AjaxEntryTable.tdAttr('interface'),
+ AjaxEntryTable.tdAttr('status')]"""
+    }
+
+    routeTableIPv6.addDivContent = '''
+<div class="midLevel">
+  <table>
+    %s
+    %s
+    %s
+  </table>
+</div>
+''' % (dialogEntries['destIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['prefixIPv6'].html(self, namePrefix=addRouteIPv6),
+       dialogEntries['gatewayIPv6'].html(self, namePrefix=addRouteIPv6))
+%>
+
+<a name="MainRoutingTableIPv6" id="MainRoutingTableIPv6"></a>
+<form method="post"
+      action="<%= self.thisPageletRequest() %>" id="mainRoutingTableIPv6Form">
+  <div id="mainRouteTableIPv6Div">
+    <input type="hidden" name="_action_" value="setupHostInterfacesIPv6" />
+    <%= routeTableIPv6.html(self, cssClass="topLevel") %>
+  </div>
+</form>
+
+<% } %>
+
+<% self.endPagelet() %>
+
+<% if showIpv6: { %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+// Use a DisplayControl object to control the visibility of the IPv6 Divs
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    var form = $('baseInterfaceConfigForm');
+    var ipv6Enabled = form['<%= dialogEntries["enableIPv6StackMode"].elementName(self) %>'].checked;
+    switch (div) {
+        case 'manualIPv6InterfaceSection_primary':
+            return ipv6Enabled;
+        case 'manualIPv6InterfaceSection_aux':
+            return ipv6Enabled;
+        case 'mainRouteTableIPv6Div':
+            return ipv6Enabled;
+    }
+    return true;
+}
+
+addUpdateable('enable', displayControl, 'manualIPv6InterfaceSection_primary');
+addUpdateable('enable', displayControl, 'manualIPv6InterfaceSection_aux');
+addUpdateable('enable', displayControl, 'mainRouteTableIPv6Div');
+
+// ]]>
+</script>
+
+<% } %>

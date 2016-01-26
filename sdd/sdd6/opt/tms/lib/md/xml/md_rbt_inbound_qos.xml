@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2011 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_inbound_qos                                         -->
+<!--   Module Root: /rbt/qos/inbound                                        -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_inbound_qos.c    -->
+
+<node-list module="rbt_inbound_qos">
+    <!-- Global configuration -->
+    <!-- IMPORTANT: When adding nodes to this section please update
+         mriq_action_clear_config() function in Inbound QoS module -->
+    <config>
+        <name>/rbt/qos/inbound/config/enable</name>
+        <description>Enable/Disable Inbound QoS</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/link-padding</name>
+        <description>Inbound QoS Link Padding</description>
+        <value type="uint16" max="999">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/tcp-control/enable</name>
+        <description>Enable/Disable TCP Control</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/tcp-control/weight</name>
+        <description>TCP Control Weight</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/flow-padding/enable</name>
+        <description>Enable/Disable Flow Padding</description>
+        <value type="bool">true</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/flow-padding/timeout</name>
+        <description>Flow Padding Timeout</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/hier-mode/enable</name>
+        <description>Enable/Disable Hierarchical QoS Mode</description>
+        <value type="bool">false</value>
+    </config>
+
+    <!-- Interface Configuration -->
+    <!-- IMPORTANT: When adding nodes to this section please update
+         mriq_cb_reset_interface() function in Inbound QoS module -->
+    <config-wildcard>
+        <name>/rbt/qos/inbound/config/interface/*</name>
+        <description>Inbound QoS Interface Name</description>
+        <value type="string"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/qos/inbound/config/interface/*/enable</name>
+        <description>Enable/disable Inbound QoS on the Interface</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/interface/*/link_rate</name>
+        <description>Inbound QoS Rate</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/interface/*/link-padding</name>
+        <description>Per Interface Inbound QoS Link Padding</description>
+        <value type="uint16" max="999">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/interface/*/max_flows</name>
+        <description>Per Interface Maximum Number of QoS Flows</description>
+        <value type="uint32" squash="false">4294967295</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/interface/*/burst_size</name>
+        <description>Per Interface HFSC Burst Size</description>
+        <value type="uint32">0</value>
+    </config>
+
+    <!-- Classifier Configuration Nodes -->
+    <config-wildcard>
+        <name>/rbt/qos/inbound/config/filter/*</name>
+        <description>Classifier Rule Index</description>
+        <value type="uint16"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/name</name>
+        <description>Classifier Rule Name</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/class</name>
+        <description>Service Class Name</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/description</name>
+        <description>Rule Description</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/traffic_type</name>
+        <description>Traffic Type</description>
+        <value type="string">all</value>
+        <value-choices>
+            <choice>all</choice>
+            <choice>optimized</choice>
+            <choice>passthrough</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/vlan</name>
+        <description>Vlan Number</description>
+        <value type="int16" min="-1" max="4095">-1</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/dscp</name>
+        <description>DSCP Id</description>
+        <value type="int16" min="-1" max="63">-1</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/ip_protocol</name>
+        <description>IP Protocol Number</description>
+        <value type="int16" min="-1" max="255">-1</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/src_network</name>
+        <description>Source Network and Mask</description>
+        <value type="ipv4prefix">0.0.0.0/0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/dst_network</name>
+        <description>Destination Network and Mask</description>
+        <value type="ipv4prefix">0.0.0.0/0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/src_port</name>
+        <description>Source Port Number or Port Label</description>
+        <value type="string">-1</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/dst_port</name>
+        <description>Destination Port Number or Port Label</description>
+        <value type="string">-1</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/dpi_protocol</name>
+        <description>Name of the DPI Protocol</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/filter/*/dpi_params_idx</name>
+        <description>Index of Extended DPI Parameters</description>
+        <value type="uint16">0</value>
+    </config>
+
+    <!-- Extended DPI parameters -->
+    <config-wildcard>
+        <name>/rbt/qos/inbound/config/dpi_params/http/*</name>
+        <description>Index for HTTP Protocol Extended Parameters</description>
+        <value type="uint16"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/qos/inbound/config/dpi_params/http/*/domain_name</name>
+        <description>Domain Name</description>
+        <value type="string"></value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/dpi_params/http/*/relative_path</name>
+        <description>Relative URL</description>
+        <value type="string"></value>
+    </config>
+
+    <!-- Shaper Configuration Nodes -->
+    <config-wildcard>
+        <name>/rbt/qos/inbound/config/class/*</name>
+        <description>Class Name</description>
+        <value type="string"/>
+    </config-wildcard>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/priority</name>
+        <description>Latency Priority</description>
+        <value type="string">low</value>
+        <value-choices>
+            <choice>realtime</choice>
+            <choice>interactive</choice>
+            <choice>business</choice>
+            <choice>normal</choice>
+            <choice>low</choice>
+            <choice>best-effort</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/min_rate_pct</name>
+        <description>Guaranteed Bandwidth Allocation in Percents</description>
+        <value type="float32" min="0.0" max="100.0">0.0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/ul_rate_pct</name>
+        <description>Maximum Bandwidth Allocation in Percents</description>
+        <value type="float32" min="0.01" max="100.0">100.0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/ls_weight</name>
+        <description>Link Sharing Weight</description>
+        <value type="float32" min="1.0" max="100.0">100.0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/tcp-control/override</name>
+        <description>Enable Per Class TCP Control Override</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/tcp-control/enable</name>
+        <description>Enable/Disable TCP Control</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/tcp-control/weight</name>
+        <description>TCP Control Weight</description>
+        <value type="uint16">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/flow-padding/override</name>
+        <description>Enable Per Class Flow Padding Override</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/flow-padding/enable</name>
+        <description>Enable/Disable Flow Padding</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/flow-padding/timeout</name>
+        <description>Flow Padding Timeout</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/queue_type</name>
+        <description>Queue Type</description>
+        <value type="string">sfq</value>
+        <value-choices>
+            <choice>sfq</choice>
+            <choice>fifo</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/queue_len</name>
+        <description>Class Queue Length</description>
+        <value type="uint32">100</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/classid</name>
+        <description>Scheduler Class ID</description>
+        <value type="uint16">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/parent</name>
+        <description>Parent Class Name</description>
+        <value type="string">root</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/tcp-control/fssdetect</name>
+        <description>False slow start detection settings</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <config>
+        <name>/rbt/qos/inbound/config/class/*/tcp-control/idledetect</name>
+        <description>TCP idle restart detection settings</description>
+        <value type="uint16">25</value>
+    </config>
+
+    <!-- Actions -->
+    <action>
+        <name>/rbt/qos/inbound/action/clear/config</name>
+        <description>Clear Inbound QoS Configuration</description>
+        <config-func>mriq_action_clear_config</config-func>
+    </action>
+
+    <!-- Shaper Configuration Actions -->
+    <action>
+        <name>/rbt/qos/inbound/action/class/add</name>
+        <description>Create an inbound shaping class</description>
+        <config-func>mriq_action_class_add_modify</config-func>
+        <parameter type="string">name</parameter>
+        <parameter type="string">priority</parameter>
+        <parameter type="float32">min_rate_pct</parameter>
+        <parameter type="float32">ul_rate_pct</parameter>
+        <parameter type="float32">ls_weight</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/inbound/action/class/modify</name>
+        <description>Create an inbound shaping class</description>
+        <config-func>mriq_action_class_add_modify</config-func>
+        <parameter type="string">name</parameter>
+        <parameter type="string">priority</parameter>
+        <parameter type="float32">min_rate_pct</parameter>
+        <parameter type="float32">ul_rate_pct</parameter>
+        <parameter type="float32">ls_weight</parameter>
+    </action>
+
+    <!-- Classifier Configuration Actions -->
+    <action>
+        <name>/rbt/qos/inbound/action/filter/add</name>
+        <description>Create inbound traffic classification rule</description>
+        <config-func>mriq_action_filter_add_modify</config-func>
+        <parameter type="string">name</parameter>
+        <parameter type="string">class</parameter>
+        <parameter type="uint16">idx</parameter>
+        <parameter type="string">description</parameter>
+        <parameter type="string">traffic_type</parameter>
+        <parameter type="int16">vlan</parameter>
+        <parameter type="int16">dscp</parameter>
+        <parameter type="int16">ip_protocol</parameter>
+        <parameter type="ipv4prefix">src_network</parameter>
+        <parameter type="ipv4prefix">dst_network</parameter>
+        <parameter type="string">src_port</parameter>
+        <parameter type="string">dst_port</parameter>
+        <parameter type="string">dpi_protocol</parameter>
+        <parameter type="string">http/domain_name</parameter>
+        <parameter type="string">http/relative_path</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/inbound/action/filter/modify</name>
+        <description>Modify inbound traffic classification rule</description>
+        <config-func>mriq_action_filter_add_modify</config-func>
+        <parameter type="string">name</parameter>
+        <parameter type="string">class</parameter>
+        <parameter type="uint16">idx</parameter>
+        <parameter type="string">description</parameter>
+        <parameter type="string">traffic_type</parameter>
+        <parameter type="int16">vlan</parameter>
+        <parameter type="int16">dscp</parameter>
+        <parameter type="int16">ip_protocol</parameter>
+        <parameter type="ipv4prefix">src_network</parameter>
+        <parameter type="ipv4prefix">dst_network</parameter>
+        <parameter type="string">src_port</parameter>
+        <parameter type="string">dst_port</parameter>
+        <parameter type="string">dpi_protocol</parameter>
+        <parameter type="string">http/domain_name</parameter>
+        <parameter type="string">http/relative_path</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/inbound/action/filter/move</name>
+        <description>Move inbound traffic classification rule</description>
+        <config-func>mriq_action_filter_move</config-func>
+        <parameter type="uint16">from_idx</parameter>
+        <parameter type="uint16">to_idx</parameter>
+    </action>
+
+    <action>
+        <name>/rbt/qos/inbound/action/filter/remove</name>
+        <description>Remove inbound traffic classification rule</description>
+        <config-func>mriq_action_filter_remove</config-func>
+        <parameter type="uint16">idx</parameter>
+    </action>
+
+    <!-- State nodes -->
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/class/root/children/*</name>
+        <description>Inbound QoS class children</description>
+        <value type="string"/>
+        <get-func>mriq_get_iterate_node</get-func>
+        <iterate-func>mriq_iterate_node_path</iterate-func>
+        <iterate-func-arg>/rbt/qos/inbound/config/class</iterate-func-arg>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/all/interface/*</name>
+        <description>List of all Inbound QoS capable interfaces</description>
+        <value type="string"/>
+        <get-func>mriq_get_iterate_node</get-func>
+        <iterate-func>mriq_iterate_node_path</iterate-func>
+        <iterate-func-arg>/rbt/sport/intercept/state/ifaces/wan</iterate-func-arg>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/level/*</name>
+        <description>List of HFSC Hierarchy Levels</description>
+        <value type="string"/>
+        <get-func>mriq_get_iterate_node</get-func>
+        <iterate-func>mriq_iterate_class_levels</iterate-func>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/level/*/children/*</name>
+        <description>List of Classes at Specified Hierarchy Level</description>
+        <value type="string"/>
+        <get-func>mriq_get_iterate_node</get-func>
+        <iterate-func>mriq_iterate_node_path</iterate-func>
+        <iterate-func-arg>/rbt/qos/inbound/config/class</iterate-func-arg>
+    </state-wildcard>
+
+    <state-wildcard>
+        <name>/rbt/qos/inbound/state/interface/*</name>
+        <description>Enabled Inbound QoS Interfaces</description>
+        <value type="string"/>
+        <get-func>mriq_get_iterate_node</get-func>
+        <iterate-func>mriq_iterate_interfaces</iterate-func>
+    </state-wildcard>
+
+    <state>
+        <name>/rbt/qos/inbound/state/interface/*/link_rate</name>
+        <description>Link Padding Adjusted Interface Rate</description>
+        <value type="uint32"/>
+        <get-func>mriq_get_interface_link_rate</get-func>
+    </state>
+
+    <!-- Events -->
+    <event>
+        <name>/rbt/qos/inbound/event/class_config_changed</name>
+        <description>Inbound QoS class configuration change event</description>
+    </event>
+</node-list>

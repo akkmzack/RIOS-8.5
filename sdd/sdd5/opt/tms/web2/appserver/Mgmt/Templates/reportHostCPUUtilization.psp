@@ -1,0 +1,216 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## CPU Utilization report.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, FormUtils, RVBDUtils, Nodes" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/cpu_utilization',
+            '/system/cpu/indiv']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'displayMode': FormUtils.NodeEntry(
+            name='displayMode',
+            userPath='web/reports/cpu_display_mode',
+            userConfigAutoSave=True,
+            label='Display Mode',
+            widget='select',
+            selectOptions=[('avg', 'Brief'), ('indiv', 'Detailed')],
+            action='paramChanged()',
+            enableKeyNav=False
+        ),
+        'coreIds': FormUtils.NodeEntry(
+            name='coreIds',
+            userPath='web/reports/cpu_core_ids',
+            userConfigAutoSave=True,
+            label='Cores',
+            widget='select',
+            selectOptions=self.coreIdsSelectOptions(),
+            action='paramChanged()',
+            enableKeyNav=False
+        )
+    }
+</psp:method>
+
+<psp:method name="coreIdsSelectOptions">
+    mgmt = self.session().value('mgmt')
+    coreIds = Nodes.getMgmtLocalChildrenNames(mgmt, '/system/cpu/indiv')
+    lastCoreId = len(coreIds) - 1
+    GROUP_SIZE = 16
+    selectOptions = []
+    currentOffset = 0
+
+    while currentOffset <= lastCoreId:
+        endIndex = min(currentOffset + GROUP_SIZE - 1, lastCoreId)
+        value = '%d-%d' % (currentOffset, endIndex)
+        label = '%d - %d' % (currentOffset, endIndex)
+        selectOptions.append((value, label))
+        currentOffset += GROUP_SIZE
+
+    return selectOptions
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<%
+if RVBDUtils.isEXVSP(): {
+    self.write('<p>' \
+                 'The CPU Utilization report has been moved ' \
+                 '<a href="/mgmt/gui?p=reportHostCPUUtilizationEX">here</a>.' \
+               '</p>')
+    self.endPagelet()
+    return
+}
+%>
+
+<div id="timeSeriesChart"></div>
+
+<div id="reportControls" style="display: none">
+  <%= self.nodeEntries()['displayMode'].html(self, format='stacked') %>
+  <%= self.nodeEntries()['coreIds'].html(self, format='stacked') %>
+</div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+var chart = null;
+
+Y.on('domready', function() {
+    adjustCoreIdsControl();
+
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].endOnTick = false;
+    highstockOptions.yAxis[0].max = 101;
+    highstockOptions.yAxis[0].title.text = 'Utilization (%)';
+
+    highstockOptions.lazyLoading = true; // graph updates each time navigator is changed
+
+    // Create the chart!
+    chart = new RBT.Reports2.TimeSeriesChartWithControls({
+        parent: '#timeSeriesChart',
+        dataUrl: assembleDataUrl(),
+        dataFormatterFn: dataFormatter,
+        options: highstockOptions,
+        customControlDiv: Y.one('div#reportControls'),
+        statsFn: cpuStats,
+        boundariesChangedFn: setReports2ChartWindow,
+        initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+        alwaysOnSeries: alwaysOnSeriesValue(),
+        optionsModifierFn: modifyOptions
+    });
+});
+
+function selectedDisplayMode() {
+    return Y.one('select[name="displayMode"]').get('value');
+}
+
+function selectedCoreIds() {
+    return Y.one('select[name="coreIds"]').get('value');
+}
+
+function adjustCoreIdsControl() {
+    var coreIdsNode = Y.one('select[name="coreIds"]');
+
+    if (selectedDisplayMode() == 'avg') {
+        coreIdsNode.ancestor('table').addClass('dimmed');
+        coreIdsNode.set('disabled', 'disabled');
+    } else {
+        coreIdsNode.ancestor('table').removeClass('dimmed');
+        coreIdsNode.removeAttribute('disabled');
+    }
+}
+
+function assembleDataUrl() {
+    var dataUrl = '<%= Reports2.constructDataUrl("reportCpuUtil") %>';
+    dataUrl = addQueryStringParameter(dataUrl, 'displayMode', selectedDisplayMode());
+    dataUrl = addQueryStringParameter(dataUrl, 'coreIds', selectedCoreIds());
+    return dataUrl;
+}
+
+function paramChanged() {
+    adjustCoreIdsControl();
+
+    chart.replaceChart({
+        dataUrl: assembleDataUrl(),
+        alwaysOnSeries: alwaysOnSeriesValue()
+    });
+}
+
+function cpuStats(allSeriesData) {
+    var allStats = [];
+    var systemAverage = selectedDisplayMode() == 'avg';
+
+    for (var i = 0; i < allSeriesData.length; i++) {
+        // Compute the overall average utilization for System Average only.
+        if (systemAverage) {
+            var avgUtil = RBT.Reports2.avg(allSeriesData[i]);
+            var avgUtilText = 'Average: ' + dataFormatter(avgUtil);
+            allStats.push([avgUtilText]);
+        } else {
+            allStats.push([]);
+        }
+    }
+
+    return allStats;
+}
+
+function dataFormatter(value, seriesName) {
+    return Math.round(value) + '%';
+}
+
+function modifyOptions(options, response) {
+    options.series = [];
+
+    for (var i = 0; i < response.length; i++) {
+        var color;
+        if (i == 0) {
+            color = RBT.Reports2.BLACK;
+        } else {
+            color = options.colors[(i - 1) % options.colors.length];
+        }
+
+        var seriesOptions = {
+            name: response[i].name,
+            color: color
+        };
+
+        if (i == 0 && selectedDisplayMode() == 'indiv') {
+            seriesOptions.zIndex = 1;
+            seriesOptions.lineWidth = 2;
+            seriesOptions.states = {
+                hover: {
+                    lineWidth: 2
+                }
+            };
+        }
+
+        options.series.push(seriesOptions);
+    }
+
+    // Make the navigator shadow the first series (System Average).
+    options.navigator.baseSeries = 0;
+    options.navigator.series.lineColor = options.series[0].color;
+    options.navigator.yAxis.max = 100;
+}
+
+function alwaysOnSeriesValue() {
+    return (selectedDisplayMode() == 'avg') ? ['System Average'] : [];
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

@@ -1,0 +1,98 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportDNSUtil.psp
+## This is the template for the DNS Utilization report page.
+## Refactored to use common report code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:DNSUtilPagelet" %>
+<%@page extends="DNSUtilPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'dnsUtilForm',
+    'reportSpecs': {
+        'dnsub': {
+            'tableName': 'dnsUtilBytesTable',
+            'gfxId': 'dnsUtilBytes',
+            'gfxDisplayId': 'dnsUtilBytesGraphImg',
+            'order' : 1,
+        },
+        'dnsue': {
+            'tableName': 'dnsUtilEntriesTable',
+            'gfxId': 'dnsUtilEntries',
+            'gfxDisplayId': 'dnsUtilEntriesGraphImg',
+            'order' : 2,
+        },
+    }
+}
+dnsUtilBytesTable = ajaxentrytable.AjaxEntryTable('dnsUtilBytes',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about DNS cache memory utilization.')
+dnsUtilEntriesTable = ajaxentrytable.AjaxEntryTable('dnsUtilEntries',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about DNS cache entries.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+%>
+
+<div id="dnsUtilBytesGraphDiv" class="graphDiv">
+  <img id="dnsUtilBytesGraphImg" class="graphImg"
+    alt="DNS Cache Memory Utilization Graph" />
+</div>
+
+<%= dnsUtilBytesTable.html(self, cssClass="midLevel") %>
+
+<div id="dnsUtilEntries" class="graphDiv">
+  <img id="dnsUtilEntriesGraphImg" class="graphImg"
+    alt="DNS Cache Entries Graph" />
+</div>
+
+<form id="dnsUtilForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= dnsUtilEntriesTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+

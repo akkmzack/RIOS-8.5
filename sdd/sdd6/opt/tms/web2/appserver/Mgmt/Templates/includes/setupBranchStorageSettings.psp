@@ -1,0 +1,313 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Krati Ahuja
+##
+## setupBranchStorageSettings.psp
+##
+## Common PSP file to be shared between setupBranchStorage.psp and reportAppliances.psp (on CMC)
+## It contains the granite core information (LUNS, iSCSI target etc) connected to a granite edge.
+##
+## Assumptions:
+## This file assumes the following variables to be already defined in the PSP file including
+## setupBranchStorageSettings.psp:
+##      fields (the request fields dictionary)
+##      appliance (appliance connected to CMC - 'productType_serialNumber')
+##      app_prod (product type of appliance connected to CMC)
+##      conn (boolean variable representing if the appliance is connected to CMC)
+%>
+
+<%@page imports="RVBDUtils" %>
+
+<psp:method name="css_branchDetails">
+return '''
+#localLUNsTable_main { width: 720px; }
+.table_iscsi_luns_icon { width: 1%; }
+.table_iscsi_luns_status { white-space: nowrap; }
+
+#iscsiLUNsTable_main { width: 720px; }
+.table_local_luns_icon { width: 1%; }
+
+.table_initiator_icon { width: 1%; }
+
+.table_initiator_group_icon { width: 1%; }
+
+div.tabContent { padding-left:11px; }
+
+#targetStateTable_main {
+  width: 610px;
+  -moz-border-radius-bottomright: 10px;
+  -moz-border-radius-topleft: 10px;
+  -webkit-border-bottom-right-radius: 10px;
+  -webkit-border-top-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  border-top-left-radius: 10px;
+  background-color: #E3E7ED;
+  padding: 5px 15px;
+}
+.table_target_state_value { white-space: nowrap; }
+.table_target_state_name { white-space: nowrap; }
+
+#targetStateTable_main > div {
+  border: none;
+}
+
+#targetStateTable_main tr.ajaxEntryTable_evenRow > td,
+#targetStateTable_main tr.ajaxEntryTable_oddRow > td,
+#targetStateTable_main tr > td {
+  border: none;
+  background-color: transparent;
+}
+
+#branchRadioTab {
+  width: 730px;
+}
+.targetReady, .lunConnected, .lunOnline {
+  color: #00B000;
+}
+.targetError, .lunError {
+  color: #DD0000;
+}
+.lunOffline {
+  color: #666666;
+}
+.lunIntermediate {
+  color: #CAA200;
+}
+
+div.divInitiatorMembers,
+div.divInitiatorGroups,
+div.divInitiators {
+  width: 250px;
+  height: 90px;
+  overflow: auto;
+  padding: 5px 10px;
+  background-color: #EAEAEA;
+  border: 1px solid #AAAAAA;
+  margin-bottom: 10px;
+  margin-right: 20px;
+}
+
+div.leftSide { float: left; }
+div.rightSide { float: left; }
+
+p.label { font-weight: bold; }
+'''
+</psp:method>
+
+<%
+targetUrl = '/mgmt/xmldata?p=targetState'
+connectedInitiatorUrl = '/mgmt/xmldata?p=connectedInitiators'
+configuredInitiatorUrl = '/mgmt/xmldata?p=configuredInitiators'
+configuredGroupUrl = '/mgmt/xmldata?p=configuredGroups'
+iscsiLUNsUrl = '/mgmt/xmldata?p=iscsiLUNs'
+localLUNsUrl = '/mgmt/xmldata?p=localLUNs'
+
+statePre = ''
+
+# Appliance details report on CMC
+if RVBDUtils.isCMC() and 'appliance' in fields: {
+    statePre = '/cmc/state/appliance/%s/%s' %(app_prod, app_sn)
+
+    # Append the appliance requesting this branch storage information
+    pr_sn = '&appliance=' + appliance
+    targetUrl += pr_sn
+    connectedInitiatorUrl += pr_sn
+    configuredInitiatorUrl += pr_sn
+    configuredGroupUrl += pr_sn
+    iscsiLUNsUrl += pr_sn
+    localLUNsUrl += pr_sn
+}
+
+# Default value of granite core
+graniteCore = ''
+policyName_branch, pathPrefix_branch, policyType_branch = Nodes.cmcDecodeNodeMode(fields)
+# Get Granite core name/ip address
+if not policyType_branch: {
+    dvasConfigured = mgmt.getChildren(statePre + '/rbt/eva/ext/dc/state').values()
+    if len(dvasConfigured): {
+        # if dva configured get the hostname or ip address of granite core
+        graniteCore = dvasConfigured[0]
+    }
+}
+
+targetStateTable = ajaxentrytable.AjaxEntryTable('targetState',
+    url=targetUrl,
+    headerSpec=(),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name', 'table_target_state_name'),
+AjaxEntryTable.td([veTdAttrStyle('value', 'className')], 'table_target_state_value')]""",
+    emptyMessage='No iSCSI target configured.')
+
+connectedInitiatorsTable = ajaxentrytable.AjaxEntryTable('connectedInitiators',
+    url=connectedInitiatorUrl,
+    headerSpec=(("", 'table_initiator_icon'),
+                ("Connected Initiators", 'table_initiator_display')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_icon', '16', '16'),
+AjaxEntryTable.td([veTdAttrStyle('name', 'className')], 'table_initiator_display')]""",
+    emptyMessage='No Initiators connected.')
+
+configuredInitiatorsTable = ajaxentrytable.AjaxEntryTable('configuredInitiators',
+    url=configuredInitiatorUrl,
+    headerSpec=(("", 'table_initiator_icon'),
+                ("Configured Initiators", 'table_initiator_display')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_icon', '16', '16'),
+AjaxEntryTable.td([veTdAttrStyle('name', 'className')], 'table_initiator_display')]""",
+    emptyMessage='No Initiators configured.')
+
+configuredGroupsTable = ajaxentrytable.AjaxEntryTable('configuredGroups',
+    url=configuredGroupUrl,
+    headerSpec=(("", 'table_initiator_group_icon'),
+                ("Configured Initiator Groups", 'table_initiator_group_display'),
+                ("Members", 'table_initiator_group_members')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_initiator_group_icon', '16', '16'),
+AjaxEntryTable.tdEdit('name', 'name', 'table_initiator_group_display'),
+AjaxEntryTable.tdAttr('member_count', 'table_initiator_group_members')]""",
+    emptyMessage='No Initiator Groups configured.')
+
+configuredGroupsTable.editDivContent = '''
+<div class="midLevel">
+  <p class="label">Member Initiators:</p>
+  <div id="edit_initiator_group_members" class="divInitiatorMembers"></div>
+</div>
+'''
+
+iscsiLUNsTable = ajaxentrytable.AjaxEntryTable('iscsiLUNs',
+    url=iscsiLUNsUrl,
+    headerSpec=(("", 'table_iscsi_luns_icon'),
+                ("iSCSI LUN Alias (Serial)", 'table_iscsi_luns_display'),
+                ("LUN ID", 'table_iscsi_luns_lunid'),
+                ("Size", 'table_iscsi_luns_size'),
+                ("Pinned", 'table_iscsi_luns_pinned'),
+                ("Status", 'table_iscsi_luns_status')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_iscsi_luns_icon', '16', '16'),
+AjaxEntryTable.tdEdit('name', 'display', 'table_iscsi_luns_display'),
+AjaxEntryTable.tdAttr('lunid', 'table_iscsi_luns_lunid'),
+AjaxEntryTable.tdAttr('lun_size', 'table_iscsi_luns_size'),
+AjaxEntryTable.tdAttr('pinned_display', 'table_iscsi_luns_pinned'),
+AjaxEntryTable.td([veTdAttrStyle('status_display', 'status_class')], 'table_iscsi_luns_status')]""",
+    emptyMessage='No iSCSI LUNs configured.')
+
+iscsiLUNsTable.editDivContent = '''
+<div class="midLevel">
+  <div class="leftSide">
+    <p class="label">Initiators Granted Access:</p>
+    <div id="editISCSILUN_initiators" class="divInitiators"></div>
+  </div>
+  <div class="rightSide">
+    <p class="label">Initiator Groups Granted Access:</p>
+    <div id="editISCSILUN_initiator_groups" class="divInitiatorGroups"></div>
+  </div>
+</div>
+'''
+
+localLUNsTable = ajaxentrytable.AjaxEntryTable('localLUNs',
+    url=localLUNsUrl,
+    headerSpec=(("", 'table_local_luns_icon'),
+                ("Local LUN Alias (Serial)", 'table_local_luns_display'),
+                ("LUN ID", 'table_local_luns_lunid'),
+                ("Size", 'table_local_luns_size'),
+                ("Status", 'table_local_luns_status')),
+    rowSpec="""
+[AjaxEntryTable.tdIcon('icon', 'status', '', 'table_local_luns_icon', '16', '16'),
+AjaxEntryTable.tdEdit('name', 'display', 'table_local_luns_display'),
+AjaxEntryTable.tdAttr('lunid', 'table_local_luns_lunid'),
+AjaxEntryTable.tdAttr('lun_size', 'table_local_luns_size'),
+AjaxEntryTable.td([veTdAttrStyle('status_display', 'status_class')], 'table_local_luns_status')]""",
+    emptyMessage='No Local LUNs configured.')
+
+localLUNsTable.editDivContent = '''
+<div class="midLevel">
+  <div class="leftSide">
+    <p class="label">Initiators Granted Access:</p>
+    <div id="editLocalLUN_initiators" class="divInitiators"></div>
+  </div>
+  <div class="rightSide">
+    <p class="label">Initiator Groups Granted Access:</p>
+    <div id="editLocalLUN_initiator_groups" class="divInitiatorGroups"></div>
+  </div>
+</div>
+'''
+%>
+
+<div class="tabControl hidden" id="branchRadioTabDiv">
+  <div class="grayBorder radioSection">
+    <%= FormUtils.radioTabControl(self, 'branchRadioTab',
+        ('target', 'Target Details', 'branchTab_targetConfigDiv'),
+        ('initiator', 'Initiators', 'branchTab_initiatorDiv'),
+        ('group', 'Initiator Groups', 'branchTab_groupDiv'),
+        ('luns', 'LUNs', 'branchTab_lunsDiv')
+    ) %>
+    <div class="topLevel tabContent" id="branchTab_targetConfigDiv">
+      <%= targetStateTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_initiatorDiv">
+      <%= configuredInitiatorsTable.html(self, 'topLevel') %>
+      <br />
+      <%= connectedInitiatorsTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_groupDiv">
+      <%= configuredGroupsTable.html(self, 'topLevel') %>
+    </div>
+
+    <div class="topLevel hidden tabContent" id="branchTab_lunsDiv">
+      <b>iSCSI LUNs:</b>
+      <%= iscsiLUNsTable.html(self, 'topLevel') %>
+      <br />
+      <b>Local LUNs:</b>
+      <%= localLUNsTable.html(self, 'topLevel') %>
+    </div>
+
+  </div>
+</div>
+
+<%
+js_branch = ''
+# Only for Steelhead EXs, EVAs and appliance details report on CMC for appliances connected to a granite core
+if graniteCore != '': {
+    if not RVBDUtils.isCMC() or (RVBDUtils.isCMC() and 'appliance' in fields and 'ex' == app_prod and 'true' == conn): {
+        js_branch += '''
+            Y.one('#branchRadioTabDiv').removeClass('hidden');
+            branchRadioTab.setupPlaceKeeper();
+
+            iscsiLUNsTable.editEntry = function (editName) {
+                var el = this.getEntryElement('name', editName),
+                    lunGroups = el.getElementsByTagName('lun-igroup'),
+                    lunInitiators = el.getElementsByTagName('lun-initiator'),
+                    lunGroupsDiv = Y.one('#editISCSILUN_initiator_groups'),
+                    lunInitiatorsDiv = Y.one('#editISCSILUN_initiators');
+
+                fillDiv(lunGroupsDiv, lunGroups, 'name', 'None');
+                fillDiv(lunInitiatorsDiv, lunInitiators, 'name', 'None');
+            };
+
+            localLUNsTable.editEntry = function (editName) {
+                var el = this.getEntryElement('name', editName),
+                    lunGroups = el.getElementsByTagName('lun-igroup'),
+                    lunInitiators = el.getElementsByTagName('lun-initiator'),
+                    lunGroupsDiv = Y.one('#editLocalLUN_initiator_groups'),
+                    lunInitiatorsDiv = Y.one('#editLocalLUN_initiators');
+
+                fillDiv(lunGroupsDiv, lunGroups, 'name', 'None');
+                fillDiv(lunInitiatorsDiv, lunInitiators, 'name', 'None');
+            };
+
+            configuredGroupsTable.editEntry = function (editName) {
+                var el = this.getEntryElement('name', editName),
+                    memberInitiators = el.getElementsByTagName('member-initiator'),
+                    memberInitiatorsDiv = Y.one('#edit_initiator_group_members');
+
+                fillDiv(memberInitiatorsDiv, memberInitiators, 'name', 'None');
+            };
+
+        '''
+    }
+}
+
+self.addPageletJavascript(js_branch)
+%>

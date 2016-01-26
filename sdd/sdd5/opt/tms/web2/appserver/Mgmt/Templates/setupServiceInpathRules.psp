@@ -1,0 +1,630 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceInpathRules.psp
+## The In-Path Rules table.
+###
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceGeneral',
+        'setupAdvNet_peering',
+        'setupServiceProtocolsSSLMain',
+        'setupServiceProtocolsSSLCAs',
+        'setupServiceProtocolsSSLAdvanced',
+        'setupServiceProtocolsHTTP',
+        'setupServiceProtocolsMAPI',
+        'setupPortLabels',
+        'reportConnections',
+        'reportConnectionHistory',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+#inpathRulesTable_main { width: 100%; }
+.table_inpath_ord { width: 8em; }
+
+/* since we dynamically show and hide rows in the table, we need to fix
+ * the width of the label column so that the fields don't move around */
+table.inpathRuleForm tbody tr td:first-child {
+  width: 17.5em;
+}
+
+/* separate the groups of options with whitespace */
+table.inpathRuleForm tbody.padded tr:first-child td {
+  padding-top: 1em;
+}
+#filterDiv {
+    width: 100%;
+}
+input.vlan {
+  width: 6em;
+}
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return { 'inpath_rules': FormUtils.NodeEntry(
+                 path='/rbt/sport/intercept/config/rule/*') }
+</psp:method>
+
+<psp:method name="dialogEntries" params="cmcMode">
+    # Port Label doesn't have a link for editPolicy and appConfig pages.
+    if cmcMode:
+        portLabelText = 'Port or Port Label'
+    else:
+        portLabelText = 'Port or <a href="/mgmt/gui?p=setupPortLabels">Port Label</a>'
+
+    return {
+        'inpath_action': FormUtils.NodeEntry(
+            name='action',
+            selectOptions=(('probe', 'Auto Discover'),
+                           ('proxy', 'Fixed-Target'),
+                           ('ipblade', 'Fixed-Target (Packet Mode Optimization)'),
+                           ('forward', 'Pass Through'),
+                           ('discard', 'Discard'),
+                           ('deny', 'Deny')),
+            value='probe',
+            action='updateRule(); return false;',
+            label='Type'),
+        'inpath_idx': FormUtils.NodeEntry(
+            name='idx',
+            widget='select',
+            label='Position'),
+        'inpath_src/network': FormUtils.NodeEntry(
+            name='src/network',
+            widgetClass='ipv6subnet',
+            value='All-IP',
+            label='Source Subnet',
+            validate='mappedSubnet'),
+        'inpath_src/port_label': FormUtils.NodeEntry(
+            name='src/port_label',
+            widgetClass='portOrLabel',
+            value='all',
+            label=portLabelText,
+            validate='portPortLabel'),
+        'inpath_dst/network': FormUtils.NodeEntry(
+            name='dst/network',
+            widgetClass='ipv6subnet',
+            value='All-IP',
+            label='Destination Subnet',
+            validate='mappedSubnet'),
+        'inpath_dst/port_label': FormUtils.NodeEntry(
+            name='dst/port_label',
+            widgetClass='portOrLabel',
+            value='all',
+            label=portLabelText,
+            validate='portPortLabel'),
+        'inpath_proxy/addr': FormUtils.NodeEntry(
+            name='proxy/addr',
+            widgetClass='ipv6addr',
+            label='Target Appliance IP Address',
+            validate='ipv4OrIpv6Addr'),
+        'inpath_proxy/port': FormUtils.NodeEntry(
+            name='proxy/port',
+            widgetClass='port',
+            value='7810',
+            label='Port',
+            validate='port'),
+        'inpath_backup_proxy/addr': FormUtils.NodeEntry(
+            name='backup_proxy/addr',
+            widgetClass='ipv6addr',
+            label='Backup Appliance IP Address',
+            validate='ipv4OrIpv6Addr',
+            inputOptional=True),
+        'inpath_backup_proxy/port': FormUtils.NodeEntry(
+            name='backup_proxy/port',
+            widgetClass='port',
+            value='7810',
+            label='Port',
+            validate='port'),
+        'inpath_vlan': FormUtils.NodeEntry(
+            name='vlan',
+            value='all',
+            label='VLAN Tag ID',
+            widgetClass='vlan',
+            validate='vlan'),
+        'inpath_protocol': FormUtils.NodeEntry(
+            name='protocol',
+            widget='select',
+            value='tcp',
+            selectOptions=(('tcp', 'TCP'), ('udp', 'UDP'), ('any', 'Any')),
+            label='Protocol'),
+        'inpath_auto_kickoff': FormUtils.NodeEntry(
+            name='auto_kickoff',
+            widget='checkbox',
+            label='Auto Kickoff'),
+        'inpath_cloud_acceleration': FormUtils.NodeEntry(
+            name='saas_action',
+            selectOptions= (('auto', 'Auto'),
+                            ('passthru', 'Pass Through')),
+            label='Cloud Acceleration'),
+        'inpath_preopt': FormUtils.NodeEntry(
+            name='preoptimization',
+            selectOptions= (('none', 'None'),
+                            ('jinitiator', 'Oracle Forms'),
+                            ('jinitiator+ssl', 'Oracle Forms over SSL'),
+                            ('ssl', 'SSL')),
+            label='Preoptimization Policy'),
+        'inpath_opt': FormUtils.NodeEntry(
+            name='optimization',
+            selectOptions= (('normal', 'Normal'),
+                            ('sdr-only', 'SDR-Only'),
+                            ('in-mem-only', 'SDR-M'),
+                            ('compr-only', 'Compression-Only'),
+                            ('none', 'None')),
+            label='Data Reduction Policy'),
+        'inpath_latency': FormUtils.NodeEntry(
+            name='latency_optimization',
+            selectOptions=(('normal', 'Normal'),
+                           ('http', 'HTTP'),
+                           ('outlook-anywhr', 'Outlook Anywhere'),
+                           ('citrix', 'Citrix'),
+                           ('none', 'None')),
+            label='Latency Optimization Policy'),
+        'inpath_neural': FormUtils.NodeEntry(
+            name='neural_mode',
+            selectOptions=(('never', 'Never'),
+                           ('always', 'Always'),
+                           ('tcphints', 'TCP Hints'),
+                           ('dynamic', 'Dynamic')),
+            value='always',
+            label='Neural Framing Mode'),
+        'inpath_transparency': FormUtils.NodeEntry(
+            name='transparency_mode',
+            selectOptions=(('none', 'Correct Addressing'),
+                           ('port', 'Port Transparency'),
+                           ('full', 'Full Transparency'),
+                           ('full-reset', 'Full Transparency with Reset')),
+            label='WAN Visibility Mode'),
+        'inpath_desc': FormUtils.NodeEntry(
+            name='description',
+            widgetClass='wide',
+            label='Description'),
+        'inpath_enable_rule': FormUtils.NodeEntry(
+            name='enable',
+            widget='checkbox',
+            value='true',
+            label='Enable Rule'),
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+fields = self.request().fields()
+policyName, pathPrefix, cmcMode = self.retargetCmcPolicyNodes()
+
+dialogEntries = self.dialogEntries(cmcMode)
+addInpath = 'addInpath_'
+editInpath = 'editInpath_'
+
+ruleIndices = Nodes.getMgmtLocalChildrenNames(mgmt, pathPrefix + '/rbt/sport/intercept/config/rule')
+ruleIndices.sort(FormUtils.compareStringInts)
+ruleIndices.append(ruleIndices and str(1 + int(ruleIndices[-1])) or '1')
+dialogEntries['inpath_idx'].selectOptions = [('1', 'Start')] + ruleIndices + [(ruleIndices[-1], 'End')]
+dialogEntries['inpath_idx'].value = ruleIndices[-1]
+
+saasSupported = Nodes.present(mgmt, '/rbt/akam/state/supported')
+
+# Handle CMC Policy Page config
+if cmcMode: {
+
+    # Inpath Rule Table Columns are different on regular and CMC policy pages
+    headerSpecList=(('', 'table_inpath_ord'),
+                    'Rule',
+                    'Type',
+                    'Source',
+                    'Destination',
+                    'VLAN',
+                    'Protocol',
+                    'Preoptimization Policy',
+                    'Latency Policy',
+                    'Data Reduction Policy',
+                    'Kickoff',
+                    'Enabled')
+    rowSpecList="""[AjaxEntryTable.tdReorderCheckbox('id',
+                                                     'moveFromInpathRule_',
+                                                     'moveToInpathRule_',
+                                                     ['default']),
+                   AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+                   AjaxEntryTable.tdAttr('type'),
+                   AjaxEntryTable.tdAttr('src-pretty'),
+                   AjaxEntryTable.tdAttr('dst-pretty'),
+                   AjaxEntryTable.tdAttr('vlan-pretty'),
+                   AjaxEntryTable.tdAttr('protocol-pretty'),
+                   AjaxEntryTable.tdAttr('preopt-policy-pretty'),
+                   AjaxEntryTable.tdAttr('latency-pretty'),
+                   AjaxEntryTable.tdAttr('opt-policy-pretty'),
+                   AjaxEntryTable.tdAttr('kickoff-pretty'),
+                   AjaxEntryTable.tdAttr('enable-pretty')]"""
+} else: {
+
+    # Inpath Rule Table Columns are different on regular and CMC policy pages
+    headerSpecList=[('', 'table_inpath_ord'),
+                    'Rule',
+                    'Type',
+                    'Source',
+                    'Destination',
+                    'VLAN',
+                    'Protocol',
+                    'Preoptimization Policy',
+                    'Latency Policy',
+                    'Data Reduction Policy',
+                    'Kickoff',
+                    'Status']
+
+    if saasSupported == 'true': {
+        # Add cloud acceleration before Kickoff.
+        headerSpecList.insert(10, 'Cloud Acceleration')
+    }
+
+    rowSpecList="""
+    [AjaxEntryTable.tdReorderCheckbox('id',
+                                      'moveFromInpathRule_',
+                                      'moveToInpathRule_',
+                                      ['default']),
+     AjaxEntryTable.td([AjaxEntryTable.edit('id', 'id', ['default'])]),
+     AjaxEntryTable.tdAttr('type'),
+     AjaxEntryTable.tdAttr('src-pretty'),
+     AjaxEntryTable.tdAttr('dst-pretty'),
+     AjaxEntryTable.tdAttr('vlan-pretty'),
+     AjaxEntryTable.tdAttr('protocol-pretty'),
+     AjaxEntryTable.tdAttr('preopt-policy-pretty'),
+     AjaxEntryTable.tdAttr('latency-pretty'),
+     AjaxEntryTable.tdAttr('opt-policy-pretty'),
+     %s
+     AjaxEntryTable.tdAttr('kickoff-pretty'),
+     AjaxEntryTable.tdAttr('status-pretty', null, 'status-tooltip')
+     ]
+     """ % (saasSupported == 'true' and "AjaxEntryTable.tdAttr('cloud-acceleration-pretty')," or '')
+}
+
+inpathRulesTable = ajaxentrytable.AjaxEntryTable('inpathRules',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=inpathRulesGet'),
+    headerSpec=headerSpecList,
+    rowSpec=rowSpecList,
+    rowDescSpec=('description', 'AjaxEntryTable.cellFillDesc("description")', 1),
+    emptyMessage='No current In-Path rules.',
+    removeName='removeRules',
+    removeButtonText='Remove Selected Rules',
+    moveName='moveRules',
+    moveButtonText='Move Selected Rules...',
+    moveButtonCancelText='Cancel Move',
+    addButtonText='Add a New In-Path Rule',
+    addButtonName='addInpathRule',
+    addButtonOnclick="submitFormAjax(this, '%s'); return false;" % self.urlForCmcEdit('/mgmt/jsondata?p=inpathRulesSet'),
+    editButtonName='editInpathRule',
+    editButtonOnclick="submitFormAjax(this, '%s'); return false;" % self.urlForCmcEdit('/mgmt/jsondata?p=inpathRulesSet'))
+
+inpathRulesTable.addDivContent = '''
+  <div class="midLevel" id="addRuleDiv">
+    <input type="hidden" name="addRule" value="true" />
+    <table class="inpathRuleForm">
+
+      <tbody>
+        %(action)s
+      </tbody>
+
+      <tbody id="addInpath_headerSpec" class="padded">
+        %(src_network)s
+        %(dst_network)s
+        %(vlan)s
+      </tbody>
+      <tbody id="addInpath_protocol">
+        %(protocol)s
+      </tbody>
+
+      <tbody id="addInpath_targetBackupIp" class="padded">
+        %(proxy_addr)s
+        %(backup_proxy)s
+      </tbody>
+
+      <tbody id="addInpath_latency" class="padded">
+        %(preopt)s
+        %(latency)s
+      </tbody>
+      <tbody id="addInpath_dataReduction">
+        %(opt)s
+      </tbody>
+      <tbody id="addInpath_cloud_acceleration" class="padded">
+        %(cloud_acceleration)s
+      </tbody>
+      <tbody id="addInpath_kickoff" class="padded">
+        %(auto_kickoff)s
+      </tbody>
+      <tbody id="addInpath_framing">
+        %(neural)s
+      </tbody>
+      <tbody id="addInpath_transparency">
+        %(transparency)s
+      </tbody>
+      <tbody id="addInpath_description" class="padded">
+        %(idx)s
+        %(desc)s
+        %(enable_rule)s
+      </tbody>
+
+    </table>
+  </div>
+''' % {'action': dialogEntries['inpath_action'].html(self, namePrefix=addInpath),
+       'src_network': dialogEntries['inpath_src/network'].html(self, namePrefix=addInpath,
+                                                more=[dialogEntries['inpath_src/port_label']]),
+       'dst_network': dialogEntries['inpath_dst/network'].html(self, namePrefix=addInpath,
+                                                more=[dialogEntries['inpath_dst/port_label']]),
+       'vlan': dialogEntries['inpath_vlan'].html(self, namePrefix=addInpath),
+       'protocol': dialogEntries['inpath_protocol'].html(self, namePrefix=addInpath),
+       'proxy_addr': dialogEntries['inpath_proxy/addr'].html(self, namePrefix=addInpath,
+                                                more=[dialogEntries['inpath_proxy/port']]),
+       'backup_proxy': dialogEntries['inpath_backup_proxy/addr'].html(self, namePrefix=addInpath,
+                                                more=[dialogEntries['inpath_backup_proxy/port']]),
+       'preopt': dialogEntries['inpath_preopt'].html(self, namePrefix=addInpath),
+       'latency': dialogEntries['inpath_latency'].html(self, namePrefix=addInpath),
+       'opt': dialogEntries['inpath_opt'].html(self, namePrefix=addInpath),
+       'cloud_acceleration': saasSupported == 'true' and dialogEntries['inpath_cloud_acceleration'].html(self, namePrefix=addInpath) or '',
+       'auto_kickoff': dialogEntries['inpath_auto_kickoff'].html(self, namePrefix=addInpath),
+       'neural': dialogEntries['inpath_neural'].html(self, namePrefix=addInpath),
+       'transparency': dialogEntries['inpath_transparency'].html(self, namePrefix=addInpath),
+       'idx': dialogEntries['inpath_idx'].html(self, namePrefix=addInpath),
+       'desc': dialogEntries['inpath_desc'].html(self, namePrefix=addInpath),
+       'enable_rule': dialogEntries['inpath_enable_rule'].html(self, namePrefix=addInpath)}
+
+inpathRulesTable.editDivContent = '''
+  <div class="midLevel" id='editRuleDiv'>
+    <input type="hidden" name="editRule" value="true" />
+    <table class="inpathRuleForm">
+
+      <tbody>
+        %(action)s
+      </tbody>
+
+      <tbody id="editInpath_headerSpec" class="padded">
+        %(src_network)s
+        %(dst_network)s
+        %(vlan)s
+      </tbody>
+      <tbody id="editInpath_protocol">
+        %(protocol)s
+      </tbody>
+
+
+      <tbody id="editInpath_targetBackupIp" class="padded">
+        %(proxy_addr)s
+        %(backup_proxy)s
+      </tbody>
+
+      <tbody id="editInpath_latency" class="padded">
+        %(preopt)s
+        %(latency)s
+      </tbody>
+      <tbody id="editInpath_dataReduction">
+        %(opt)s
+      </tbody>
+      <tbody id="editInpath_cloud_acceleration" class="padded">
+        %(cloud_acceleration)s
+      </tbody>
+      <tbody id="editInpath_kickoff" class="padded">
+        %(auto_kickoff)s
+      </tbody>
+      <tbody id="editInpath_framing">
+        %(neural)s
+      </tbody>
+      <tbody id="editInpath_transparency">
+        %(transparency)s
+      </tbody>
+
+      <tbody id="editInpath_description" class="padded">
+        %(desc)s
+        %(enable_rule)s
+      </tbody>
+
+    </table>
+  </div>
+  <div>
+    <input type="hidden" name="editInpath_idx" />
+  </div>
+''' % {'action': dialogEntries['inpath_action'].html(self, namePrefix=editInpath),
+       'src_network': dialogEntries['inpath_src/network'].html(self, namePrefix=editInpath,
+                                                more=[dialogEntries['inpath_src/port_label']]),
+       'dst_network': dialogEntries['inpath_dst/network'].html(self, namePrefix=editInpath,
+                                                more=[dialogEntries['inpath_dst/port_label']]),
+       'vlan': dialogEntries['inpath_vlan'].html(self, namePrefix=editInpath),
+       'protocol': dialogEntries['inpath_protocol'].html(self, namePrefix=editInpath),
+       'proxy_addr': dialogEntries['inpath_proxy/addr'].html(self, namePrefix=editInpath,
+                                                more=[dialogEntries['inpath_proxy/port']]),
+       'backup_proxy': dialogEntries['inpath_backup_proxy/addr'].html(self, namePrefix=editInpath,
+                                                more=[dialogEntries['inpath_backup_proxy/port']]),
+       'preopt': dialogEntries['inpath_preopt'].html(self, namePrefix=editInpath),
+       'latency': dialogEntries['inpath_latency'].html(self, namePrefix=editInpath),
+       'opt': dialogEntries['inpath_opt'].html(self, namePrefix=editInpath),
+       'cloud_acceleration': saasSupported == 'true' and dialogEntries['inpath_cloud_acceleration'].html(self, namePrefix=editInpath) or '',
+       'auto_kickoff': dialogEntries['inpath_auto_kickoff'].html(self, namePrefix=editInpath),
+       'neural': dialogEntries['inpath_neural'].html(self, namePrefix=editInpath),
+       'transparency': dialogEntries['inpath_transparency'].html(self, namePrefix=editInpath),
+       'desc': dialogEntries['inpath_desc'].html(self, namePrefix=editInpath),
+       'enable_rule': dialogEntries['inpath_enable_rule'].html(self, namePrefix=editInpath)}
+
+self.beginPagelet()
+%>
+
+<%
+# G-Spec Special Message
+# For SH EX G's we need to display a message to the user
+# saying inpath rules have a particular special behavior.
+%>
+<% if RVBDUtils.isEXGSpec(): { %>
+  <p class="warning">
+  This Steelhead EX model only supports the acceleration of Granite connections.<br />
+  <strong>Please note that all In-Path Rules below will only apply to Granite traffic.</strong></p>
+<% } %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="inpathRulesForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupServiceInpathRules" />
+    <%= inpathRulesTable.html(self, 'topLevel') %>
+  </div>
+</form>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+
+inpathRulesTable.editEntry = function(editName) {
+    var el = this.getEntryElement('id', editName);
+    var form = document.getElementById('inpathRulesForm');
+    setFormValue(form, 'editInpath_idx', editName);
+    setFormValue(form, 'editInpath_action', el.getAttribute('action'));
+    setFormValue(form, 'editInpath_src/network', el.getAttribute('src-network'));
+    setFormValue(form, 'editInpath_src/port_label', el.getAttribute('src-portlabel'));
+    setFormValue(form, 'editInpath_dst/network', el.getAttribute('dst-network'));
+    setFormValue(form, 'editInpath_dst/port_label', el.getAttribute('dst-portlabel'));
+    setFormValue(form, 'editInpath_proxy/addr', el.getAttribute('proxy-ip'));
+    setFormValue(form, 'editInpath_proxy/port', el.getAttribute('proxy-port'));
+    setFormValue(form, 'editInpath_backup_proxy/addr', el.getAttribute('backup-proxy-ip'));
+    setFormValue(form, 'editInpath_backup_proxy/port', el.getAttribute('backup-proxy-port'));
+    setFormValue(form, 'editInpath_vlan', el.getAttribute('vlan'));
+    setFormValue(form, 'editInpath_protocol', el.getAttribute('protocol'));
+    setFormValue(form, 'editInpath_enable', el.getAttribute('enable'));
+    setFormValue(form, 'editInpath_auto_kickoff', (el.getAttribute('kickoff') == 'true'));
+    setFormValue(form, 'editInpath_preoptimization', el.getAttribute('preopt-policy'));
+    setFormValue(form, 'editInpath_optimization', el.getAttribute('opt-policy'));
+    setFormValue(form, 'editInpath_latency_optimization', el.getAttribute('latency'));
+    setFormValue(form, 'editInpath_neural_mode', el.getAttribute('neural'));
+    setFormValue(form, 'editInpath_transparency_mode', el.getAttribute('transparency'));
+    setFormValue(form, 'editInpath_description', el.getAttribute('description'));
+    if ('<%= saasSupported %>' == 'true') {
+        setFormValue(form, 'editInpath_saas_action', el.getAttribute('cloud-acceleration'));
+    }
+    return true;
+}
+
+// We show/hide the fields depending on the rule type.  This dict
+// indicates which fields should be shown for each rule type.
+//
+// Fields:
+//
+//   0: IP header (source/destination/VLAN)
+//   1: source port
+//   2: target/backup appliance IPs
+//   3: protocol
+//   4: latency optimization
+//   5: data reduction
+//   6: cloud acceleration
+//   7: auto kickoff
+//   8: neural framing
+//   9: WAN visibility
+//   10: position/description
+//
+//            0  1  2  3  4  5  6  7  8  9 10
+var MASK = {
+    probe:   [1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+    proxy:   [1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1],
+    ipblade: [1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1],
+    forward: [1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+    discard: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    deny:    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+};
+
+function updateRule(div) {
+
+    var ruleType;
+    var prefix;
+    var srcPortFieldEl;
+    var form = $('inpathRulesForm');
+
+    if (!form.elements.addInpath_action.disabled) {
+        // Handle the Inpath Add Form
+        ruleType = form.elements.addInpath_action.value;
+        prefix = 'addInpath_';
+        srcPortFieldEl = $(Y.one('input[name=addInpath_src/port_label]'));
+    } else {
+        // Handle the Inpath Edit Form
+        ruleType = form.elements.editInpath_action.value;
+        prefix = 'editInpath_';
+        srcPortFieldEl = $(Y.one('input[name=editInpath_src/port_label]'));
+    }
+    // IP header
+    enableElements(
+        prefix + 'headerSpec', MASK[ruleType][0] ? true : 'hide');
+
+    // source port: this is annoying because we don't have have an ID
+    // through which we can access the DOM element directly so we grab
+    // the field and find its label by traversing the DOM
+    enableElements(
+        srcPortFieldEl, MASK[ruleType][1] ? true : 'hide');
+    enableElements(
+        srcPortFieldEl.previousSibling, MASK[ruleType][1] ? true : 'hide');
+
+    // target/backup appliance IPs
+    enableElements(
+        prefix + 'targetBackupIp', MASK[ruleType][2] ? true : 'hide');
+
+    // protocol
+    enableElements(
+        prefix + 'protocol', MASK[ruleType][3] ? true : 'hide');
+
+    // latency optimization
+    enableElements(
+        prefix + 'latency', MASK[ruleType][4] ? true : 'hide');
+
+    // data reduction: this is normally grouped with the latency
+    // optimization options but if those are hidden we need to add
+    // some padding
+    enableElements(
+        prefix + 'dataReduction', MASK[ruleType][5] ? true : 'hide');
+    if (MASK[ruleType][4]) {
+        Y.one('#' + prefix + 'dataReduction').removeClass('padded');
+    } else {
+        Y.one('#' + prefix + 'dataReduction').addClass('padded');
+    }
+
+    // Cloud Acceleration
+    if ('<%= saasSupported %>' == 'true') {
+        enableElements(
+            prefix + 'cloud_acceleration', MASK[ruleType][6] ? true : 'hide');
+    }
+
+    // auto kickoff
+    enableElements(
+        prefix + 'kickoff', MASK[ruleType][7] ? true : 'hide');
+
+    // neural framing
+    enableElements(
+        prefix + 'framing', MASK[ruleType][8] ? true : 'hide');
+
+    // WAN visibility
+    enableElements(
+        prefix + 'transparency', MASK[ruleType][9] ? true : 'hide');
+
+    // position/description
+    enableElements(
+        prefix + 'description', MASK[ruleType][10] ? true : 'hide');
+
+    RBT.Validator.validatePage();
+}
+
+addUpdateable('function', 'updateRule', 'addRuleDiv');
+addUpdateable('function', 'updateRule', 'editRuleDiv');
+
+// This is responsible for graying out disabled or inapplicable rules
+inpathRulesTable.postPopulateTableHook = function() {
+    for (var i = 0; i < this.rowList.length; i++) {
+        var status = parseInt(this.rowList[i][1].getAttribute('status'), 10);
+        if (status == 1 || status == 2) {
+            // 1: Disabled or 2: Inapplicable rules
+             adjustElementClass(this.rowList[i][0], 'dimmed');
+        }
+    }
+}
+// ]]>
+</script>

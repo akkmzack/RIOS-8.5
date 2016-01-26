@@ -1,0 +1,22 @@
+function FileData_Pairs(x)
+{
+x.t("appendix","provides");
+x.t("appendix","application");
+x.t("engine","(afe)");
+x.t("includes","following");
+x.t("list","recognized");
+x.t("provides","reference");
+x.t("afe","appendix");
+x.t("afe","application");
+x.t("flow","engine");
+x.t("(afe)","includes");
+x.t("section","list");
+x.t("reference","application");
+x.t("application","flow");
+x.t("application","signatures");
+x.t("signatures","afe");
+x.t("signatures","recognized");
+x.t("following","section");
+x.t("recognized","application");
+x.t("recognized","applications");
+}

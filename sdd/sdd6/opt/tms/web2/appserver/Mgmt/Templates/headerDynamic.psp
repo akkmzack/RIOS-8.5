@@ -1,0 +1,230 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+##
+
+## Provides the dynamic header at the top of Steelhead pagelets.
+##
+## The status is displayed in two ways, once initially when the page is updated
+## and periodically after that with the updater.
+##
+##
+%>
+
+<%@page imports="Nodes, FormUtils, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<psp:method name="getDynamicStatus">
+    # Returns a dict of values for dynamicStatus() in support_host
+    mgmt = self.session().value('mgmt')
+    state = mgmt.getMultiple('/rbt/health/current',
+                             '/rbt/health/notes',
+                             '/mgmtd/db/info/running/unsaved_changes',
+                             '/rbt/sport/status/restart_needed')
+    bracketNotes = ''
+    if state['/rbt/health/notes']:
+       bracketNotes = ' [%s]' % state['/rbt/health/notes']
+
+    return {'health': state['/rbt/health/current'] + bracketNotes,
+            'health-class': 'button headerDynamic' + (state['/rbt/health/current'].replace(' ', '')),
+            'save': state['/mgmtd/db/info/running/unsaved_changes'],
+            'restart': state['/rbt/sport/status/restart_needed']}
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+sdrPolicy = Nodes.present(mgmt, '/rbt/sport/datastore/config/sdr_policy', '')
+
+# Required by PagePresentation:
+self.addPageletJavascript('''
+
+function headerDynamic_update(response) {
+    if (!response || !response.responseXML) {
+        return;
+    }
+    var state = response.responseXML.documentElement.firstChild;
+    if (!state) {
+        return;
+    }
+    if ('true' == state.getAttribute('save')) {
+        adjustElementClass('headerDynamic_saveOn', null, 'hidden');
+        adjustElementClass('headerDynamic_saveOff', 'hidden', null);
+    } else {
+        adjustElementClass('headerDynamic_saveOn', 'hidden', null);
+        adjustElementClass('headerDynamic_saveOff', null, 'hidden');
+    }
+
+    if ('true' == state.getAttribute('restart')) {
+        adjustElementClass('headerDynamic_restartOn', null, 'hidden');
+        adjustElementClass('headerDynamic_restartOff', 'hidden', null);
+    } else {
+        adjustElementClass('headerDynamic_restartOn', 'hidden', null);
+        adjustElementClass('headerDynamic_restartOff', null, 'hidden');
+    }
+
+    $('headerDynamic_health').className = state.getAttribute('health-class');
+    setElementText('headerDynamic_healthText', state.getAttribute('health'));
+}
+''')
+
+status = self.getDynamicStatus();
+%>
+
+<div class="headerDynamic">
+  <a id="headerDynamic_saveOn"
+     class="<%= ('true' != status['save']) and 'button hidden' or 'button' %>"
+     href="#"
+     title="The configuration must be saved to disk or it will be lost after reboot."
+     onclick="return false">Save</a>
+  <div id="headerDynamic_saveOff"
+     class="<%= ('true' == status['save']) and 'button hidden' or 'button' %>">Save</div>
+  <a id="headerDynamic_restartOn"
+     class="<%= ('true' != status['restart']) and 'button hidden' or 'button' %>"
+     href="#"
+     title="Some settings will not take effect until the optimization service is restarted."
+     onclick="return false">Restart</a>
+  <div id="headerDynamic_restartOff"
+     class="<%= ('true' == status['restart']) and 'button hidden' or 'button' %>">Restart</div>
+  <a id="headerDynamic_health"
+     class="<%= status['health-class']%>"
+     href="/mgmt/gui?p=diagnosticAlarms"
+     title="Check alarm status."><span id="headerDynamic_healthText"><%= status['health']%></span></a>
+  &nbsp;
+</div>
+
+<!-- in-place restart dialog -->
+<div id="restartDialog" style="width: 34em; display: none">
+  <form action="#">
+    <div class="midLevel">
+      <a class="closeLink" href="#"><img class="closeIcon" width="12" height="24" src="/images/popup_close.png" alt="close" /></a>
+      <strong>Restart Optimization Service</strong>
+      <p>
+        Restarting the service will disrupt existing network
+        connections that are being proxied through the appliance.
+      </p>
+      <div class="indent" id="clearDataStorePopupDiv">
+        <%  hintValue = sdrPolicy == 'sdr-m' and '(not applicable in <a href="/mgmt/gui?p=setupServicePerformance">SDR-M mode</a>)' or '' %>
+        <%= FormUtils.NodeEntry(
+                name='clean',
+                widget='checkboxLeft',
+                hint=hintValue,
+                label='Clear the Data Store').html(self) %>
+      </div>
+      <p class="warning" style="display: none">
+        Client performance will be adversly affected until the data
+        store is repopulated.
+      </p>
+      <% # Make sure to supply an onclick parameter to prevent submitPrep() from running: %>
+      <%= FormUtils.formSubmitButtons(self,
+              {'name': 'restart', 'value': 'Restart', 'onclick': 'hideActionMessageBox("restart the optimization service");'},
+              {'name': 'cancel', 'value': 'Cancel', 'onclick': ''}) %>
+    </div>
+  </form>
+</div>
+
+<!-- acts as the page overlay and contains the restart popup -->
+<script type="text/javascript">
+
+// create an anonymous closure for the in-place save and restart code
+// so that we don't pollute the namespace for the page's .psp code
+Y.on('domready', function() {
+
+    var savePermission = <%= repr(Nodes.permission(mgmt, '/mgmtd/db/save')) %>;
+    var restartPermission = <%= repr(Nodes.permission(mgmt, '/rbt/sport/main/action/restart_service')) %>;
+
+    // tooltips
+    var saveTooltip = new RBT.Tooltip({
+        alignNode: '#headerDynamic_saveOn',
+        content: 'Configuration saved.'
+    }).render();
+    var restartTooltip = new RBT.Tooltip({
+        alignNode: '#headerDynamic_restartOn',
+        content: 'Service restarted.'
+    }).render();
+
+    // grab some of the DOM elements from the restart dialog
+    var restartDialogEl = Y.one('#restartDialog');
+    var formEl = restartDialogEl.one('form');
+    var closeLinkEl = restartDialogEl.one('a.closeLink');
+    var restartWarningEl = restartDialogEl.one('p.warning');
+
+    // create the restart dialog
+    var restartDialog = new ModalDialog(
+        'restartDialog', POPUP_AFFINITY_UPPER_LEFT, 1000);
+
+    // install event handlers to show and hide the popup
+    if (restartPermission == 'write') {
+        Y.on('click', function(e) {
+            // Set the position every time we show().  This ensures
+            // that the dialog is properly positioned even if the page
+            // layout changes.  (For example, a change in font size
+            // will affect the position of the popup.)
+            restartDialog.setPositionEl('headerDynamic_restartOn');
+            restartDialog.show();
+            e.halt();
+        }, '#headerDynamic_restartOn');
+        Y.on('click', function(e) {
+            restartDialog.hide();
+            e.halt();
+        }, [formEl.one('input[name="cancel"]'), closeLinkEl]);
+    }
+
+    // handlers for performing the actions
+    if (savePermission == 'write') {
+        Y.on('click', function(e) {
+            performRemoteCall('saveConfig', {}, function(responseEl) {
+                if (responseEl.getAttribute('errorMsg')) {
+                    alert('Unable to save the configuration:\n' +
+                        responseEl.getAttribute('errorMsg'));
+                }
+                else {
+                    saveTooltip.show();
+                    Y.later(2000, saveTooltip, saveTooltip.hide);
+                    headerDynamic.retrigger();
+                }
+            });
+            e.halt();
+        }, '#headerDynamic_saveOn');
+    }
+    if (restartPermission == 'write') {
+        Y.on('click', function(e) {
+            enableFormElements(formEl, false);
+            RBT.rpc({
+                url: '/mgmt/xmldata?p=restartService',
+                form: formEl,
+                successFn: function() {
+                    restartDialog.hide();
+                    enableFormElements(formEl, true);
+                    restartTooltip.show();
+                    Y.later(2000, restartTooltip, restartTooltip.hide);
+                    headerDynamic.retrigger();
+                }
+            });
+            e.halt();
+        }, formEl.one('input[name="restart"]'));
+    }
+
+    // One more event handler.  We need to show a warning when the
+    // Clean Data Store checkbox is checked.  Note that we have to
+    // call resize() for IE6 after adjusting the display of the
+    // warning.  If it wasn't for this we could simply use a
+    // displayDiv.
+    if (restartPermission == 'write') {
+        var cleanEl = formEl.one('input[name="clean"]');
+        Y.on('click', function(e) {
+            restartWarningEl.setStyle(
+                'display', cleanEl.get('checked') ? 'block' : 'none');
+            restartDialog.resize();
+        }, cleanEl);
+    }
+
+});
+
+<%
+# When Adaptive Data Streamlining mode is set to SDR-M, we disable the
+# "Clear Data Store" checkbox that is in the restart popup.
+if sdrPolicy == 'sdr-m': {
+    self.writeln('onloadScript += " enableElements($(\'clearDataStorePopupDiv\'), false);";')
+}
+%>
+</script>

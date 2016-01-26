@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# hack to allow chkconfig to install new init.d files on a read-only root file
+# system
+
+touch / 2>/dev/null
+READ_ONLY_ROOT=$?
+
+[ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,rw
+
+/sbin/chkconfig.real $@
+RETVAL=$?
+
+[ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,ro
+
+exit $RETVAL

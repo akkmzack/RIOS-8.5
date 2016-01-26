@@ -1,0 +1,112 @@
+#! /bin/bash
+#
+# rename_ifs          Rename interfaces based on manufacturing settings
+#
+# chkconfig: 2345 13 86
+# description: rename interfaces based on manufacturing settings
+
+# Source function library.
+. /etc/init.d/functions
+
+MFG_DB_DIR=/config/mfg
+MFG_DB_PATH=${MFG_DB_DIR}/mfdb
+MFG_INC_DB_PATH=${MFG_DB_DIR}/mfincdb
+
+MDDBREQ=/opt/tms/bin/mddbreq
+NAMEIF=/sbin/nameif
+IFCONFIG=/sbin/ifconfig
+
+# XXXXXXXX  testing
+# MDDBREQ=./mddbreq
+# MFG_DB_DIR=./mfd
+# MFG_DB_PATH=${MFG_DB_DIR}/mfdb
+# MFG_INC_DB_PATH=${MFG_DB_DIR}/mfincdb
+# #NAMEIF=echo
+# #IFCONFIG=echo
+
+RETVAL=0
+
+start() {
+        echo $"Running renaming interfaces"
+	echo -n $"Reading interface settings: "
+
+        if [ -d ${MFG_DB_DIR} ]; then
+
+            enabled=`${MDDBREQ} -v ${MFG_DB_PATH} query get "" /mfg/mfdb/interface/map/enable`
+
+            if [ "${enabled}" = "true" ]; then
+
+                IF_NAME_MAC_RAW=`ifconfig -a | grep 'Ethernet.*HWaddr' | sed 's/^\([^ ]*\) .*HWaddr \(.*\)/\2 \1/'`
+                IF_KERNNAMES_LIST=`echo "${IF_NAME_MAC_RAW}" | awk '{print $2}' | tr '\n' ' '`
+
+                # Bring down all interfaces, as otherwise we cannot rename them
+                for kifn in ${IF_KERNNAMES_LIST}; do
+                    ${IFCONFIG} ${kifn} down
+                done
+
+                # Do map/macifname type remappings here
+                map_nums=`${MDDBREQ} -v ${MFG_DB_PATH} query iterate "" \
+                    /mfg/mfdb/interface/map/macifname | tr '\n' ' '`
+
+                for mn in ${map_nums}; do
+                    macaddr=`${MDDBREQ} -v ${MFG_DB_PATH} query get "" \
+                        /mfg/mfdb/interface/map/macifname/${mn}/macaddr`
+                    name=`${MDDBREQ} -v ${MFG_DB_PATH} query get "" \
+                        /mfg/mfdb/interface/map/macifname/${mn}/name`
+                    echo "Mapping MAC: ${macaddr} to interface name: ${name}"
+
+                    ${NAMEIF} -s ${name} ${macaddr}
+                done
+
+                IF_NAME_MAC_RAW=`ifconfig -a | grep 'Ethernet.*HWaddr' | sed 's/^\([^ ]*\) .*HWaddr \(.*\)/\2 \1/'`
+                IF_KERNNAMES_LIST=`echo "${IF_NAME_MAC_RAW}" | awk '{print $2}' | tr '\n' ' '`
+                # Bring up all interfaces. XXX really should just do some
+                for nifn in ${IF_KERNNAMES_LIST}; do
+                    ${IFCONFIG} ${nifn} up
+                done
+
+            fi
+        fi
+
+        echo
+	[ $RETVAL -eq 0 ] && touch /var/lock/subsys/rename_ifs
+	return $RETVAL
+}
+
+stop() {
+	rm -f /var/lock/subsys/rename_ifs
+	RETVAL=$?
+	return $RETVAL
+}	
+
+restart() {
+  	stop
+	start
+}	
+
+reload() {
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart)
+	stop
+	start
+	;;
+  reload)
+  	reload
+	;;
+  status)
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|reload|restart}"
+	exit 1
+esac
+
+exit $?

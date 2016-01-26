@@ -1,0 +1,43 @@
+#! /bin/bash
+
+#
+#  Filename:  $Source$
+#  Revision:  $Revision: 101276 $
+#  Date:      $Date: 2012-03-15 17:29:31 -0700 (Thu, 15 Mar 2012) $
+#  Author:    $Author: dradovanovic $
+#
+#  (C) Copyright 2012 Riverbed Technology, Inc.
+#  All rights reserved.
+#
+# rbt_set_mobo       Hardware detect
+#
+# description: Detects motherbaord and sets variables accordingly
+#
+HALDMODEL=/opt/tms/bin/hald_model
+MOBO_GENERIC=
+HPP1_BLADE=0
+VSH_PLATFORM=0
+
+MOBO_GENERIC=`/opt/tms/bin/hwtool -q motherboard | awk -F- '{ print $1"-"$2}'`
+echo "MOBO base revision $MOBO_GENERIC"
+
+MOBO_IS_VM=`/opt/tms/bin/hwtool -q motherboard_is_vm`
+
+# Check if we are running on Riverblade.
+if [ "x${MOBO_GENERIC}" = "xCMP-00HP1" ]; then
+    HPP1_BLADE=1;
+elif [ "x${MOBO_IS_VM}" = "xtrue" ]; then
+    VSH_PLATFORM=1;
+fi
+
+MFG_TYPE=`$HALDMODEL -m`
+VIRTUALIZATION="`$HALDMODEL | cut -f 37`"
+RSP_SUPPORTED="false"
+VSP_SUPPORTED="false"
+if [ "$VIRTUALIZATION" = "true" ]; then
+    if [ "x$MFG_TYPE" = "xrvbd_ex" ]; then
+        VSP_SUPPORTED="true"
+    else
+        RSP_SUPPORTED="true"
+    fi
+fi

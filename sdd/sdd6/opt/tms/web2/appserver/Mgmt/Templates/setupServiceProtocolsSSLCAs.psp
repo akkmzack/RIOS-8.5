@@ -1,0 +1,166 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsSSLCAs.psp
+##
+## SSL Certificate Authorities page.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<%
+self.hasHelp = True
+self.relatedPages = ('setupServiceInpathRules',
+                     'setupAdvNet_peering',
+                     'setupServiceProtocolsHTTP',
+                     'setupServiceProtocolsSSLCRLs',
+                     'setupVault',
+                     'reportSSLStatistics')
+%>
+
+<psp:method name="css">
+    return '''
+#sslCaTable_main { width: 100%; }
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    # Permissions on this node work on both SH and CMC policy page.
+    # SH:  /role_primitive/acceleration/ssl
+    # CMC: /role_primitive/steelhead/acceleration/ssl
+    return {
+        'permNode': NodeEntry(
+            path='/rbt/sport/ssl/config/global/enable')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'addCa_name': NodeEntry(
+            name='addCA_name',
+            label='Optional Local Name',
+            hint='(ignored if importing multiple certificates)'),
+        'addCa_fileMode': NodeEntry(
+            name='addCA_fileMode',
+            widget='radio',
+            label={'true': 'Local File', 'false': 'Cert Text'},
+            enableDiv={'true': 'addCA_fileContainer',
+                       'false': 'addCA_textContainer'},
+            value='true'),
+        'addCa_file': NodeEntry(
+            label="",
+            name='addCA_file',
+            widget='file',
+            type='file',
+            validate='nonempty'),
+        'addCa_text': NodeEntry(
+            label="",
+            name='addCA_text',
+            widget='textarea',
+            widgetClass='cert_textarea',
+            validate='nonempty')
+    }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+self.retargetCmcPolicyNodes()
+
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+self.beginPagelet()
+%>
+
+
+<%
+# The rest of this page requires the secure vault to be unlocked.
+vaultUnlocked = Nodes.getBoolean(mgmt, '/secure_vault/state/unlocked')
+if not vaultUnlocked: {
+%>
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+<%
+} else: {
+%>
+
+<form id="sslServerForm"
+      method="post"
+      action="<%= self.thisPageletRequest() %>"
+      enctype="multipart/form-data">
+  <div>
+    <input type="hidden" name="_action_" value="sslServers" />
+  </div>
+  <% # sslServerTable.html(self, 'topLevel') %>
+</form>
+
+
+<script type="text/javascript">
+<!--
+function viewCA(element) {
+    var name = element.getAttribute('name');
+    return popupCert(name, 'ca', name);
+}
+// -->
+</script>
+
+<%
+sslCaTable = ajaxentrytable.AjaxEntryTable('sslCa',
+    titleText='<span class="popupTitle" title="Needed only on the server-side Steelhead.">Certificate Authorities</span>',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=sslCAs'),
+    headerSpec=('', 
+                ('Certificate Authority', '', "sortAttrib('name')"),
+                ('Issued To', '', "sortAttrib('issuer')"),
+                ('Expiration Date', '', "sortAttrib('expiry_sort')")),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'selectedCA_'),
+ AjaxEntryTable.tdClick('name', viewCA),
+ AjaxEntryTable.tdAttrStyle('issuer', 'style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'style')]""",
+    emptyMessage='No current Certificate Authorities.',
+    addButtonText='Add a New Certificate Authority',
+    removeName='removeCAs',
+    removeButtonText='Remove Selected',
+    removePrefix='selectedCA_')
+
+sslCaTable.addDivContent='''
+<div class="midLevel">
+''' + dialogEntries['addCa_name'].html(self, format='block') + '''
+</div>
+<div class="midLevel">
+  %s
+  <div id="addCA_fileContainer" class="midLevel indent">
+    %s
+  </div>
+</div>
+<div class="midLevel">
+  %s
+  <div id="addCA_textContainer" class="midLevel indent">
+    %s
+  </div>
+</div>
+%s
+''' % (dialogEntries['addCa_fileMode'].html(self, value='true', format='block'),
+       dialogEntries['addCa_file'].html(self, 'addCA_fileElement', format='block'),
+
+       dialogEntries['addCa_fileMode'].html(self, value='false', format='block'),
+       dialogEntries['addCa_text'].html(self, 'addCA_textElement', format='block'),
+       FormUtils.formSubmitButtons(self, {'name': 'addCA', 'value': 'Add'}))
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      enctype="multipart/form-data">
+  <div>
+    <input type="hidden" name="_action_" value="sslCAs" />
+  </div>
+  <%= sslCaTable.html(self, 'topLevel') %>
+</form>
+<%
+} # end secure vault check
+
+self.endPagelet()
+%>

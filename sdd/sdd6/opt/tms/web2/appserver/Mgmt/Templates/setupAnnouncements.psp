@@ -1,0 +1,56 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupDnsSettings.psp
+## DNS Settings for controlled appliances.
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries" params="interface='primary'">
+    return {
+        'loginMessage': FormUtils.NodeEntry(
+            path='/system/issue_net',
+            widget='textarea',
+            rows=6,
+            cols=80,
+            label='Login Message - (Shown on Login Page)'),
+        'motd': FormUtils.NodeEntry(
+            path='/system/motd',
+            widget='textarea',
+            rows=6,
+            cols=80,
+            label='MOTD - (Shown on Home Page)')
+        }
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <div class="midLevel">
+      <p class="captionUpper"><%= nodeEntries['loginMessage'].html_label(self, 'html', True) %></p>
+      <%= nodeEntries['loginMessage'].html_widget(self) %>
+    </div>
+    <div class="midLevel">
+      <p class="captionUpper"><%= nodeEntries['motd'].html_label(self, 'html', True) %></p>
+      <%= nodeEntries['motd'].html_widget(self) %>
+    </div>
+    <input type="hidden" name="_action_" value="setFormNodes" />
+  </div>
+  <%= FormUtils.formSubmitButtons(self) %>
+</form>
+
+<% self.endPagelet() %>

@@ -1,0 +1,960 @@
+<%
+## Copyright 2010, Riverbed Technology, Inc., All rights reserved.
+#
+# This page is a container for the simplified QoS setup pages.
+# @author Andrew Hao
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="Nodes, FormUtils, RbtUtils, ajaxentrytable, PagePresentation:Pagelet, PagePresentation, qos, urllib, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'reportQoSStatsSent',
+        'reportQoSStatsDropped',
+    )
+%>
+
+<psp:method name="css">
+    return self.css_apps() + \
+        self.css_sites() + \
+        self.css_profiles()
+</psp:method>
+
+<psp:method name="pageletNodes">
+    # For RBM permissioning
+    name, pathPrefix, mode = Nodes.cmcDecodeNodeMode(self.request().fields())
+    return [pathPrefix + '/rbt/hfsc/config/global/enable']
+</psp:method>
+
+<psp:method name="nodeEntries" params="interfaces">
+    entries = {
+        'shaping_enable': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/enable',
+            name='globalQosShapingEnable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS Shaping and Enforcement'),
+        'marking_enable': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/mark_enable',
+            name='globalQosMarkingEnable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS Marking'),
+        'overcommit_enable': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/bw_overcommit',
+            name='overcommit_enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Local WAN Oversubscription',
+            # XXX/ahao Need a clearer explanation.
+            tooltip='''
+<p>
+  Allow the sum of the remote site bandwidths to exceed the local WAN uplink speed.
+</p>
+<p>
+  Recommended when the sum of the remote site bandwidths exceeds that of the
+  local WAN uplink and enough sites will be active to oversubscribe the local WAN
+  uplink.
+</p>'''),
+        'linkrate': FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/interface/primary/link_rate', # all interfaces have the same rate in Basic Outbound QoS, so we use primary just to populate the field.
+            name='linkrate',
+            type='uint32',
+            widgetClass='medium',
+            label='WAN Bandwidth',
+            units='kbps',
+            validate=('intInRange', '[1, 4294967295]'),
+            inputOptional=True,
+            filter=lambda x: int(x) != 0 and x or '',
+            value='')}
+
+    for iface, enable in interfaces:
+        entries[iface + '_enable'] = enable
+    return entries
+</psp:method>
+
+<psp:method name="interfaces">
+    """
+    Return a list of interface, nodeentry, nodeentry triples:
+      [('wan0_0', wan0_0EnableNodeEntry, wan0_1LinkRateNodeEntry),
+       ('wan0_1', wan0_1EnableNodeEntry, wan0_1LinkRateNodeEntry), ...]
+    """
+
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+    if policyType:
+        # CMC case
+        ifaces = ['primary']
+        for i in Nodes.allInterfaceIndices:
+            ifaces.append('wan%s' % i)
+    else:
+        # SH case
+        mgmt = self.session().value('mgmt')
+        ifaces = Nodes.getMgmtLocalChildrenNames(mgmt, '/rbt/hfsc/config/global/interface')
+        ifaces = FormUtils.sortInterfacesByName(ifaces)
+
+    result = []
+    for iface in ifaces:
+        enable = FormUtils.NodeEntry(
+            path='/rbt/hfsc/config/global/interface/%s/enable' % iface,
+            name='enableIface_%s' % iface,
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable QoS on <strong>%s</strong> ' % iface)
+        result.append((iface, enable))
+    return result
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+interfaces = self.interfaces()
+nodeEntries = self.nodeEntries(interfaces)
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+fields = self.request().fields()
+%>
+
+<iframe id="yui-history-iframe" src="/blank.html"></iframe>
+<input id="yui-history-field" type="hidden" />
+
+<% self.beginPagelet() %>
+
+<%
+isEasyQos = Nodes.present(mgmt, pathPrefix + '/rbt/hfsc/config/global/easy_qos_mode') == 'true'
+if not isEasyQos: {
+    if policyType: {
+        if 'editPolicy' in fields: {
+            # Policy page is being edited
+            advQosLink = '/mgmt/gui?p=setupAdvNet_qosClasses&amp;editPolicy=%s' % (urllib.quote_plus(fields['editPolicy']))
+        }
+        else: {
+            # The appliance configuration is being viewed
+            assert 'appConfig' in fields
+            advQosLink = '/mgmt/gui?p=setupAdvNet_qosClasses&amp;appConfig=%s' % (urllib.quote_plus(fields['appConfig']))
+        }
+    }
+%>
+
+<form method="post"
+      action="<% self.thisPageletRequest() %>"
+      id="gatekeeperForm">
+  <fieldset id="modeSwitchPane">
+    <h2>You cannot use Basic Outbound QoS with an Advanced Outbound QoS configuration.</h2>
+    <p>Advanced Outbound QoS configurations cannot be migrated back to Basic Outbound QoS configurations.</p>
+<% if not policyType: { %>
+    <fieldset class="option">
+      <legend>Revert to a prior system configuration with Basic Outbound QoS settings.</legend>
+      <p>Visit the Configure > Configurations page and <a href="/mgmt/gui?p=setupConfig">revert to a prior system configuration</a>.</p>
+      <p>This is only applicable if you have a configuration containing Basic Outbound QoS settings (e.g. if you backed up your configuration prior to migrating Basic Outbound QoS to Advanced Outbound QoS).</p>
+      <p class="warning">Your entire system configuration will be reset.</p>
+    </fieldset>
+<% } %>
+    <fieldset class="option">
+      <legend>Clear all QoS configurations and return to Basic Outbound QoS</legend>
+      <p class="warning">
+<% if policyType: { %>
+        You will lose all existing QoS configurations in this policy, and start over with a blank Basic Outbound QoS configuration.
+<% } else: { %>
+        You will lose all existing QoS configurations, and start over with a blank Basic Outbound QoS configuration.
+<% } %>
+      </p>
+      <input type="submit" name="clearQoSSettings" onclick="return confirm('Are you sure you wish to clear your QoS settings and return to Basic Outbound QoS? You will lose your current QoS configuration.');" value="Clear" />
+    </fieldset>
+<% if policyType: { %>
+    <p><a href="<%=advQosLink%>">&#8592; Return to the Advanced Outbound QoS page</a>.</p>
+<% } else: { %>
+    <p><a href="/mgmt/gui?p=setupAdvNet_qosClasses">&#8592; Return to the Advanced Outbound QoS page</a>.</p>
+<% } %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_easyGatekeeper" />
+  </fieldset>
+</form>
+
+<%
+  # Exit early so there aren't any dangling JS references.
+  self.endPagelet()
+  return
+%>
+
+<% } 
+else: { 
+    if RVBDUtils.isCMC(): {
+        if RVBDUtils.isEditingCmcPolicy(mgmt, fields): { 
+            # Editing the policy %>
+<div>
+This policy might not be pushed to Steelhead versions 6.5.0. or lower.
+</div>
+<% } # end of RVBDUtils.isEditingCmcPolicy
+        else: {
+            # User is viewing the appliance configuration
+            # policyName is of the form app_sn
+            # DPI rules defined on this page only supported for appliances running a 
+            # version higher than 6.5.0.
+            # QoS Marking defined on this page are only supported for appliances 
+            # running version 7.0.0 or higher.
+            # Get the appliance version and display a warning if the appliance does not
+            # support DPI rules or QoS Marking defined on this page.
+
+            app, app_prod, app_sn = Nodes.parseApplianceParam(policyName)
+            versionBytePath = '/cmc/state/appliance/%s/%s/version_num' % (app_prod, app_sn)
+            versionByte = Nodes.present(mgmt, versionBytePath)
+            major, minor, micro, eng = RVBDUtils.cmcAppBytesToVersion(versionByte)
+            versionString = str(major) + '.' + str(minor) + '.' + str(micro)
+
+            # DPI is supported for appliances running a version higher than 6.5.0
+            isDPISupported = FormUtils.alphanumericCompare(versionString, '6.5.0') == 1
+            
+            # QoS Markings defined on this page are supported for appliances running a version 7.0.0 or higher
+            isQoSMarkingSupported = major >= 7
+    
+            if not isDPISupported: { %>
+                <div class="warning">
+                  This Steelhead is running version <%= versionString %>. <br />
+                  <label>
+                    <span class="popupTitle" title="
+                      <p>
+                        When a Steelhead is running a version lower than 7.0.0, any QoS 
+                        Marking values defined on this page will be dropped when pushed 
+                        to it. Use the QoS Marking (Legacy) page to configure QoS Marking 
+                        for such Steelheads.
+                      </p>
+                      <p>
+                        When a Steelhead is running version 6.5.0 or lower, the policy 
+                        will not be pushed to it under certain conditions. See the Help 
+                        for more information on these conditions.
+                      </p>
+                      ">
+                      Some or all of this policy may not be pushed to it.
+                    </span>
+                  </label>
+                </div>
+        <% }
+            elif not isQoSMarkingSupported: { %>
+                <div class="warning">
+                  This Steelhead is running version <%= versionString %>. <br />
+                  <label>
+                    <span class="popupTitle" title="
+                      <p>
+                        When a Steelhead is running a version lower than 7.0.0, any QoS 
+                        Marking values defined on this page will be dropped when pushed 
+                        to it. Use the QoS Marking (Legacy) page to configure QoS Marking 
+                        for such Steelheads.
+                      </p>
+                      ">
+                      Some or all of this policy may not be pushed to it.
+                    </span>
+                  </label>
+                </div>
+        <% }
+        } 
+    } 
+%>
+
+<!-- Local Site Config -->
+<form id="easyQoS_localSiteForm" action="<%= self.thisPageletRequest() %>" method="post">
+  <div>
+    <fieldset>
+      <legend>WAN Link</legend>
+      <%= nodeEntries['shaping_enable'].html(self, format='block') %>
+      <div class="indent">
+        <div>
+          <%= nodeEntries['linkrate'].html(self, format='block') %>
+<% for iface, enable in interfaces: { %>
+          <%= nodeEntries[iface + '_enable'].html(self, format='block') %>
+<% } %>
+          <%= nodeEntries['overcommit_enable'].html(self, format='block') %>
+        </div>
+      </div>
+    <%= nodeEntries['marking_enable'].html(self, format='block') %>
+    </fieldset>
+    <%= FormUtils.formSubmitButtons(self, {'name': 'localSite',
+                                           'value': 'Apply'}) %>
+    <input type="hidden" name="_action_" value="setupEasyQoS_sites" />
+  </div>
+</form>
+
+
+<div id="qosTabControl" class="tabControl">
+  <div class="grayBorder">
+    <%= FormUtils.radioTabControl(self,
+                                  'qosTabs',
+                                  ('sites', 'Sites', 'siteTab'),
+                                  ('apps', 'Applications', 'appTab'),
+                                  ('profiles', 'Service Policies', 'profileTab')) %>
+    <div id="siteTab"><%@include file="includes/setupAdvNet_qosEasy_sites.psp" %></div>
+    <div id="appTab"><%@include file="includes/setupAdvNet_qosEasy_apps.psp" %></div>
+    <div id="profileTab"><%@include file="includes/setupAdvNet_qosEasy_profiles.psp" %></div>
+  </div>
+</div>
+
+<% } %>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+//<![CDATA[
+
+/**
+ * This uses the Y.History module to enable "history" on a per-tab
+ * basis with the back button. This allows tabs to be bookmarked, and
+ * form submissions to return the user back to the original tab.
+ */
+var bookmarkedTabState = Y.History.getBookmarkedState("tab");
+var initialTabState = bookmarkedTabState || "sites";
+
+// Given the new state of the RadioTabControl, update the tab in the UI.
+function updateTabHistory(state) {
+    // We override qosTabs.switchTo, so call the prototype method instead.
+    RadioTabControl.prototype.switchTo.call(qosTabs, state);
+};
+
+Y.History.on("history:ready", function () {
+    var currentState = Y.History.getCurrentState("tab");
+    updateTabHistory(currentState);
+});
+
+Y.History.initialize('#yui-history-field', '#yui-history-iframe');
+Y.History.register("tab", initialTabState).on(
+    "history:moduleStateChange", updateTabHistory);
+
+// This is called from the onclick of the RadioTabControl button. Do not
+// actually do the switching like the original switchTo did. Instead, register
+// a state change in the history module.
+//
+// This causes the history:moduleStateChange event to fire, which in turn calls
+// updateTabHistory, which will update the UI.
+qosTabs.switchTo = function(tabName) {
+    Y.History.navigate("tab", tabName);
+    return false;
+};
+
+/**
+ * Sets the values of form elements according to XML data.
+ * Assumes that XML attributes are identically named as form elements.
+ *
+ * @param form
+ * @param xmlEl The XML element containing the attributes in question.
+ * @param keywords
+ *   A list of keywords. Each keyword names both the name of the form
+ *   element and the XML attribute.
+ * @param namePrefix
+ *   The prefix to be prepended to the beginning of the form element name.
+ */
+function setFormValues(form, xmlEl, keywords, namePrefix) {
+    for (var i = 0; i < keywords.length; i++) {
+        var kw = keywords[i];
+        setFormValue(form, namePrefix + kw, xmlEl.getAttribute(kw));
+    }
+}
+
+var shapingWizard;
+
+// This rather large object is an example how to set up a wizard. The text is
+// my best attempt at help text, but it definitely needs work.
+var wizard = {
+    'Introduction': {
+        selector: '#easyQoS_localSiteForm',
+        title: 'Introduction to QoS',
+        text: [
+        'This wizard will take you though the most common modifications to',
+    	'QoS policies on the Steelhead. QoS has four main components to configure:',
+    	'<ul>',
+    		'<li>The local site which the is the machine you are configuring right now.</li>',
+    		'<li>The applications which determine the traffic to classify.</li>',
+    		'<li>The policies that define classes of minimum and maximum bandwidth guarantees for',
+    		'application traffic.</li>',
+    		'<li>The remote sites which will be connected to this Steelhead.</li>',
+    	'</ul>'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'WAN Bandwidth'
+            }
+        ]
+    },
+    
+    'WAN Bandwidth': {
+        selector: '#easyQoS_localSiteForm input[name="linkrate"]',
+        title: 'Configuring WAN Bandwidth',
+        text: ['This is the bandwidth available to the local site for outbound traffic.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Interfaces'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_localSiteForm input[name="linkrate"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the WAN Bandwidth field. Check the error message.'
+            }
+        ]
+    },
+    
+    'Interfaces': {
+        selector: '#easyQoS_localSiteForm input[name="enableIface_primary"]',
+        title: 'Configuring Interfaces',
+        text: [
+        'There is a checkbox for each pair of ports on the Steelhead. The name',
+        'in bold corresponds to the name on the port. These checkboxes allow',
+        'you to specify which of these ports you want QoS applied to.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Oversubscription'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    var iface1 = Y.one('#easyQoS_localSiteForm input[name="enableIface_primary"]').get('checked');
+                    var iface2 = Y.one('#easyQoS_localSiteForm input[name="enableIface_wan0_0"]').get('checked');
+                    var iface3 = Y.one('#easyQoS_localSiteForm input[name="enableIface_wan0_1"]').get('checked');
+
+                    return (iface1 || iface2 || iface3);
+                },
+                errorText: 'You need to enable QoS on a least one interface.'
+            }
+        ]
+    },
+    
+    'Oversubscription': {
+        selector: '#easyQoS_localSiteForm input[name="overcommit_enable"]',
+        title: 'WAN Oversubscription',
+        text: [
+        'This allows the sum of the remote site bandwidths to exceed the local',
+        'site bandwidth. This in turn allows the remote sites to make maximum',
+        'use of available bandwidth when traffic is light but may degrade bandwidth',
+        'guarantees when traffic is heavy.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Apply'
+            }
+        ]
+    },
+    
+    'Apply': {
+        selector: '#easyQoS_localSiteForm input[name="localSite"]',
+        title: 'Apply Local Site Configuration',
+        text: ['We will actually enable QoS later. For now, just apply the changes.'].join(' '),
+        submit: {
+            selector: '#easyQoS_localSiteForm',
+            to: 'Move to Applications'
+        }
+    },
+    
+    'Move to Applications': {
+        selector: '#qosTabs_apps_title',
+        title: 'Move to Applications Tab',
+        text: ['The next phase of the wizard deals with setting up individual applications.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Applications'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return qosTabs.current === 'apps'
+                },
+                errorText: 'You need to move to the Applications tab to continue.'
+            }
+        ]
+    },
+    
+    'Applications': {
+        selector: '#qosTabs_apps_title',
+        title: 'Applications',
+        text: [
+        'Each application has a service class that determines the priority of it\'s',
+        'traffic. There are six such classes: Realtime, Interactive, Business-Critical,',
+        'Normal, Low Priority and Best-Efforr in descending order of priority.',
+        'The division of bandwidth between these is determined by the service',
+        'policy that a remote site implements.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Add an Application?'
+            }
+        ]
+    },
+    
+    'Add an Application?': {
+        selector: '#qosTabs_apps_title',
+        title: 'Do you want to ...',
+        links: [
+            {
+                text: '... add a new Application?',
+                to: 'Add Application'
+            },
+            {
+                text: '... use the existing list?',
+                to: 'Move to Service Policies'
+            }
+        ]
+    },
+    
+    'Add Application': {
+        selector: '#appTable_button_add',
+        title: 'Adding an Application',
+        text: ['This will open the tab for specifying a new Application.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Application General Configuration'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#appTable_addDiv').hasClass('hidden');
+                },
+                errorText: 'You need to open the Add Applications tab to continue.'
+            }
+        ]
+    },
+    
+    'Application General Configuration': {
+        selector: '#easyQoS_appsForm input[name="addApp_name"]',
+        title: 'General Configuration',
+        text: [
+        'Here, you will need to spcify three things:',
+        '<ul>',
+            '<li>The name of the Application (no duplicates).</li>',
+            '<li>An optional description of the Application.</li>',
+            '<li>The Application\'s position in the list. This determines how',
+            'an application\'s traffic is classified since traffic is classified',
+            'as the first entry in the list that it matches.</li>',
+        '</ul>'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Application Characteristics'
+            }
+        ],    
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_name"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Name field. Check the error message.'
+            }
+        ]
+    },
+    
+    'Application Characteristics': {
+        selector: '#easyQoS_appsForm input[name="addApp_srcsubnet"]',
+        title: 'Characteristics',
+        text: [
+        'Here you will need to specify the characteristics of the Application:',
+        '<ul>',
+            '<li>The subnet and port from which the Application traffic will originate from.',
+            '0.0.0.0/0 is the catch all subnet and "all" is the catch all port.</li>',
+            '<li>The subnet and port from which the Application traffic will go to.</li>',
+            '<li>The protocol of the Application traffic (the common named ones are first).</li>',
+            '<li>The VLAN tag ("all", "none", 1-4094).</li>',
+            '<li>The DSCP ("all" or 1-63)</li>',
+            '<li>Whether to apply QoS to traffic that is optimized by the Steelhead,',
+            'traffic that isn\'t or both types.</li>',
+            '<li>The named application type.</li>',
+        '</ul>'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Application Settings'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_srcsubnet"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Source Subnet field. Check the error message.'
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_srcport"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Source Port field. Check the error message.'
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_dstsubnet"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Destination Port field. Check the error message.'
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_dstport"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Destination Subnet field. Check the error message.'
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_vlan"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the VLAN Tag ID field. Check the error message.'
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_appsForm input[name="addApp_dscp"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the DSCP field. Check the error message.'
+            }
+        ]
+    },
+    
+    'Application Settings': {
+        selector: '#easyQoS_appsForm select[name="addApp_cls"]',
+        title: 'Settings',
+        text: [
+        'Here you will need to specify how QoS should be applied to this Application',
+        'by setting the service class to place it\'s traffic in and the DSCP type.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Completing Application'
+            }
+        ]
+    },
+    
+    'Completing Application': {
+        selector: '#easyQoS_appsForm input[name="addApplication"]',
+        title: 'Completing Process',
+        text:['This will add the new Application to the list.'].join(' '),
+        submit: {
+            selector: '#easyQoS_appsForm',
+            to: 'Move to Service Policies'
+        }
+    },
+    
+    'Move to Service Policies': {
+        selector: '#qosTabs_profiles_title',
+        title: 'Move to Service Policies',
+        text: ['The next phase of the wizard deals with setting up Service Policies.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Service Policies'
+            }
+        ], 
+        validators: [
+            {
+                validate: function() {
+                    return qosTabs.current === 'profiles'
+                },
+                errorText: 'You need to move to the Service Policies tab to continue.'
+            }
+        ]
+    },
+    
+    'Service Policies': {
+        selector: '#qosTabs_profiles_title',
+        title: 'Service Policies',
+        text: [
+        'These determine the minimum guaranteed bandwidth and the maximum allowed',
+    	'bandwidth (as a percentage of the total) for each of the six service classes.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Add a Service Policy?'
+            }
+        ]
+    },
+    
+    'Add a Service Policy?': {
+        selector: '#qosTabs_profiles_title',
+        title: 'Do you want to ...',
+        links: [
+            {
+                text: '... add a new Service Policy?',
+                to: 'Add Service Policy'
+            },
+            {
+                text: '... use the existing list?',
+                to: 'Move to Sites'
+            }
+        ]
+    },
+    
+    'Add Service Policy': {
+        selector: '#profileTable_button_add',
+        title: 'Adding a Service Policy',
+        text: ['This will open up the tab for specifying an new Service Policy.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Service Policy Name'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#profileTable_addDiv').hasClass('hidden');
+                },
+                errorText: 'You need to open the Add Service Policy tab to continue.'
+            }
+        ]
+    },
+    
+    'Service Policy Name': {
+        selector: '#easyQoS_profilesForm input[name="addProfile_name"]',
+        title: 'Name',
+        text: ['Here you need to specify the name of the policy (no duplicates).'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Service Policy Parameters'
+            }
+        ],
+        
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_profilesForm input[name="addProfile_name"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Name field. Check the error message.'
+            }
+        ]
+    },
+    
+    'Service Policy Parameters': {
+        selector: '#easyQoS_profilesForm input[name="addProfile_realtime_guaranteed"]',
+        title: 'Parameters',
+        text: [
+        'Here you need to specify the maximum and minimum bandwidth guarantees,',
+        'along with DSCP policy.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Completing Service Policy'
+            }
+        ]
+    },
+    
+    'Completing Service Policy': {
+        selector: '#easyQoS_profilesForm input[name="addProfile"]',
+        title: 'Completing Process',
+        text: ['This will add the new service policy to the list.'].join(' '),
+        submit: {
+            selector: '#easyQoS_profilesForm',
+            to: 'Move to Sites'
+        }
+    },
+    
+    'Move to Sites': {
+        selector: '#qosTabs_sites_title',
+        title: 'Move to Sites',
+        text: ['The next phase of the wizard deals with setting up remote Sites.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Sites'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return qosTabs.current === 'sites'
+                },
+                errorText: 'You need to move to the Sites tab to continue.'
+            }
+        ]
+    },
+    
+    'Sites': {
+        selector: '#qosTabs_sites_title',
+        title: 'Sites',
+        text: [
+        'These are the remote sites which implement a service policy which covers',
+    	'all application traffic originating from those sites. The default site is',
+    	'the catch-all and has a subnet of 0.0.0.0/0. Its bandwidth is initially',
+    	'set to be same as the the WAN Bandwidth you specified at the start.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Add a Site?'
+            }
+        ]
+    },
+    
+    'Add a Site?': {
+        selector: '#qosTabs_sites_title',
+        title: 'Do you want to ...',
+        links: [
+            {
+                text: '... add a new Site?',
+                to: 'Add Site'
+            },
+            {
+                text: '... use the existing list?',
+                to: 'Enable Shaping'
+            }
+        ]
+    },
+    
+    'Add Site': {
+        selector: '#remoteSiteTable_button_add',
+        title: 'Adding a Site',
+        text: ['This will open up the tab for specifying an new remote Site.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Site Configuration 1'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#remoteSiteTable_addDiv').hasClass('hidden');
+                },
+                errorText: 'You need to open the Add Site tab to continue.'
+            }
+        ]
+    },
+    
+    'Site Configuration 1': {
+        selector: '#easyQoS_remoteLinksForm input[name="addSite_name"]',
+        title: 'Name and Position',
+        text: [
+        'Here, you need to specify the name of the remote Site (no duplicates)',
+        'and also its position in the list. If the sites overlap, the one higher',
+        'on the list will get chosen.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Site Configuration 2'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_remoteLinksForm input[name="addSite_name"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: 'There was a validation error in the in the Name field. Check the error message.'
+            }
+        ]
+    },
+    
+    'Site Configuration 2': {
+        selector: '#easyQoS_remoteLinksForm textarea[name="addSite_subnet"]',
+        title: 'Subnet, Bandwidth and Policy',
+        text: [
+        'Here you specify the following:',
+        '<ul>',
+            '<li>The subnets that the remote site covers. There can be at most',
+            'five and they are of the form nnn.nnn.nnn.nnn/n</li>',
+            '<li>The bandwidth to allocate to the site.</li>',
+            '<li>The service policy to use (as seen previously).</li>',
+        '</ul>'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Completing Site'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_remoteLinksForm textarea[name="addSite_subnet"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: ''
+            },
+            {
+                validate: function() {
+                    return !Y.one('#easyQoS_remoteLinksForm input[name="addSite_wanbandwidth"]').hasClass('yui3-rbt-validator-error');
+                },
+                errorText: ''
+            }
+        ]
+    },
+    
+    'Completing Site': {
+        selector: '#easyQoS_remoteLinksForm input[name="addSite"]',
+        title: 'Completing Process',
+        text: ['This will add the new remote Site to the list.'].join(' '),
+        submit: {
+            selector: '#easyQoS_remoteLinksForm',
+            to: 'Enable Shaping'
+        }
+    },
+    
+    'Enable Shaping': {
+        selector: '#easyQoS_localSiteForm input[name="globalQosShapingEnable"]',
+        title: 'Enable QoS Shaping',
+        text: ['This will allow QoS to be applied as you\'ve configured it.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Enable Marking'
+            }
+        ],
+        validators: [
+            {
+                validate: function() {
+                    return Y.one('#easyQoS_localSiteForm input[name="globalQosShapingEnable"]').get('checked');
+                },
+                errorText: 'You need to enable shaping and enforcement.'
+            }
+        ]
+    },
+    
+    'Enable Marking': {
+        selector: '#easyQoS_localSiteForm input[name="globalQosMarkingEnable"]',
+        title: 'Enable QoS Marking',
+        text: ['This will allow packets to be marked for further QoS to be applied.'].join(' '),
+        links: [
+            {
+                text: 'Next Step',
+                to: 'Apply Shaping + Marking'
+            }
+        ]
+    },
+    
+    'Apply Shaping + Marking': {
+        selector: '#easyQoS_localSiteForm input[name="localSite"]',
+        title: 'Applying Changes',
+        text: ['This will apply the changes you have made.'].join(' '),
+        submit: {
+            selector: '#easyQoS_localSiteForm',
+            to: 'End Message'
+        }
+    },
+    
+    'End Message': {
+        selector: '#qosTabs_sites_title',
+        title: 'End of Wizard',
+        text: ['You are now done with the wizard.'].join(' '),
+        links: [
+            {
+                text: 'Close Wizard',
+                to: null
+            }
+        ]
+    } 
+};
+
+// Call this from the console to test the wizard. I did not want to add anything
+// to the UI so that this just sits here. 
+function toggleWizard() {
+    if (shapingWizard.isActive()) {
+        shapingWizard.stopWizard();
+    } else {
+        shapingWizard.startWizard('Introduction');
+    }
+}
+
+Y.on('load', function() {
+    shapingWizard = new RBT.Wizard(wizard, 'easyQos');
+    var currentStep = RBT.Wizard.currentStepName();
+    if (currentStep) {
+        shapingWizard.startWizard(currentStep);
+    }
+});
+
+//]]>
+</script>

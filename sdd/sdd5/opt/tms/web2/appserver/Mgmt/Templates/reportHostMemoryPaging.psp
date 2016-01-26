@@ -1,0 +1,64 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Kyle Getz
+##
+## New memory paging report, using the Reports 2.0 framework.
+%>
+
+<%@page imports="PagePresentation:Pagelet, Reports2, RVBDUtils" %>
+<%@page extends="Pagelet" %>
+<%@page indentType="braces" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="pageletNodes">
+    return ['/stats/actions/generate_report/paging']
+</psp:method>
+
+<% self.beginPagelet() %>
+
+<div id="timeSeriesChart"></div>
+
+<script type="text/javascript">
+// <![CDATA[
+
+Y.on('domready', function() {
+    // The chart div should take up as much height as possible.
+    $('timeSeriesChart').style.height = RBT.Reports2.availableHeight() + 'px';
+
+    // Assemble the Highstock options.
+    var highstockOptions = RBT.Reports2.defaultHighstockOptions();
+    highstockOptions.yAxis[0].title.text = 'Swap Out Rate (pages/s)';
+    highstockOptions.series = [
+        { name: 'Page Swap Out Rate',
+          color: RBT.Reports2.BLUE,
+          type: 'area' }
+    ];
+
+    // Make the navigator shadow the only series.
+    highstockOptions.navigator.baseSeries = 0;
+    highstockOptions.navigator.series.color = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.lineColor = highstockOptions.series[0].color;
+    highstockOptions.navigator.series.type = 'area';
+
+    // Create the chart!
+    var chart = new
+        RBT.Reports2.TimeSeriesChartWithControls({
+            parent: '#timeSeriesChart',
+            dataUrl: '<%= Reports2.constructDataUrl("reportMemoryPaging") %>',
+            dataFormatterFn: dataFormatter,
+            options: highstockOptions,
+            boundariesChangedFn: setReports2ChartWindow,
+            initialWindow: <%= RVBDUtils.getReports2ChartWindow(self.session()) %>,
+            alwaysOnSeries: ['Page Swap Out Rate']
+        });
+});
+
+function dataFormatter(value, seriesName) {
+    return RBT.Reports2.addThousandsSeparators(Math.round(value)) + ' pages/s';
+}
+
+// ]]>
+</script>
+
+<% self.endPagelet() %>

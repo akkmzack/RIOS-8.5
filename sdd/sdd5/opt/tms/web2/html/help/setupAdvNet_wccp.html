@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring WCCP</title>
+    <link rel="StyleSheet" href="css/advanced-networking.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="advanced-networking.08.01.html#282093">Chapter 6	Configuring Network Integration Features</a> : Configuring WCCP </div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="282093">Configuring WCCP </a></div>
+      <div class="Body"><a name="282095">You can enable WCCP service groups in the Configure &gt; Networking &gt; WCCP page.</a></div>
+      <div class="Body"><a name="282096">WCCP enables you to redirect traffic that is not in the direct physical path between the client and the server. </a>To enable WCCP, the Steelhead appliance must join a service group at the router. A service group is a group of routers and Steelhead appliances that define the traffic to redirect, and the routers and Steelhead appliances the traffic goes through. You might use one or more service groups to redirect traffic to the Steelhead appliances for optimization.</div>
+      <div class="Body"><a name="282112">RiOS allows each individual Steelhead appliance in-path interface to be configured as a WCCP client. Each </a>configured in-path interface participates in WCCP service groups as an individual WCCP client, providing flexibility to determine load balancing proportions and redundancy.</div>
+      <div class="Body"><a name="497288">In RiOS v6.5 and later, you must enable connection forwarding in a WCCP cluster. A WCCP cluster refers </a>to two or more Steelhead appliances participating in the same service group. By default, RiOS provides load balancing across all participating Steelhead appliances in a WCCP cluster. With connection forwarding enabled, the WCCP load balancing algorithm considers the total number of in-path interfaces of all neighbors in the service group when balancing the traffic load across the interfaces. If you do not enable connection forwarding, the Steelhead appliance with the lowest IP address assigns all traffic flows to itself.</div>
+      <div class="Body"><a name="835963">In virtual in-path configurations, all traffic flows in and out of one physical interface, and the default subnet </a>side rule causes all traffic to appear to originate from the WAN side of the device. For more information, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules">Configuring Subnet Side Rules</a></span>. If you add the interface of a client-side Steelhead appliance xx50 to a WCCP service group and the appliance is running RSP&#8212;even if no RSP slots are installed or enabled&#8212;you must do one of the following (otherwise, the appliance does&nbsp;not optimize traffic from client-side connections): </div>
+      <li class="Bullet"><a name="835964">Configure subnet side rules to identify LAN-side traffic. </a></li>
+      <li class="Bullet"><a name="835971">Disable RSP. You can install, start, stop, and restart RSP in the Configure &gt; Branch Services &gt; RSP </a>Service page. </li>
+      <div class="Body"><a name="282113">Enabling WCCP is </a><span class="Emphasis">optional</span>.</div>
+      <div class="Body"><a name="730843">WCCP does not support IPv6.</a></div>
+      <div class="Tip">
+        <span class="Bold">Tip: </span><a name="282114">You can also use the CLI to configure WCCP service groups. For detailed configuration information (including </a>configuring the WCCP router), see the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Body"><span style="font-size: 9.0pt"><a name="282121"><img class="Default" src="images/icon_CSH.png" width="15" height="15" style="display: inline; float: none; left: 0.0; top: 0.0" alt="" /> </a></span>The AWS CSH does not support L4/PBR/WCCP configuration. The ESX Cloud Steelhead supports it.</div>
+      <div class="HeadingProcedure"><a name="282122">To enable a WCCP service group</a></div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="282123">Before configuring your WCCP service group, you must enable L4/PBR/WCCP support in the General </a>Service Settings page. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceGeneral.html#249507', '');" title="Configuring General Service Settings">Configuring General Service Settings</a></span>.</div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="282127">Choose Configure &gt; Networking &gt; WCCP to display the WCCP page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282132">Under WCCP Service Groups, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="838468">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="838470">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838472">Enable WCCP v2 Support</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838474">Enables WCCP v2 support on all groups added to the Service Group list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838476">Multicast TTL</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838478">Specify the TTL boundary for the WCCP protocol packets. The default value is </a><span class="Bold" style="font-weight: normal">16</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282150">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="HeadingProcedure"><a name="282151">To add, modify, or remove a service group</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="282152">Under WCCP groups, complete the configuration as described in this table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87552pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 143.68752pt">
+            <div class="CellHeading"><a name="838485">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 325.188pt">
+            <div class="CellHeading"><a name="838487">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838489">Add a New Service Group</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838491">Displays the controls for adding a new service group.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838493">Interface</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838498">Select a Steelhead appliance interface to participate in a WCCP service group. </a></div>
+            <div class="CellBody"><a name="838502">If you add the interface of a client-side Steelhead appliance model xx50 to a </a>WCCP service group and the appliance is running RSP&#8212;even if no RSP slots are installed or enabled&#8212;you must do one of the following: </div>
+            <li class="CellBullet"><a name="838509">Configure the appliance with subnet side rules to identify LAN-side traffic. </a></li>
+            <li class="CellBullet"><a name="838513">Disable RSP on the appliance. You can install, start, stop, and restart RSP in </a>the Configure &gt; Branch Services &gt; RSP Service page. </li>
+            <div class="CellBody"><a name="838514">In virtual in-path configurations, all traffic flows in and out of one physical </a>interface, and the default subnet side rule causes all traffic to appear to originate from the WAN side of the device. </div>
+            <div class="CellBody"><a name="838526">RiOS allows multiple Steelhead interfaces to participate in WCCP </a>on one or more routers for redundancy (RiOS v6.0 and earlier allows a single Steelhead interface). If one of the links goes down, the router can still send traffic to the other active links for optimization. </div>
+            <div class="CellBody"><a name="838533">You must include an interface with the service group ID. More than one </a>Steelhead appliance in-path interface can participate in the same service group. For WCCP configuration examples, see the <span class="book_title">Steelhead Appliance Deployment </span><span class="book_title">Guide</span>.</div>
+            <div class="CellBody"><a name="838543">If multiple Steelhead appliances are used in the topology, they must be </a>configured as neighbors. </div>
+            <div class="CellBody"><a name="838547">RiOS v6.5 and later requires connection forwarding in a WCCP cluster.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838549">Service Group ID</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838551">Enables WCCP v2 support on all groups added to the Service Group list. </a></div>
+            <div class="CellBody"><a name="838552">Specify a number from </a><span class="Bold" style="font-weight: normal">0</span> to <span class="Bold" style="font-weight: normal">255</span> to identify the service group on the router. A value of 0 specifies the standard HTTP service group. Riverbed recommends that you use WCCP service groups 61 and 62.</div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="838556">The service group ID is local to the site where WCCP is used. </a></div>
+            <div class="CellNote">
+              <span class="Bold">Note: </span><a name="838557">The service group number is not sent across the WAN. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838563">Password/Confirm Password</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838568">Optionally, assign a password to the Steelhead appliance interface. This </a>password must be the same password that is on the router. WCCP requires that all routers in a service group have the same password. Passwords are limited to 8 characters.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838570">Priority</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838572">Specify the WCCP priority for traffic redirection. If a connection matches </a>multiple service groups on a router, the router chooses the service group with the highest priority. The range is <span class="Bold" style="font-weight: normal">0-255</span>. The default value is <span class="Bold" style="font-weight: normal">200</span>.</div>
+            <div class="CellBody"><a name="838576">The priority value must be consistent across all Steelhead appliances within a </a>particular service group.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838578">Weight</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838580">Specify the percentage of connections that are redirected to a particular </a>Steelhead appliance interface, which is useful for traffic load balancing and failover support. The number of TCP, UDP, or ICMP connections a Steelhead appliance supports determines its weight. The more connections a Steelhead appliance model supports, the heavier the weight of that model. In RiOS v6.1 and later you can modify the weight for each in-path interface to manually tune the proportion of traffic a Steelhead interface receives. </div>
+            <div class="CellBody"><a name="838593">A higher weight redirects more traffic to that Steelhead interface. The ratio of </a>traffic redirected to a Steelhead interface is equal to its weight divided by the sum of the weights of all the Steelhead interfaces in the same service group: for example, if there are two Steelhead appliances in a service group and one has a weight of <span class="Bold" style="font-weight: normal">100</span> and the other has a weight of <span class="Bold" style="font-weight: normal">200</span>, the one with the weight <span class="Bold" style="font-weight: normal">100</span> receives 1/3 of the traffic and the other receives 2/3 of the traffic. </div>
+            <div class="CellBody"><a name="838603">However, since it is generally undesirable for a Steelhead with two WCCP in-</a>path interfaces to receive twice the proportion of traffic, for Steelhead appliances with multiple in-paths connected, each of the in-path weights is divided by the number of that Steelhead's interfaces participating in the service group. </div>
+            <div class="CellBody"><a name="838607">As an example, if there are two Steelhead appliances in a service group and one </a>has a single interface with weight 100 and the other has two interfaces each with weight 200, the total weight will still equal 300 (100 + 200/2 + 200/2). The one with the weight 100 receives 1/3 of the traffic and each of the other's in-path interfaces receives 1/3 of the traffic. </div>
+            <div class="CellBody"><a name="838608">The range is </a><span class="Bold" style="font-weight: normal">0-65535</span>. The default value corresponds to the number of TCP connections your Steelhead appliance supports.</div>
+            <div class="CellBody" style="color: #000000; font-style: normal; font-variant: normal; font-weight: bold; text-transform: none; vertical-align: baseline"><span class="Bold"><a name="838612">Failover Support</a></span></div>
+            <div class="CellBody"><a name="838613">To enable single in-path failover support with WCCP groups, define the service </a>group weight to be <span class="Bold" style="font-weight: normal">0</span> on the backup Steelhead appliance. If one Steelhead appliance has a weight <span class="Bold" style="font-weight: normal">0</span>, but another one has a nonzero weight, the Steelhead appliance with weight <span class="Bold" style="font-weight: normal">0</span> does not receive any redirected traffic. If all the Steelhead appliances have a weight <span class="Bold" style="font-weight: normal">0</span>, the traffic is redirected equally among them.</div>
+            <div class="CellBody"><a name="838626">The best way to achieve multiple in-path failover support with WCCP groups </a>in RiOS v6.1 and later is to use the same weight on all interfaces from a given Steelhead appliance for a given service group: for example, suppose you have Steelhead A and Steelhead B with two in-path interfaces each. When you configure Steelhead A with weight 100 from both inpath0_0 and inpath0_1 and Steelhead B with weight 200 from both inpath0_0 and inpath0_1, RiOS distributes traffic to Steelhead A and Steelhead B in the ratio of 1:2 as long as at least one interface is up on both Steelhead appliances.</div>
+            <div class="CellBody"><a name="838657">In a service group, if an interface with a nonzero weight fails, its weight </a>transfers over to the weight 0 interface of the same service group.</div>
+            <div class="CellBody"><a name="838658">For details on using the weight parameter to balance traffic loads and provide </a>failover support in WCCP, see the <span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838663">Encapsulation Scheme</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><span class="Bold" style="font-weight: normal"><a name="838665">Specifies the method for transmitting packets between a router or a switch and </a></span><span class="Bold" style="font-weight: normal">a Steelhead appliance interface. Select one of these encapsulation schemes from </span><span class="Bold" style="font-weight: normal">the drop-down list:</span></div>
+            <li class="CellBullet"><span class="Bold"><a name="838670">Either</a></span> - Use Layer-2 first; if Layer-2 is not supported, <span class="Bold" style="font-weight: normal">GRE</span> is used. This is the default value.</li>
+            <li class="CellBullet"><span class="Bold"><a name="838671">GRE</a></span> - Generic Routing Encapsulation. The GRE encapsulation method appends a GRE header to a packet before it is forwarded. This can cause fragmentation and imposes a performance penalty on the router and switch, especially during the GRE packet de-encapsulation process. This performance penalty can be too great for production deployments. </li>
+            <li class="CellBullet"><span class="Bold"><a name="838672">L2</a></span> - Layer-2 redirection. The L2 method is generally preferred from a performance standpoint because it requires fewer resources from the router or switch than the GRE does. The L2 method modifies only the destination Ethernet address. However, not all combinations of Cisco hardware and IOS revisions support the L2 method. Also, the L2 method requires the absence of L3 hops between the router or switch and the Steelhead appliance.</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838678">Assignment Scheme</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838683">Determines which Steelhead interface in a WCCP service group the router or </a>switch selects to redirect traffic to for each connection. The assignment scheme also determines whether the Steelhead interface or the router processes the first traffic packet. The optimal assignment scheme achieves both load balancing and failover support. Select one of these schemes from the drop-down list:</div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="838688">Either</a></span> - Uses Hash assignment unless the router does not support it. When the router does not support Hash, it uses Mask. This is the default setting. </li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="838689">Hash</a></span> - Redirects traffic based on a hashing scheme and the Weight of the Steelhead interface, providing load balancing and failover support. This scheme uses the CPU to process the first packet of each connection, resulting in slightly lower performance. However, this method generally achieves better load distribution. Riverbed recommends Hash assignment for most Steelhead appliances if the router supports it. The Cisco switches that do not support Hash assignment are the 3750, 4000, and 4500-series, among others.</li>
+            <div class="CellIndent1"><a name="838696">Your hashing scheme can be a combination of the source IP address, </a>destination IP address, source port, or destination port. </div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="838700">Mask</a></span> - Redirects traffic operations to the Steelhead appliances, significantly reducing the load on the redirecting router. Mask assignment processes the first packet in the router hardware, using less CPU cycles and resulting in better performance. </li>
+            <div class="CellIndent1"><a name="838707">Mask assignment in RiOS v5.0.1 and earlier is limited to one Steelhead </a>appliance per service group. The Steelhead appliance with the lowest in-path IP address receives all the traffic. This scheme provides high availability. You can have multiple Steelhead appliances in a service group but only the Steelhead appliance with the lowest in-path IP address receives all the traffic. If the Steelhead appliance with the lowest in-path IP address fails, the Steelhead appliance with the next lowest in-path IP address receives all of the traffic. When the Steelhead appliance with the lowest in-path IP address recovers, it again receives all of the traffic.</div>
+            <div class="CellIndent1"><a name="838731">Mask assignment in RiOS v5.0.2 and later supports load balancing across </a>multiple active Steelhead appliances. This scheme bases load-balancing decisions (for example, which Steelhead appliance in a service group optimizes a given new connection) on bits pulled out, or <span style="font-style: italic">masked,</span> from the IP address and the TCP port packet header fields. </div>
+            <div class="CellIndent1"><a name="838741">Mask assignment in RiOS v6.1 and later supports load-balancing across </a>multiple active Steelhead appliance interfaces in the same service group. </div>
+            <div class="CellIndent1"><a name="838745">The default mask scheme uses an IP address mask of 0x1741, which is </a>applicable in most situations. However, you can change the IP mask by clicking the service group ID and changing the service group settings and flags. </div>
+            <div class="CellIndent1"><a name="838746">In multiple Steelhead environments, it is often desirable to send all users in </a>subnet range to the same Steelhead. Using mask provides a basic ability to leverage a branch subnet and Steelhead to the same Steelhead in a WCCP cluster.</div>
+            <div class="CellBody"><a name="838749">For details and best practices for using assignment schemes, see the </a><span class="book_title">Steelhead </span><span class="book_title">Appliance Deployment Guide</span>.</div>
+            <div class="CellImportant">
+              <span class="Bold">Important: </span><a name="838751">If you use mask assignment you must ensure that packets on every </a>connection and in both directions (client-to-server and server-to-client), are redirected to the same Steelhead appliance. For details, see the <span class="book_title">Steelhead </span><span class="book_title">Appliance Deployment Guide</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838784">Router IP Address(es)</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838786">Specify a multicast group IP address or a unicast router IP address. You can </a>specify up to 32 routers. </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838788">Add</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838790">Adds the service group.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838792">Remove Selected Groups</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="838794">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected Groups</span>.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282445">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282446">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading2"><a name="282448">Verifying a Multiple In-Path Interface Configuration</a></div>
+      <div class="Body"><a name="282452">This section describes how to verify that multiple Steelhead appliances are participating in WCCP with one </a>or more routers using a multiple in-path interface configuration. </div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="282456">Because the Steelhead appliances are configured as neighbors, messages appear in the log at INFO level </a>when the neighbors connect to each other, and the log displays a list of in-path IP addresses.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282457">When the weight computation is about to begin, a message appears in the log at INFO level that the </a>Steelhead appliance interface with the lowest IP address is taking over as the lead cache.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282461">When the weight computation is complete, a REDIRECT_ASSIGN WCCP message appears from the </a>Steelhead appliance interface with the lowest IP address. This message includes the load balancing information from the hash or mask value table.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Note">
+        <span class="Bold">Note: </span><a name="282468">For more WCCP troubleshooting, see the </a><span class="book_title">Steelhead Appliance Deployment Guide</span>.</div>
+      <div class="Heading2"><a name="282469">Modifying WCCP Group Settings</a></div>
+      <div class="Body"><a name="282471">You modify WCCP service group settings, add additional routers to a service group, and set flags for source </a>and destination ports to redirect traffic (that is, the hash table settings) in the Configure &gt; Networking &gt; WCCP Service Group: &lt;group ID&gt; page. </div>
+      <div class="Body"><a name="282472">Before you can modify WCCP service group settings, you must create a WCCP service group. For details </a>about creating a WCCP service group, see <span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_wccp.html#282093', '');" title="Configuring WCCP">Configuring WCCP</a></span>.</div>
+      <div class="Body"><a name="282479">When you are modifying service group settings in RiOS v6.1 or later, the service group description includes </a>the interface. </div>
+      <div class="HeadingProcedure"><a name="282483">To modify WCCP service group settings</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="282484">Choose Configure &gt; Networking &gt; WCCP to display the WCCP page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282485">Select the service group ID in the Groups list to expand the page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">3.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282490">Under Editing Service Group &lt;name&gt;&lt;interface&gt;, modify the settings. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">4.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282491">Click </a><span class="Bold">Apply</span> to save your settings to the running configuration.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">5.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="282492">Click </a><span class="Bold">Save </span>to save your settings permanently.</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Heading4"><a name="282493">Related Topics</a></div>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupServiceGeneral.html#249507', '');" title="Configuring General Service Settings" name="282497">Configuring General Service Settings</a></span></li>
+      <li class="Bullet"><span class="xref"><a href="javascript:WWHClickedPopup('Management_Console_Online_Help_v8.5', 'setupAdvNet_wccp.html#282448', '');" title="Configuring WCCP" name="282501">Verifying a Multiple In-Path Interface Configuration</a></span></li>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

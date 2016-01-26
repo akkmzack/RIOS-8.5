@@ -1,0 +1,33 @@
+<%
+## Copyright 2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Andrew Hao
+##
+## reportDiskStatus.psp
+## The disk state report page.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="ajaxentrytable, FormUtils, Nodes, PagePresentation:Pagelet" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<%
+mgmt = self.session().value('mgmt')
+
+diskTable = ajaxentrytable.AjaxEntryTable('disk',
+     url='/mgmt/xmldata?p=diskStatus',
+     headerSpec=('Disk', 'Status', 'Task'),
+     rowSpec="""
+[AjaxEntryTable.tdAttr('number'),
+ AjaxEntryTable.tdAttrStyle('status', 'tdClass'),
+ AjaxEntryTable.tdLines('type')]""",
+     emptyMessage='No disks detected.')
+
+self.beginPagelet()
+%>
+
+<%= diskTable.html(self) %>
+
+<% self.endPagelet() %>

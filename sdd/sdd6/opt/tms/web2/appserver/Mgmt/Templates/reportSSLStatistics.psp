@@ -1,0 +1,106 @@
+<%
+## Copyright 2006, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportSSLStatistics.psp
+## This is the template for the SSL Statistics report page.
+## Refactored to use common report code.
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:SSLStatisticsPagelet" %>
+<%@page extends="SSLStatisticsPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'sslForm',
+    'reportSpecs': {
+        'sslrq': {
+            'tableName': 'sslConnectionRequestsTable',
+            'gfxId': 'sslConnectionRequests',
+            'gfxDisplayId': 'sslConnectionRequestsGraphImg',
+            'order' : 1,
+        },
+        'sslrt': {
+            'tableName': 'sslConnectionRateTable',
+            'gfxId': 'sslConnectionRate',
+            'gfxDisplayId': 'sslConnectionRateGraphImg',
+            'order' : 2,
+        }
+    }
+}
+sslConnectionRequestsTable = ajaxentrytable.AjaxEntryTable(
+    'sslConnectionRequests',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about SSL Connection Requests.')
+sslConnectionRateTable = ajaxentrytable.AjaxEntryTable('sslConnectionRate',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about SSL Connection Rate.')
+
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self))
+singleApplianceSelected = reportOpts['singleApplianceSelected']
+%>
+
+<div id="sslConnectionRequestsGraphDiv" class="graphDiv">
+  <img id="sslConnectionRequestsGraphImg" class="graphImg"
+    alt="SSL Connection Requests Graph" />
+</div>
+
+<%= sslConnectionRequestsTable.html(self, cssClass="midLevel") %>
+
+<div id="sslConnectionRateGraphDiv" class="graphDiv">
+  <img id="sslConnectionRateGraphImg" class="graphImg"
+    alt="SSL Connection Rate Graph" />
+</div>
+
+<form id="sslForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+<%= reportOpts.get('groupHdr', '') %>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= reportOpts.get('groupCol', '') %>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+<%= sslConnectionRateTable.html(self, cssClass="midLevel") %>
+<% if not singleApplianceSelected: { %>
+<p class="slightlyDimmed">
+	Note: Peak connection rate statistics are not reported if more than one Steelhead (or a group) is selected.
+</p>
+<% } %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts) %>
+  </div>
+</form>
+
+
+<% self.endPagelet() %>
+

@@ -1,0 +1,953 @@
+#!/usr/bin/python
+
+import pyexpat, sys, os, re
+from getopt import getopt, GetoptError
+import string
+from os.path import exists
+from popen2 import Popen3
+from appliance_util import get_appliance_model
+from xml.dom.minidom import parse
+from rrdm_config import *
+from rrdm_system import *
+from rrdm_util import *
+from shutil import copy
+from os import remove
+import cPickle as pickle
+
+###############################################################################
+# Constants
+#
+###############################################################################
+spec_file = "/opt/hal/lib/specs/specs.xml"
+mdreq = "/opt/tms/bin/mdreq"
+var_backup_file = '/config/upgrade/var_backup.tgz'
+
+FLEXPY_CACHE_FILE = "/tmp/flexpy.psave"
+
+# location of upgrade scripts for each model/family.
+upgrade_script_dir='/opt/hal/bin/upgrade'
+
+###############################################################################
+# Globals
+#
+###############################################################################
+specs                = None
+curr_spec            = None
+rsp_licensed         = False
+hwtool_mem           = None
+hwtool_cpu_core      = None
+hwtool_cpu_speed     = None
+hwtool_flash         = None
+size_dict	     = None
+
+##############################################
+# Object definitions.
+##############################################
+class FlexPyError(Exception):
+    pass
+
+## Class to read Model Data Key Value pairs from the model_X.sh scripts
+# used in manufacturing and upgrades
+# we offer the data up by 2 modes, user specifies the KEY they want
+# or individual accessors are added for fields we care about more
+# (such as segstore size)
+#
+class ModelData:
+    # keys for common mfdb parameter requests
+    model_disksize_key = 'MODEL_DISKSIZE'
+    def __init__(self, model_file):
+        self.__model_kvp = {}
+
+        if not exists(model_file):
+            raise FlexPyError('Model file %s does not exist' % model_file)
+
+        try:
+            try:
+                fh = open(model_file, 'r')
+                output = fh.read().strip()
+            finally:
+                fh.close()
+        except IOError:
+            raise FlexPyError('Error reading model file %s' % model_file)
+
+        if output == None or output == '':
+            raise FlexPyError('Model file %s format is incorrect' % model_file)
+
+        for line in output.split('\n'):
+            parts = line.split('=')
+            if len (parts) != 2:
+                # skip entries that are not key=value
+                continue
+
+            self.__model_kvp[parts[0]] = parts[1]
+
+    ## get the segstore size from the model file
+    # returns None if the key doesnt exist in the file
+    def get_model_disksize(self):
+        return self.get_data_by_key(self.model_disksize_key)
+
+    ## Return a user specified key from the model file
+    # returns None if the key doesnt exist in the file
+    def get_data_by_key(self, key):
+        if self.__model_kvp.has_key(key):
+            return self.__model_kvp[key]
+        else:
+            return None
+
+    def __str__(self):
+        result = ''
+        for key in self.__model_kvp.keys():
+            result += '%s=%s\n' % (key, self.__model_kvp[key])
+
+        return result
+
+
+class VarConfigBackup:
+    def __init__(self, backup_file_name = var_backup_file):
+        self.__var_file_list=[ "/var/opt/rbt/main_interface", 
+                               "/var/opt/rbt/default_login",
+                               "/var/opt/rbt/.dc_name",
+                               "/var/opt/rbt/.joined_domain" ]
+	
+        self.__backup_file_name = backup_file_name
+    
+    def backup_var(self):
+        file_list = []
+        for file in self.__var_file_list:
+            if exists(file):
+                file_list.append(file)
+
+	if len(file_list) > 0:
+	    resp = os.popen('/bin/tar cvfz %s %s 2>&1' % (self.__backup_file_name,
+					             string.join(file_list, ' ')))
+	    output = resp.read()
+	    ret = resp.close()
+
+	    if ret != None:
+		return False
+	    else:
+		if exists (self.__backup_file_name):
+		    return True
+		else:
+		    return False
+	else:
+	    # if we don't have anything to do indicate success.
+	    return True
+
+    def backup_exists(self):
+	return exists(self.__backup_file_name)
+	
+
+##############################################
+# utilities
+##############################################
+
+def usage():
+    pass
+
+def hwtool(arg):
+    hwp = '/opt/hal/bin/hwtool.py'
+    if arg != '':
+        try:
+            os.stat(hwp)
+        except OSError:
+            raise FlexPyError("hwtool missing.")
+        
+        hwt = Popen3('%s -q %s' % (hwp,arg))
+        ret = hwt.wait()
+        if ret != 0:
+            raise FlexPyError("hwtool error.")
+        else:
+            return hwt.fromchild.read()[:-1]
+
+# Function returns True if the mobo is a VM mobo else False
+def is_vm():
+    ret = False
+    mobo = hwtool('motherboard')
+    if mobo.lower() == 'vm':
+        ret = True
+
+    return ret
+
+def runnable(spec, curr_spec):
+    # Check for CPU, memory and flash as cannot change when machine running
+    # Since disks can be added while machine running, (HW upgrade)
+    # let rrdm_tool.py --validate take care of disk size, quantity checks
+    if spec.get_cores() > hwtool_cpu_core:
+        return False
+
+    if spec.get_core_speed() > hwtool_cpu_speed + 50:
+        return False
+
+    # If spec does not all upgrades, return false
+    if spec.is_upgrade_disabled():
+        return False
+
+    memory = hwtool_mem
+    # XXX/munirb: If the RSP license is present, subtract 2G of memory
+    # from available memory, that cannot be used for model upgrade
+    if rsp_licensed:
+        memory -= 2048
+    if spec.get_memory_size() > memory:
+        return False
+
+    flash = hwtool_flash
+    if spec.get_flash() != 'optional':
+        if spec.get_flash() == 'none':
+            if flash == 'present':
+                return False
+        elif spec.get_flash() == 'required':
+            if 'flash' != 'present':
+                return False
+
+    return True
+
+# Return segstore partition size for the given spec (model)
+def get_segstore_size(spec):
+    global specs
+    size = None
+    for part in spec.get_volumes():
+        if part.get_name() == 'segstore':
+	    size = part.get_cfg_size()
+
+    return size
+
+# Function checks if the segstore partition 
+# size of the new_spec is more than that of the 
+# old spec. Helps to make a decision about the upgrade
+# This routine only works for non-raided models
+# Arguments: 
+# curr_spec: spec object for the current spec
+# new_spec: spec object for the new spec
+# return: True if curr_spec != new_spec, else False
+def diff_segstore(curr_spec, new_spec):
+    global specs
+    ret = False
+    curr_size = None
+    new_size = None
+   
+    curr_size = get_segstore_size(curr_spec)
+    new_size = get_segstore_size(new_spec)
+
+    if curr_size != None and new_size != None:
+        try:
+            if int(curr_size) != int(new_size):
+	        ret = True
+
+	except ValueError:
+	    print 'Error comparing segstore partition sizes'
+	    sys.exit(1);
+    else:
+        if curr_size == None and new_size == None:
+	    ret = False
+	else:
+	    ret = True
+    
+    return ret
+
+##############################################
+# Main functions.
+##############################################
+
+def list_current_spec_data(arg):
+    global specs
+    curr_spec = get_spec_by_name(arg)
+    disk_cnt = curr_spec.get_disk_count()
+    disk_lst = ''
+
+    for i in curr_spec.get_disk_members():
+        disk_lst = "%sdisk%s,%s," % (disk_lst, i, curr_spec.get_disk_size_by_id(i))
+
+    disk_lst = disk_lst.rstrip(',')
+    print "%s\t%s\t%s\t%s\t%s" % (curr_spec.get_memory_size(), curr_spec.get_cores(), 
+          curr_spec.get_core_speed(), curr_spec.get_disk_count(), disk_lst)
+
+def get_class():
+    get = Popen3('/opt/tms/bin/mddbreq -v /config/mfg/mfdb query get "" /rbt/mfd/model')
+    ret = get.wait()
+    if ret != 0:
+        raise FlexPyError("Couldn't read class.")
+    else:
+        return get.fromchild.read()[:-1]
+
+def get_appliance_spec():
+    get = Popen3('/opt/tms/bin/mddbreq -v /config/mfg/mfdb query get "" /rbt/mfd/flex/model')
+    ret = get.wait()
+    if ret != 0:
+        raise FlexPyError("Couldn't read spec.")
+    else:
+        return get.fromchild.read()[:-1]
+
+def list_specs(arg):
+    global specs, hwtool_mem, hwtool_cpu_core, hwtool_cpu_speed, hwtool_flash
+
+    hwtool_cpu_speed = int(hwtool('cpu=speed'))
+    hwtool_cpu_core  = int(hwtool('cpu=cores'))
+    hwtool_mem       = int(hwtool('memory=size'))
+    hwtool_flash     = hwtool('flash')
+
+    print_all = False
+    if arg == 'all':
+        #all specs that work on this machine class
+        print_all = True
+    elif arg == 'avail':
+        #all specs that we can currently run
+        pass
+    else:
+        print 'Did not understand argument to spec: %s' % arg
+        sys.exit(1)
+
+    model = get_appliance_model()
+    curr_spec = get_spec_by_name(model)
+    if not curr_spec:
+        # without a current spec, flexl is not supported
+        # return no specs
+        sys.exit(0)
+
+    if curr_spec.is_upgrade_disabled():
+        # Upgrade is disabled on these models currently
+	print curr_spec.get_name()
+        sys.exit(0)
+
+    mclass = get_class()
+    consider = specs.get_specs_by_class(mclass, curr_spec.get_subclass())
+
+    sprof = get_storage_profile()
+    for s in consider:
+        # check the mfdb for the current storage profile,
+        # and if we have one we should use it to properly set up the spec
+        # fields for a given configuration 
+	sname = s.get_name()
+        if sprof != None:
+            s.set_spec_profile_view(sprof)
+
+        # if the spec has upgrades disabled, dont even list it
+        if s.is_upgrade_disabled() or vsh_downgrade(model, s.get_name()):
+            continue
+        if print_all:
+            # we want to filter out all specs that have fewer disks
+            # than our current spec, as backward transitions will not be
+            # allowed, nor should they show up.
+            # this should be config driven later, but for now we don't have
+            # the config verbose enough to distinguish uni-directional
+            # transitions.
+            if s.get_disk_count() >= curr_spec.get_disk_count():
+                print sname
+        else:
+            if runnable(s, curr_spec):
+                print sname
+
+def check_for_unlicensed_hardware(): 
+    if 'True' == hwtool('memory=unlicensed'):
+        print 'Seems like there is unbranded memory in the system.'
+        sys.exit(1)
+
+    #if 'True' == hwtool('disk=unlicensed'):
+    #    print 'Seems like there is unbranded disk in the system.'
+    #    sys.exit(1)
+
+
+def check_spec_list(spec_names):
+    global hwtool_mem, hwtool_cpu_core, hwtool_cpu_speed, hwtool_flash
+
+    hwtool_cpu_speed = int(hwtool('cpu=speed'))
+    hwtool_cpu_core  = int(hwtool('cpu=cores'))
+    hwtool_mem       = int(hwtool('memory=size'))
+    hwtool_flash     = hwtool('flash')
+
+    model = get_appliance_model()
+    curr = get_spec_by_name(model)
+    spec_list = spec_names.split(',')
+    size_dict = get_disk_list()
+
+    for spec_name in spec_list:
+        spec_name = spec_name.replace(' ', '')
+        spec = get_spec_by_name(spec_name)
+
+        if get_class() != spec.get_class():
+            print get_class(), spec.get_class()
+            print 'New spec has incorrect machine class.'
+            sys.exit(1)
+    
+        if vsh_downgrade(model, spec_name):
+            print '%s,disallowed' % spec_name
+            continue
+
+        # upgrade from LMH model to G not permitted
+        if spec.is_granite() and not curr.is_granite():
+            print '%s,disallowed' % spec_name
+            continue
+
+        if curr.is_upgrade_disabled() != True:
+            # we require spec's that have disk layout changes
+            # to reboot so the remanufacture can be done at startup.
+            # To understand VSH flex upgrades involving hardware changes check 
+    	    # https://internal.nbttech.com/twiki/bin/view/NBT/VSHFlexUpgrades#Upgrades_with_hardware_changes
+	    #
+            if runnable(spec, curr):
+                (hw_ok, msg) = do_check_hw_upgrade(spec)
+                if is_reboot_needed(spec):
+                    if not hw_ok:
+                        print '%s,hardware' % spec_name
+                    else:
+                        if curr.is_granite() and not spec.is_granite():
+                            print '%s,reboot-granite' % spec_name
+                        else:
+                            print '%s,reboot' % spec_name
+	            continue
+                else:
+                    if not hw_ok:
+                        print '%s,hardware' % spec_name
+	            else:
+                        print '%s,runnable' % spec_name
+	            continue
+            else:
+                if spec.get_disk_count() < curr.get_disk_count() or spec.is_upgrade_disabled():
+                    print '%s,disallowed' % spec_name
+                else:
+                    print '%s,hardware' % spec_name
+	        continue
+        else:
+            print '%s,disallowed' % spec_name
+            continue
+
+
+def check_spec(spec_name):
+    global hwtool_mem, hwtool_cpu_core, hwtool_cpu_speed, hwtool_flash
+
+    hwtool_cpu_speed = int(hwtool('cpu=speed'))
+    hwtool_cpu_core  = int(hwtool('cpu=cores'))
+    hwtool_mem       = int(hwtool('memory=size'))
+    hwtool_flash     = hwtool('flash')
+
+    spec = get_spec_by_name(spec_name)
+    curr = get_spec_by_name(get_appliance_model())
+
+    if get_class() != spec.get_class():
+        print get_class(), spec.get_class()
+        print 'New spec has incorrect machine class.'
+        sys.exit(1)
+    
+    if vsh_downgrade(get_appliance_model(), spec_name):
+        print 'disallowed'
+        sys.exit(0)
+
+    # upgrade from LMH model to G not permitted
+    if spec.is_granite() and not curr.is_granite():
+        print 'disallowed'
+        sys.exit(0)
+
+    if curr.is_upgrade_disabled() != True:
+        # we require spec's that have disk layout changes
+        # to reboot so the remanufacture can be done at startup.
+        # To understand VSH flex upgrades involving hardware changes check 
+	# https://internal.nbttech.com/twiki/bin/view/NBT/VSHFlexUpgrades#Upgrades_with_hardware_changes
+	#
+        if runnable(spec, curr):
+            (hw_ok, msg) = do_check_hw_upgrade(spec)
+            if is_reboot_needed(spec):
+                if not hw_ok:
+                    print 'hardware'
+                else:
+                    if curr.is_granite() and not spec.is_granite():
+                        print 'reboot-granite'
+                    else: 
+                        print 'reboot'
+	        sys.exit(0)
+            else:
+                if not hw_ok:
+                    print 'hardware'
+		else:
+                    print 'runnable'
+                sys.exit(0)
+        else:
+            if spec.get_disk_count() < curr.get_disk_count() or spec.is_upgrade_disabled():
+                print 'disallowed'
+            else:
+                print 'hardware'
+            sys.exit(0)
+    else:
+        print 'disallowed'
+        sys.exit(0)
+        
+
+###############################################################################
+#
+# write_hw_upgrade
+#
+# Hardware upgrades use a file on /config/upgrade to indicate the 
+# request for a hardware upgrade. That file contains the script and parameters
+# needed for performing the requested upgrade.
+#
+###############################################################################
+def write_hw_upgrade(upgrade_script, upgrade_spec):
+    upgrade_dir  = '/config/upgrade'
+    upgrade_file = '%s/.upgrade_action' % upgrade_dir
+    
+    if not exists (upgrade_dir):
+        os.mkdir (upgrade_dir)
+
+    # check if we can save off any required backup 
+    # configuration info. At the moment, we don't really care if it
+    # succeeds or fails, we just want to do best effort. If it fails, we're 
+    # still at the same point var recovery leaves us
+    VarConfigBackup().backup_var()
+    
+    fp = open (upgrade_file, "w")
+    try:
+        fp.write ('%s/%s %s' % (upgrade_script_dir, upgrade_script, upgrade_spec))
+    finally:
+        fp.close()
+
+## Read a parameter from the mfdb
+# If the parameter does not exists '' is returned
+# None is returned on error
+# @param param the field to search for (e.g. /rbt/mfd/model)
+#
+def get_mfdb_param(param):
+    setdb = os.popen ('/opt/tms/bin/mddbreq -v /config/mfg/mfdb query get - %s ' % param)
+    msg = setdb.read().strip()
+    ret = setdb.close()
+
+    if ret != None:
+        return None
+    else:
+        return msg
+
+## Touch a file on the filesystem
+#
+def touch_file(fname):
+    try:
+        try:
+            fh=open(fname, 'w')
+        finally:
+            fh.close()
+    except OSError:
+        return False
+    except IOError:
+        return False
+
+    return True
+
+## Variables for config mfdb management
+tempmfdb = '/var/tmp/mfdb-old'
+cfgmfdb  = '/config/mfg/mfdb'
+
+## Save a copy of the mfdb off so we can restore it 
+# if we have problems updating the file
+#
+def save_mfdb():
+    try:
+        if exists(tempmfdb):
+            remove (tempmfdb)
+    
+        copy(cfgmfdb, tempmfdb)
+    except (IOError, OSError):
+        return False
+        
+    return True
+
+## Restore the copy of the mfdb we saved off when 
+# save_mfdb is used.
+#
+def restore_mfdb():
+
+    try:
+        copy(tempmfdb, cfgmfdb)
+    except (IOError, OSError):
+        return False
+
+    return True
+
+def signal_segstore_changes(upgrade_spec):
+    # compare advertised segstore sizes to see if we need to do anything
+    cur_storesize = get_mfdb_param('/rbt/mfd/store/size')
+    try:    
+        # mfdb stores values in MB
+        cur_storesize_int_mb = int(cur_storesize)
+    except ValueError:
+        print 'Failed to read datastore size from mfdb, exiting.'
+        sys.exit(1)
+    
+    md = ModelData('/opt/hal/lib/specs/model/model_%s.sh' % upgrade_spec.get_name())
+    if md.get_model_disksize() == None:
+        print 'Failed to read datastore size for upgrade model %s' % upgrade_spec.get_name()
+        sys.exit(1)
+        
+    try:
+        # model file disk sizes are in bytes
+        model_disksize_int_mb = int(md.get_model_disksize()) / 1024 / 1024;
+    except ValueError:
+        print 'Invalid datastore size for upgrade model %s' % upgrade_spec.get_name()
+        sys.exit(1)
+        
+    if model_disksize_int_mb != cur_storesize_int_mb:
+        # this upgrade path requires a change in segstore size
+        # when changing the segstore size, we update the 
+        # mfdb /rbt/mfd/store/size field, as well
+        # as touching the /var/opt/rbt/.clean file to
+        # tell the segstore to autoclean the store (we don't support dynamic
+        # resizing
+        setdb = os.popen ('/opt/tms/bin/mddbreq /config/mfg/mfdb set modify - /rbt/mfd/store/size uint32 %d' % model_disksize_int_mb)
+        msg = setdb.read()
+        ret = setdb.close()
+        if ret != None:
+            print 'Appliance segstore size update failed for %s : %s' % (upgrade_spec.get_name(),  msg[:-1])
+            sys.exit(1)
+
+        # we don't have logging in flexpy, but if this were to fail,
+        # we'd log a message as it is not a hard failure.
+        touch_file('/var/opt/rbt/.clean')
+        return True
+    else:
+        return False
+    
+## Do additional processing needed for flex (non hardware) upgrades that require
+# model changes
+# Today we only support segment store size upgrades, and upgrading the segstore
+# requires the segstore to be cleaned when sport is started.
+# @param upgrade_spec
+#
+# Returns True if model data is changed, False otherwise
+#
+def check_license_model_upgrade(upgrade_spec):
+    # punt if this spec does not have additional model upgrades
+    # when performing a non-reboot upgrade to the spec.
+    if not upgrade_spec.has_model_upgrade():
+        return False
+    
+    return signal_segstore_changes(upgrade_spec) 
+
+def do_license_upgrade(upgrade_spec):
+    # save off the config db just in case we need to alter it
+    if not save_mfdb():
+        print 'Unable to backup appliance mfdb. Exiting'
+        sys.exit(1)
+
+    # currently we may have to update specific mfdb parameters on upgrades
+    # between 1050_LR/MR and 1050_HR.
+    # We only handle the case of segstore size changes today.
+    model_data_changed = check_license_model_upgrade(upgrade_spec)
+
+    setdb = os.popen ('/opt/tms/bin/mddbreq /config/mfg/mfdb set modify - /rbt/mfd/flex/model string %s' % upgrade_spec.get_name())
+    msg = setdb.read()
+    ret = setdb.close()
+    if ret != None:
+        if model_data_changed and not restore_mfdb():  
+            print 'Unable to restore appliance mfdb, system configuration is inconsistent'
+
+        print 'Appliance upgrade to %s failed with error: ' % (upgrade_spec.get_name(),  msg[:-1])
+    else:
+        print 'Appliance upgrade to %s successful' % upgrade_spec.get_name()
+
+#
+# Make sure that none of the disks are failed, and that 
+# the disks are in the proper positions for the hardware upgrade.
+#
+# returns a pair of (status , msg)
+# where status is True if the hw is ok, False otherwise
+# and msg is why if status is False
+#
+
+def do_check_hw_upgrade(upgrade_spec):
+    try:
+        if upgrade_spec.uses_layouts():
+            (hw_ok, msg) = validate_spec(upgrade_spec, None, size_dict)
+            return (hw_ok, msg)
+    except rrdm_error, what:
+        rlog_notice(str(what))
+        return (False, '')
+
+
+###############################################################################
+# granite_model
+#
+# "G" -> "L|M|H" models upgrade require a reboot
+#
+###############################################################################
+def granite_model(curr_spec, new_spec):
+
+    # upgrade from G->LMH requires a reboot.
+    # tests to see if we are not granite, and if new model is not granite.
+    # if so, then reboot to upgrade
+    if curr_spec.is_granite()  and not new_spec.is_granite():
+        ret = True # reboot
+    else:
+        ret = False
+
+    return ret
+
+###############################################################################
+# is_reboot_needed
+#
+# any upgrade that requires a change in number of disks 
+# requires a reboot.
+###############################################################################
+def is_reboot_needed(to_spec):
+    this_spec = get_spec_by_name(get_appliance_model())
+    if this_spec.get_disk_count() != to_spec.get_disk_count() or diff_segstore(this_spec, to_spec) or granite_model(this_spec, to_spec):
+	return True
+    else:
+	return False
+
+def do_reboot():
+    ret = os.popen ('/sbin/reboot')
+    sys.exit(0)
+
+def get_ver_string(bootpartition):
+    ver_string = 'unknown version'
+    supports_1050raidup = False
+    resp = os.popen("imgq.sh -i -d -l %d |egrep \"BUILD_PROD_VERSION=|BUILD_1050RAIDUP_SUPPORT\"" % bootpartition)
+    lines = resp.read()
+    ret = resp.close()
+
+    if ret != None:
+        raise FlexPyError("Cannot get BUILD info on partition %d" % bootpartition)
+
+    for line in lines.split('\n'):
+        if line[:19] == "BUILD_PROD_VERSION=":
+            ver_string = line[20:-1]
+        if line[:24] == "BUILD_1050RAIDUP_SUPPORT":
+            supports_1050raidup = True
+
+    if not supports_1050raidup:
+        raise FlexPyError("Both partitions must support 1050 raid  models prior to upgrading. Partition %d lacks this support." % bootpartition)
+
+    #need better checking for empty ver string
+    return ver_string
+
+def check_raid_model_support():
+    """Check to make sure that both the partition are LCR model capable
+    """
+    try:
+        ver_string_d1 = get_ver_string(1)
+        ver_string_d2 = get_ver_string(2)
+    except FlexPyError, e:
+        print e
+        return False
+
+    return True
+
+
+def get_spec_by_name(spec_name):
+    global specs
+    myspec = specs.get_spec_by_name(spec_name)
+    # check the mfdb for the current storage profile,
+    # and if we have one we should use it to properly set up the spec
+    # fields for a given configuration
+    sprof = get_storage_profile()
+    if sprof != None:
+        myspec.set_spec_profile_view(sprof)
+    return myspec
+
+
+# If this is a VM VSH and we are tyring to downgrade, then return true
+# else return false
+# Note that this routine implements implicit orderings between 
+# L, M and H and if we add new types we may need to extend this.
+def vsh_downgrade(curr_spec_name, spec_name):
+    equal=False
+    if is_vm():
+	try: 
+	   # compare the numeric values
+	    curr_level = int(re.sub("[^0-9]","",curr_spec_name)) 
+	    spec_level = int(re.sub("[^0-9]","",spec_name)) 
+	    if curr_level > spec_level:
+		return True
+	    if curr_level < spec_level:
+		return False 
+            if curr_level == spec_level:
+	        equal = True
+	except TypeError:
+	    print 'Error parsing models'
+	    sys.exit(1)
+        # the spec values are equal! 
+	# Get the last character and compare (L,M,H or '')
+	if equal:
+	    suffix = ['L', 'M', 'H']
+	    curr_suffix = curr_spec_name.strip()[-1].upper()
+	    spec_suffix = spec_name.strip()[-1].upper()
+            if curr_suffix in suffix and spec_suffix in suffix:
+	        if curr_suffix == 'H' and spec_suffix in ['M', 'L']:
+		    return True
+		else:
+		    if curr_suffix == 'M' and spec_suffix == 'L':
+		        return True
+
+    return False
+
+
+def upgrade_spec(spec_name):
+    #NB:  This assumes that you've already run check and everything is OK
+    #it does not run it again.
+    spec = get_spec_by_name(spec_name)
+
+    # get the current spec name
+    curr_spec = get_spec_by_name(get_appliance_model())
+
+    # If the spec we are trying to upgrade to or the current spec does not allow upgrade
+    # we fail the upgrade attempt
+    if curr_spec.is_upgrade_disabled():
+        print 'Upgrade from current model spec is disabled'
+        sys.exit(1)
+    if spec.is_upgrade_disabled() or vsh_downgrade(get_appliance_model(), spec_name):
+        print 'Upgrade to model spec %s is disabled' % spec_name
+        sys.exit(1)
+
+    action = ''
+    ret = 0
+
+    if is_reboot_needed(spec): 
+	if spec.get_upgrade_script() == '':
+	    print 'No hardware upgrade script specified for %s upgrade.' % (spec_name)
+	    sys.exit(1)
+
+        if not is_vm():
+	    # If we are trying to go to LCR/MCR/HR models
+	    # we need extra checking if both partitions support the model
+	    if spec_name in ["1050_LR", "1050_MR", "1050_HR"]:
+		if not check_raid_model_support():
+		    sys.exit(1)
+
+	(hw_ok, msg) = do_check_hw_upgrade(spec)
+	if not hw_ok:
+	    print msg
+	    sys.exit(1)
+
+	# once we've signaled the hardware upgrade we need to reboot the unit
+	# for it to take effect.
+    #
+    # If the user is upgrading from a G (granite) to LMH model, we need 
+    # to force a reboot (is_granite()). The upgrade script for this action 
+    # is marked as "not_applicable". This is an empty place holder, and 
+    # not an actual upgrade script. Hence a 'do_license_upgrade()' here,
+    # since we will reboot before we get to it  
+	try:
+            if spec.get_upgrade_script() == "not_applicable":
+                do_license_upgrade(spec)
+            else:
+                write_hw_upgrade(spec.get_upgrade_script(), spec_name)
+	except IOError:
+	    print 'Unable to set upgrade action script %s for target %s' % (
+                   spec.get_upgrade_script(),
+		   spec_name)
+	    sys.exit(1)
+	
+	print 'Rebooting system for hardware upgrade.'
+	do_reboot()
+    else:
+        do_license_upgrade(spec)
+    if ret != None and ret > 0:
+        sys.exit(1)
+    
+
+##############################################
+# Boilerplate.
+##############################################
+def usage():
+    print "Invalid argument"
+
+def parse_opts(opts):
+    global spec_file, rsp_licensed
+    for o, a in opts:
+        if o in ["-v", "-d"]:
+            #debug = True
+            pass
+        elif o == "-r":
+            rsp_licensed = True
+        elif o == "-f":
+            spec_file = a
+        elif o == "-h":
+            usage()
+            sys.exit(0)
+        elif o == "-s":
+            if len(a) == 0:
+                return 'spec=avail'
+            else:
+                return 'spec=' + a 
+        elif o == "-c":
+            return 'check=' + a
+        elif o == "-x":
+            return 'checkspecs=' + a
+        elif o == "-u":
+            return 'upgrade=' + a
+        elif o == "-l":
+            return 'list=' + a
+        else:
+            return ''
+
+def main():
+    global spec_xml, specs
+    opts, ign = getopt(sys.argv[1:], "rs:c:u:f:l:x:")
+
+    query = parse_opts(opts)
+    
+    try:
+        os.stat(spec_file)
+    except OSError:
+        raise FlexPyError("spec file missing.")
+
+    # read in the spec file and pass its contents to create a layout map
+    # and spec list from the config file.
+    # will try to read from python-pickled object first if the cache file
+    # exist. If not, then read from spec.xml file and do the xml parsing.
+
+    if exists (FLEXPY_CACHE_FILE):
+        try:
+            cache_file = open(FLEXPY_CACHE_FILE, "rb")
+            specs = pickle.load(cache_file)
+            cache_file.close()
+        except (IOError, pickle.UnpicklingError):
+	    # if we cannot open the cache file or having problem unpickling the
+	    # python object, bail out. We should NEVER fail the flexpy
+	    # operation because of pickling.
+            print "flexpy cannot read from %s" % FLEXPY_CACHE_FILE
+            remove(FLEXPY_CACHE_FILE)
+            pass
+
+    if specs == None:
+        spec_xml = parse(spec_file)
+        disk_layouts = DiskLayoutMap(spec_xml)
+        storage_map = parse_storage_configs(spec_xml, disk_layouts)
+        specs = SpecMap(disk_layouts, spec_xml, storage_map)
+
+        try:
+            cache_file = open(FLEXPY_CACHE_FILE, "wb")
+            pickle.dump(specs, cache_file, pickle.HIGHEST_PROTOCOL)
+            cache_file.close()
+        except (IOError, pickle.PicklingError):
+            # if we cannot open the cache file or the python object
+            # is unpicklable, bail out. We should NEVER fail the flexpy
+            # operation because of pickling.
+            print "flexpy cannot write to %s" % FLEXPY_CACHE_FILE
+            pass
+
+    arg = ''
+    try:
+        if query != None and len(query) > 0:
+            query, arg = query.split('=')
+    except ValueError:
+        pass
+        
+    if query == "upgrade":
+        upgrade_spec(arg)
+    elif query == "check":
+        check_spec(arg)
+    elif query == "checkspecs":
+        check_spec_list(arg)
+    elif query == "spec":
+        list_specs(arg)
+    elif query == "list":
+        list_current_spec_data(arg)
+    else:
+        usage()
+        sys.exit(0)
+        
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise 
+    except KeyboardInterrupt:
+        sys.exit(0)
+

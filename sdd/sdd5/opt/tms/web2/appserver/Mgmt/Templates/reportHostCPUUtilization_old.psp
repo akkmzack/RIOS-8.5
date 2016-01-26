@@ -1,0 +1,70 @@
+<%
+## Copyright 2006-2009, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman, Robin Schaufler, David Scott
+##
+## reportHostCPUUtilization.psp
+## This is the template for the CPU Utilization report page (host version)
+## Refactored to use common report code
+##
+%>
+
+<%@page imports="ajaxentrytable, FormUtils, GfxUtils, ProductReportContext:HostCPUUtilizationPagelet" %>
+<%@page extends="HostCPUUtilizationPagelet" %>
+<%@page indentType="braces" %>
+
+<%
+reportOpts = {
+    'controlFormId': 'cpuUtilForm',
+    'reportSpecs': {
+        'cpuUtil': {
+            'tableName': 'cpuUtilTable',
+            'gfxId': 'cpuUtil',
+            'gfxDisplayId': 'cpuUtilImg',
+        }
+    }
+}
+cpuUtilTable = ajaxentrytable.AjaxEntryTable('cpuUtil',
+    headerSpec=[],
+    rowSpec = """[
+        AjaxEntryTable.tdColorKey('color', 'reportColorTD'),
+        AjaxEntryTable.tdAttr('label', 'reportLabelTD'),
+        AjaxEntryTable.tdAttr('value', 'reportValueTD')
+]""",
+    emptyMessage='No information available about CPU Utilization.')
+dialogEntries = self.setupReport(reportOpts)
+dialogEntries.update(GfxUtils.exportDialogEntries(self, True))
+%>
+
+<div id="cpuUtilGraphDiv" class="graphDiv">
+  <img id="cpuUtilImg" class="graphImg" src=""
+    alt="CPU Utilization Graph" />
+</div>
+
+<form id="cpuUtilForm" class="graphControlForm"
+  method="post" action="<%= self.thisPageletRequest() %>">
+    <%= GfxUtils.getExportOrReportAction(self) %>
+    <table id="reportParams" class="reportParameters">
+      <thead>
+        <tr>
+          <th>Period:</th>
+          <th>Refresh:</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <%= GfxUtils.periodHtml(self, dialogEntries) %>
+          </td>
+          <%= dialogEntries['refresh'].html(self, format='horiz') %>
+          <td class="go">
+            <%= FormUtils.renderButton(self, {'name': 'go', 'value': 'Go', 'filter' : 'filterButtonForTextInputs'}) %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <%= cpuUtilTable.html(self, cssClass="midLevel") %>
+    <%= GfxUtils.exportOptionsHtml(self, dialogEntries, reportOpts, True) %>
+</form>
+
+<% self.endPagelet() %>

@@ -1,0 +1,66 @@
+#! /bin/bash
+
+#
+#  Filename:  $Source$
+#  Revision:  $Revision: 23317 $
+#  Date:      $Date: 2007-06-22 18:23:57 -0700 (Fri, 22 Jun 2007) $
+#  Author:    $Author: mschreiber $
+#
+#  (C) Copyright 2003-2007 Riverbed Technology, Inc.
+#  All rights reserved.
+#
+
+#
+# fwkinit        Framework Initialization Script
+#
+# chkconfig: 2345 13 87
+# description: Provides framework initializations.
+#
+KMODS=/lib/modules/`uname -r`/kernel
+
+#
+# see how we were called.
+#
+case "$1" in
+  start)
+        # 
+        # encrypted store
+        #
+        if [ -f $KMODS/fs/fuse/fuse.ko ]; then
+            mknod /dev/fuse c 10 229
+            insmod $KMODS/fs/fuse/fuse.ko > /dev/null
+        else
+            echo "Fuse module missing. Disabling encrypted store."
+        fi
+
+        #
+        # kill any leftover pid files from a hard reboot
+        #
+        rm -f /var/opt/tms/web/appserver.pid > /dev/null 2>&1
+
+        ;;
+
+  stop)
+        #
+        # encrypted store
+        #
+        if [ -f $KMODS/fs/fuse/fuse.ko ]; then
+            rmmod fuse > /dev/null 2>&1
+            rm -f /dev/fuse
+        fi
+
+        ;;
+
+  status)
+	;;
+
+  restart|reload)
+	$0 stop
+	$0 start
+	;;
+  *)
+        echo $"Usage: $0 {start|stop|restart|reload|status}"
+        exit 1
+esac
+
+exit 0

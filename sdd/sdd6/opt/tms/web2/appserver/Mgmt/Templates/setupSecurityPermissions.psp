@@ -1,0 +1,490 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupSecurityPermissions.psp
+## This is the template for the administrator to create users
+## and assign them roles.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="OSUtils, RBA, Nodes, FormUtils, FormUtils:NodeEntry, ajaxentrytable, PagePresentation:Pagelet, RVBDUtils:isIB" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="css">
+    return '''
+.ajaxEntryTable_addDivContent .rbaRoleTable fieldset { width: 594px; }
+.ajaxEntryTable_editDivContent .rbaRoleTable fieldset { width: 560px; }
+.rbaRoleTable table { width: 100%; }
+.rbaRoleTable td { padding-top: 2px; padding-bottom: 2px; }
+.rbaRoleTable td.role { width: 200px; }
+
+.ajaxEntryTable_addDiv .selectAllLink a:visited, .ajaxEntryTable_addDiv .selectAllLink a:link,
+.ajaxEntryTable_table .selectAllLink a:visited, .ajaxEntryTable_table .selectAllLink a:link
+    { color: #0000FF; text-decoration:underline; }
+
+'''
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'adminOnlyRBA': NodeEntry(
+            path='/rbm_fake/rbm/config/permissions/admin_only',
+            type='string')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'editCapabilityAccount_enable': NodeEntry(
+            name='editCapabilityAccount_enable',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'editCapabilityAccount_usepw': NodeEntry(
+            name='editCapabilityAccount_usepw',
+            widget='checkboxLeft',
+            label='Use Password',
+            enableDiv='editAcct_usePassword'),
+        'editCapabilityAccount_password': NodeEntry(
+            name='editCapabilityAccount_password',
+            widget='password',
+            label='Password',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+        'editCapabilityAccount_passwordConfirm': NodeEntry(
+            name='editCapabilityAccount_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+
+        'addRbmUser_account': NodeEntry(
+            name='addRbmUser_account',
+            widgetClass='account',
+            labelClass='label-fixed-small',
+            label='Account Name',
+            validate='validateUserName'),
+        'addRbmUser_enable': NodeEntry(
+            name='addRbmUser_enable',
+            value='true',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'addRbmUser_usepw': NodeEntry(
+            name='addRbmUser_usepw',
+            value='true',
+            widget='checkboxLeft',
+            label='Use a Password',
+            enableDiv='addRbmUser_usePassword'),
+        'addRbmUser_password': NodeEntry(
+            name='addRbmUser_password',
+            widget='password',
+            label='Password',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+        'addRbmUser_passwordConfirm': NodeEntry(
+            name='addRbmUser_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+        'editRbmUser_enable': NodeEntry(
+            name='editRbmUser_enable',
+            value='true',
+            widget='checkboxLeft',
+            label='Enable Account'),
+        'editRbmUser_usepw': NodeEntry(
+            name='editRbmUser_usepw',
+            value='true',
+            widget='checkboxLeft',
+            label='Use a Password',
+            enableDiv='editRbmUser_usePassword'),
+        'editRbmUser_password': NodeEntry(
+            name='editRbmUser_password',
+            widget='password',
+            label='Password',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+        'editRbmUser_passwordConfirm': NodeEntry(
+            name='editRbmUser_passwordConfirm',
+            widget='password',
+            label='Password Confirm',
+            labelClass='label-fixed-small-indent',
+            validate='password'),
+    }
+</psp:method>
+
+<psp:method name="roleDialogEntries" params="prefix">
+    # param prefix is either 'addRole_' or 'editRole_'.
+    #
+    # Return a dialogEntries mapping of keys to NodeEntry's,
+    # with the keys = the NodeEntry names prefixed with prefix.
+    rbmDialogEntries = {}
+    mgmt = self.session().value('mgmt')
+    for eachRole in mgmt.getChildren('/rbm/config/role').keys():
+        # some filtering for cmc (might not be necessary)
+        if eachRole.startswith('cmc_apps_and_groups_'):
+            continue
+        if eachRole.startswith('__cmc_group_'):
+            eachRole = eachRole[len('__cmc_group_'):]
+
+        # This is a hack.  The deny option is disabled for the op
+        # status role on the CMC so we don't want the deny button to
+        # come up selected.  In this case default to read instead of
+        # deny.  We really ought to find a better way to do this.
+        if eachRole == 'cmc_operation_status':
+            defaultValue = 'read'
+        else:
+            defaultValue = 'deny'
+
+        rbmDialogEntries[eachRole] = NodeEntry(
+            name=(prefix + eachRole),
+            widget='radio',
+            value=defaultValue,
+            label=RBA.rolePermissionMap)
+    return rbmDialogEntries
+</psp:method>
+
+<psp:method name="roleTableHtml" params="rbmEntries, rbmEntriesPrefix">
+    # rbmEntries is a dict of NodeEntry radio objects that is created
+    # by the roleDialogEntries() method.
+    #
+    # Returns the HTML for a table filled with radio buttons for
+    # deny/read/write permissions.
+    html = ''
+    sortedRoles = RBA.getSortedRoleSubset(rbmEntries.keys())
+    policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+
+    selectAllHtml = '<tr><td>&nbsp;</td>'
+    for selAllParam in ('deny', 'read', 'write'):
+        selectAllHtml += '<td class="selectAllLink"><a href="#" onclick="selectAllClick(this, \'%s\'); return false;">Select All</a></td>' % (selAllParam)
+    selectAllHtml += '</tr>\n'
+
+    for groupName, groupRoles in sortedRoles:
+
+        if policyType and (groupName not in ('Steelhead', 'Uncategorized')):
+            continue
+        rowHtml = ''
+        for mgmtdName, prettyName in groupRoles:
+            entry = rbmEntries[mgmtdName]
+            rowHtml += '      <tr><td class="role">%s:</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' \
+                % (prettyName,
+                   entry.html(self, value='deny', format='inline'),
+                   entry.html(self, value='read', format='inline'),
+                   entry.html(self, value='write', format='inline'))
+
+        tableHtml =  '<div class="midLevel">\n'
+        tableHtml += '  <table>\n'
+        tableHtml += '    <tbody>\n'
+        if len(groupRoles) > 1: # "select all" onclick link is pointless for groups with only one permission.
+            tableHtml += selectAllHtml
+        tableHtml += rowHtml
+        tableHtml += '    </tbody>\n'
+        tableHtml += '  </table>\n'
+        tableHtml += '</div>\n'
+
+        # create a fieldset only if there's more than one group
+        if len(sortedRoles) > 1:
+            html += '<fieldset>\n'
+            html += '<legend>%s</legend>\n' % groupName
+            html += tableHtml
+            html += '</fieldset>\n'
+        else:
+            html += tableHtml
+
+    return html
+
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+dialogEntries = self.dialogEntries()
+
+# CapabilityAccounts table - just for admin and monitor
+capabilityAccountsTable = ajaxentrytable.AjaxEntryTable('capabilityAccounts',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=capabilityAccounts'),
+    titleText='Capability-Based Accounts',
+    headerSpec=('User', 'Enabled'),
+    rowSpec="""
+[AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('enable')]""",
+    emptyMessage='No admin or monitor accounts.',
+    editButtonName='editCapabilityAccount',
+    editDivTitle='Edit Password for <span id="editCapabilityAccount_name"></span>',
+    editDivOffset=0)
+
+# CapabilityAccounts table Edit Div
+capabilityAccountsTable.editDivContent = '''
+  <input type="hidden" name="editCapabilityAccount_account" value="" />
+  %s
+  %s
+  <div id="editAcct_usePassword" class="indent">
+    <table>
+      %s
+      %s
+    </table>
+  </div>
+  ''' % (dialogEntries['editCapabilityAccount_enable'].html(self),
+         dialogEntries['editCapabilityAccount_usepw'].html(self),
+         dialogEntries['editCapabilityAccount_password'].html(self),
+         dialogEntries['editCapabilityAccount_passwordConfirm'].html(self))
+%>
+
+<% self.beginPagelet() %>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="capabilityAccountsForm">
+  <div>
+    <input type="hidden" name="_action_" value="setupSecurity_capabilityAccounts" />
+    <%= capabilityAccountsTable.html(self) %>
+  </div>
+</form>
+
+<%
+# Disable RBM User Table on Interceptor
+if not isIB(): {
+
+# RBM Users Table, the main table on this pagelet.
+
+# NodeEntry mappings for rbmUsersTable add div and edit div, respectively.
+addRoleEntries = self.roleDialogEntries('addRole_')
+editRoleEntries = self.roleDialogEntries('editRole_')
+
+rbmUsersTable = ajaxentrytable.AjaxEntryTable('rbmUsers',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=rbmUsers'),
+    titleText='Role-Based Accounts',
+    headerSpec=('', 'User', 'Enabled'),
+    rowSpec="""
+[AjaxEntryTable.tdSelectCheckbox('name', 'ck_'),
+ AjaxEntryTable.tdEdit('name', 'name'),
+ AjaxEntryTable.tdAttr('enable')]""",
+    emptyMessage='No role-based users.',
+    addButtonText='Add a New User',
+    removeName='removeRbmUsers',
+    removeButtonText='Remove Selected Users',
+    removePrefix='ck_',
+    addButtonName='addRbmUser',
+    editButtonName='editRbmUser',
+    editDivTitle='Edit User <span id="editRbmUser_name"></span>')
+
+# RBM Users nable add div
+rbmUsersTable.addDivContent = '''
+  <div class="midLevel">
+    <table>
+      %s
+    </table>
+    %s
+    %s
+    <div id="addRbmUser_usePassword" class="indent">
+      <table>
+        %s
+        %s
+      </table>
+    </div>
+  </div>
+  <h4 class="topLevel">Roles and Permissions:</h4>
+  <div class="rbaRoleTable midLevel">
+    %s
+  </div>
+  ''' % (dialogEntries['addRbmUser_account'].html(self),
+
+         dialogEntries['addRbmUser_enable'].html(self),
+         dialogEntries['addRbmUser_usepw'].html(self),
+
+         dialogEntries['addRbmUser_password'].html(self),
+         dialogEntries['addRbmUser_passwordConfirm'].html(self),
+
+         self.roleTableHtml(addRoleEntries, 'addRole_'))
+
+# RBM Users table edit div
+rbmUsersTable.editDivContent = '''
+  <input type="hidden" name="editRbmUser_account" value="" />
+  <div class="midLevel">
+    %s
+    %s
+    <div id="editRbmUser_usePassword" class="indent">
+      <table>
+        %s
+        %s
+      </table>
+    </div>
+  </div>
+  <h4 class="topLevel">Roles and Permissions:</h4>
+  <div id="editRbmUser_permissionTable" class="rbaRoleTable midLevel">
+    %s
+  </div>
+  ''' % (dialogEntries['editRbmUser_enable'].html(self),
+         dialogEntries['editRbmUser_usepw'].html(self),
+         dialogEntries['editRbmUser_password'].html(self),
+         dialogEntries['editRbmUser_passwordConfirm'].html(self),
+         self.roleTableHtml(editRoleEntries, 'editRole_'))
+
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="usersForm">
+  <div>
+    <%= rbmUsersTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="setupSecurity_usersAction" />
+  </div>
+</form>
+
+<%
+# Disable RBM User Table on Interceptor
+}
+%>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+<!--
+
+
+function selectAllClick(el, selectAllType) {
+    // A "select all" onclick link has been clicked, so we should check all
+    // of the non-disabled radio buttons in that group.
+
+    // param el is the link element that was clicked.
+    // param selectAllType is a string 'deny', 'read', or 'write' for the
+    // value a radio button should have to be checked.
+
+    // The "select all" links' functionality relies on the fact that all
+    // the radio buttons and onclick link are in a single table.
+    parentTable = getParentOfType(el, "TABLE");
+    allInputTags = parentTable.getElementsByTagName("input");
+
+    for (var i = 0; i < allInputTags.length; ++i) {
+        // Check the radio button if it is not disabled.
+        if ((!allInputTags[i].disabled) && (allInputTags[i].value == selectAllType)) {
+            allInputTags[i].checked = true;
+        }
+    }
+
+}
+
+capabilityAccountsTable.editEntry = function(editName) {
+    var el = this.getEntryElement('name', editName);
+    setElementText('editCapabilityAccount_name', editName);
+    var formEl = document.getElementById('capabilityAccountsForm');
+    formEl.editCapabilityAccount_account.value = editName;
+    formEl.editCapabilityAccount_enable.checked = 'true' == el.getAttribute('enable');
+    formEl.editCapabilityAccount_password.value = el.getAttribute('password');
+    formEl.editCapabilityAccount_passwordConfirm.value = el.getAttribute('password');
+    formEl.editCapabilityAccount_usepw.checked = '' != el.getAttribute('password');
+}
+
+capabilityAccountsTable.updateHook = function() {
+    var form = $('capabilityAccountsForm');
+    var name = form.editCapabilityAccount_account.value;
+
+    var enableCheckbox = form.editCapabilityAccount_enable;
+    var parentDiv = getParentOfType(enableCheckbox, 'DIV');
+
+    // Admin user cannot have 'enable' property modified.
+    enableElements(parentDiv, 'admin' != name);
+}
+
+<%
+# Disable RBM User Table scripts if table is disabled
+if 'rbmUsersTable' in locals(): {
+%>
+
+/*
+ * This disables radio buttons on roles where the corresponding
+ * permission is illogical.  For example, read-only permission makes
+ * no sense for the "policy push" role so we should disable the
+ * control.
+ */
+function disableRoleRadioButtons(formId, prefix) {
+    // a list of buttons to disable as (name, value) pairs
+    var buttons = [
+        ['cmc_file_transfer', 'read'],
+        ['cmc_policy_push', 'read'],
+        ['cmc_appliance_upgrade', 'read'],
+        ['cmc_operation_status', 'deny'],
+        ['cmc_diagnostics', 'read'],
+        ['cmc_reports', 'read'],
+        ['basic_diagnostics', 'read'],
+        ['tcpdump', 'read'],
+        ['reports', 'read']
+    ];
+
+    for (var i = 0; i < buttons.length; i++) {
+        // this is an array of radio buttons with the same name
+        var radioButtonGroup =
+            eval('document.forms[formId].' + prefix + buttons[i][0]);
+
+        // SH doesn't have all of CMC's roles so radioButtonGroup may be null
+        if (radioButtonGroup) {
+            for (var j = 0; j < radioButtonGroup.length; j++) {
+                var radioButtonEl = radioButtonGroup[j];
+                if (radioButtonEl.value == buttons[i][1]) {
+                    // assume that the parent of the radio button is a
+                    // container that holds the label too
+                    var parentEl = radioButtonEl.parentNode;
+                    enableElements(parentEl, false);
+                }
+            }
+        }
+    }
+}
+
+rbmUsersTable.editEntry = function(editName) {
+    var xmlEl = this.getEntryElement('name', editName);
+    setElementText('editRbmUser_name', editName)
+    var formEl = document.getElementById('usersForm');
+    setFormValue(formEl, 'editRbmUser_account', editName);
+    setFormValue(formEl, 'editRbmUser_enable', xmlEl.getAttribute('enable'));
+    setFormValue(formEl, 'editRbmUser_usepw', '' != xmlEl.getAttribute('password'));
+    setFormValue(formEl, 'editRbmUser_password', xmlEl.getAttribute('password'));
+    setFormValue(formEl, 'editRbmUser_passwordConfirm', xmlEl.getAttribute('password'));
+    // Make keywords out of the permission children of xmlEl.
+    var permissionObj = {};
+    for (var permEl = xmlEl.firstChild; permEl; permEl = permEl.nextSibling) {
+        permissionObj[permEl.getAttribute('name')] =
+                      permEl.getAttribute('value');
+    }
+    // Populate the permissions table.
+    var divEl = document.getElementById('editRbmUser_permissionTable');
+    var inputList = divEl.getElementsByTagName('input');
+    var radioNames = {};
+    for (var i = 0; i < inputList.length; i++) {
+        var inputEl = inputList.item(i);
+        if ('radio' == inputEl.type) {
+            // Recover the role name by pulling everything after the first
+            // '_' in the radio button name.  Messy.
+            radioNames[inputEl.name] = inputEl.name.slice(inputEl.name.indexOf('_') + 1);
+        }
+    }
+    iterateDict(radioNames, function(key, roleName) {
+        // key comes from radio input name in the permissionTable.
+        // roleName is derived from the key.
+        var permissionForRole = permissionObj[roleName] || 'deny';
+        setFormValue(formEl, key, permissionForRole);
+    });
+}
+
+rbmUsersTable.updateHook = function() {
+    disableRoleRadioButtons('usersForm', 'addRole_');
+    disableRoleRadioButtons('usersForm', 'editRole_');
+}
+
+<%
+# Disable RBM User Table scripts if table is disabled
+}
+%>
+
+// Validates user names to lowercase letters, numbers, dashes and underscores.
+function validateUserName(val) {
+    if (val.match(/^[a-z0-9_-]+$/))
+        return;
+    throw 'User names may only contain lowercase letters, numbers, dashes ("-") and underscores ("_")';
+}
+
+// -->
+</script>

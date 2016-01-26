@@ -1,0 +1,782 @@
+<%
+## Copyright 2007, Riverbed Technology, Inc., All rights reserved.
+## Author: Don Tillman
+##
+## setupServiceProtocolsSSLPeering.psp
+## This is the template for the SSL protocol settings for Peering.
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="FormUtils, FormUtils:NodeEntry, Nodes, ajaxentrytable, certdialog, PagePresentation:Pagelet, SSLUtils" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+<%
+    self.relatedPages = (
+        'setupServiceInpathRules',
+        'setupAdvNet_peering',
+        'setupServiceProtocolsHTTP',
+        'setupVault',
+        'reportSSLStatistics',
+        'reportSSLCerts',
+    )
+%>
+
+<psp:method name="css">
+    return '''
+.table_sslPeers { width: 560px; }
+th.table_sslPeers_actions { width: 120px; }
+th.table_sslPeers_ip { width: 100px; }
+th.table_sslPeers_hostname { width: 160px; }
+th.table_sslPeers_date { width: 160px; }
+#peeringRadioTabs { width: 660px; }
+#peeringEditTabs { width: 560px; }
+/* the following works around an apparent rendering bug in FF */
+.peeringEditTab { clear: both; }
+.applyButton { margin-left: 10px; }
+'''
+</psp:method>
+
+<psp:method name="pageletNodes">
+# The nodes below are covered by /role_primitive/acceleration/ssl,
+# which is in the ssl_acceleration role.
+return [
+        '/rbt/sport/ssl/state/tunnel/gray_list/*',
+        '/rbt/sport/ssl/state/tunnel/white_list/*',
+        '/rbt/sport/ssl/state/tunnel/black_list/*',
+        '/rbt/sport/ssl/state/tunnel/ca/*',
+        '/rbt/sport/ssl/state/tunnel/shm_ca/*',
+        '/rbt/sport/ssl/action/all/export',
+        '/rbt/sport/ssl/action/tunnel/export',
+        '/rbt/sport/ssl/action/server/export',
+        '/rbt/sport/ssl/action/tunnel/change_import',
+        '/rbt/sport/ssl/action/server/change_import',
+        '/rbt/sport/ssl/action/tunnel/change_generate',
+        '/rbt/sport/ssl/action/server/change_generate',
+        '/rbt/sport/ssl/action/tunnel/generate_csr',
+        '/rbt/sport/ssl/action/server/generate_csr',
+        '/rbt/sport/ssl/action/tunnel/ca/add',
+        '/rbt/sport/ssl/action/tunnel/ca/add_cert',
+        '/rbt/sport/ssl/action/tunnel/ca/remove',
+        '/rbt/sport/ssl/action/tunnel/shm_ca/add',
+        '/rbt/sport/ssl/action/tunnel/shm_ca/add_cert',
+        '/rbt/sport/ssl/action/tunnel/shm_ca/remove']
+</psp:method>
+
+<psp:method name="nodeEntries">
+    return {
+        'enableEncryptedPeering': NodeEntry(
+            path='/rbt/sport/ssl/config/tunnel/traffic_type',
+            selectOptions=(('ssl-only', 'SSL Only'),
+                           ('ssl-and-secure-protocols', 'SSL and Secure Protocols'),
+                           ('all', 'All')),
+            label='Traffic Type',
+            action='updateUpdateables("settingsForm")'),
+        'enableFallback': NodeEntry(
+            path='/rbt/sport/ssl/config/tunnel/allow_fallback_to_no_encryption',
+            type='bool',
+            widget='checkboxLeft',
+            label='Fallback to No Encryption'),
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    mgmt = self.session().value('mgmt')
+    cert = mgmt.getChildren('/rbt/sport/ssl/state/tunnel/cert')
+    # retrieve SCEP information
+    scepBase = '/rbt/sport/ssl/state/tunnel/scep'
+    autoEnrollEnable = Nodes.present(mgmt, '%s/auto_reenroll/enable' % scepBase)
+    autoEnrollThreshold = Nodes.present(mgmt, '%s/auto_reenroll/expiry_threshold' % scepBase)
+    scepURL = Nodes.present(mgmt, '%s/url' % scepBase)
+    scepMaxPolls = Nodes.present(mgmt, '%s/max_num_polls' % scepBase)
+    scepPollFreq = Nodes.present(mgmt, '%s/poll_freq' % scepBase)
+    scepPassphrase = Nodes.present(mgmt, '%s/challenge_passphrase' % scepBase)
+    return {
+        'exportIncludeKey': NodeEntry(
+            name='exportIncludeKey',
+            widget='checkboxLeft',
+            label='Include Private Key',
+            enableDiv='exportKeyPassword'),
+        'exportPassword': NodeEntry(
+            name='exportPassword',
+            widget='password',
+            label='Password',
+            validate=('password', '[4]')),
+        'exportPasswordConfirm': NodeEntry(
+            name='exportPasswordConfirm',
+            widget='password',
+            label='Password Confirm',
+            validate=('password', '[4]')),
+        'addTrusted_trustExisting': NodeEntry(
+            name='addTrusted_trustExisting',
+            widget='radio',
+            label={'true': 'Trust Existing CA',
+                   'false': 'Trust New Certificate'},
+            enableDiv={'true': 'addTrusted_existing',
+                       'false': 'addTrusted_new'},
+            value='true'),
+        'addTrusted_trust': NodeEntry(
+            name='addTrusted_trust',
+            widget='select',
+            action='return updateCANameIssuer(this)'),
+        'addTrusted_name': NodeEntry(
+            name='addTrusted_name',
+            label='Optional Local Name',
+            hint='(ignored if importing multiple certificates)'),
+        'addTrusted_fileMode': NodeEntry(
+            name='addTrusted_fileMode',
+            widget='radio',
+            label={'true': 'Local File',
+                   'false': 'Cert Text'},
+            enableDiv={'true': 'addTrusted_newfile',
+                       'false': 'addTrusted_newcert'},
+            value='true'),
+        'addTrusted_file': NodeEntry(
+            name='addTrusted_file',
+            widget='file',
+            validate='nonempty'),
+        'addTrusted_certText': NodeEntry(
+            name='addTrusted_certText',
+            widget='textarea',
+            validate='nonempty'),
+
+        'addSCEP_trust': NodeEntry(
+            name='addSCEP_trust',
+            label='Peering Trust',
+            widget='select'),
+
+        'addMobile_name': NodeEntry(
+            name='addMobile_name',
+            label='Optional Local Name',
+            hint='(ignored if importing multiple certificates)'),
+        'addMobile_fileMode': NodeEntry(
+            name='addMobile_fileMode',
+            widget='radio',
+            label={'true': 'Local File',
+                   'false': 'Cert Text'},
+            enableDiv={'true': 'addMobile_newfile',
+                       'false': 'addMobile_newcert'},
+            value='true'),
+        'addMobile_file': NodeEntry(
+            name='addMobile_file',
+            widget='file',
+            validate='nonempty'),
+        'addMobile_certText': NodeEntry(
+            name='addMobile_certText',
+            widget='textarea',
+            validate='nonempty'),
+        'scep_auto_enable': NodeEntry(
+            name='scep_auto_enroll',
+            label='Enable Auto Enrollment',
+            enableDiv='SCEP_threshold',
+            value=autoEnrollEnable,
+            widget='checkboxLeft'),
+        'scep_exp_threshold': NodeEntry(
+            name='scep_exp_threshold',
+            label='Expiration Threshold',
+            widgetClass='small',
+            value=autoEnrollThreshold,
+            validate=('intInRange', '[1,60]'),
+            units='Days',
+            hint='(Between 1 and 60)'),
+        'scep_URL': NodeEntry(
+            name='scep_url',
+            widgetClass='wide',
+            validate='url',
+            value=scepURL,
+            label='URL'),
+        'scep_nPolls': NodeEntry(
+            name='scep_max_num_polls',
+            type='uint32',
+            widgetClass='small',
+            value=scepMaxPolls,
+            validate=('intInRange', '[1,10]'),
+            label='Maximum Number Of Polls'),
+        'scep_pollFreq': NodeEntry(
+            name='scep_poll_freq',
+            type='uint32',
+            label='Poll Period',
+            widgetClass='small',
+            value=scepPollFreq,
+            units='Minutes'),
+        'scep_passphrase_enable': NodeEntry(
+            name='scep_passphrase_enable',
+            label='Change Challenge Passphrase',
+            widget='checkboxLeft',
+            enableDiv='scepPassphraseDiv'),
+        'scep_passphrase': NodeEntry(
+            name='scep_challenge_passphrase',
+            label='Challenge Passphrase',
+            hint='(Not displayed)',
+            widget='password',
+            widgetClass='wide2')
+    }
+</psp:method>
+<%
+mgmt = self.session().value('mgmt')
+policyName, pathPrefix, policyType = self.retargetCmcPolicyNodes()
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+cmc = policyType
+
+## CA Choices
+caNames = SSLUtils.getCANameSelectOptions(mgmt)
+dialogEntries['addTrusted_trust'].selectOptions = caNames
+peeringCaNames = SSLUtils.getCANameSelectOptions(mgmt, True)
+dialogEntries['addSCEP_trust'].selectOptions = peeringCaNames
+
+cert = mgmt.getChildren('/rbt/sport/ssl/state/tunnel/cert')
+certDetails = SSLUtils.presentCert(cert)
+
+self.beginPagelet()
+
+# The rest of this page requires the secure vault to be open
+if not Nodes.secureVaultOpen(mgmt): {
+%>
+    <psp:include path="/Templates/incUnlockSecureVault.psp">
+<%
+    self.endPagelet()
+} else: {
+
+    # retrieve on-demand CSR information (only available when the secure
+    # vault is unlocked
+    scepBase = '/rbt/sport/ssl/state/tunnel/scep'
+    currentStatus = Nodes.present(mgmt, '%s/enrollment/status' % scepBase).capitalize()
+    enrollmentActive = (currentStatus != 'Idle')
+    onDemandCSR = mgmt.getChildren('%s/ondemand/csr' % scepBase)
+    onDemandLastResult = mgmt.getChildren('%s/ondemand/last_result' % scepBase)
+    onDemandSuccess = onDemandLastResult.get('success')
+    onDemandLastResultOK = (onDemandSuccess and len(onDemandSuccess) > 0)
+
+    autoCSR = mgmt.getChildren('%s/auto_reenroll/csr' % scepBase)
+    autoLastResult = mgmt.getChildren('%s/auto_reenroll/last_result' % scepBase)
+    autoSuccess = autoLastResult.get('success')
+    autoLastResultOK = (autoSuccess and len(autoSuccess) > 0)
+    autoEnrollEnable = Nodes.present(mgmt, '%s/auto_reenroll/enable' % scepBase)
+
+#NOTE: the <div style="clear:both;"> below corrects a problem on IE7 and IE8 where the 'Replace' tab
+# is not cleared correctly.
+%>
+
+<form method="post"
+      action="<%= self.thisPageletRequest() %>"
+      id="settingsForm">
+  <fieldset>
+    <legend class="popupTitle" title="Should be configured on both the client-side and server-side Steelheads.">SSL Secure Peering Settings</legend>
+    <input type="hidden" name="_action_" value="sslPeering" />
+    <input type="hidden" name="enableFallbackCheckboxPresent" value="true" />
+
+    <div class="midLevel">
+      <%= nodeEntries['enableEncryptedPeering'].html(self, format='block') %>
+      <div id="fallbackCheckboxContainer" class="indent">
+        <%= nodeEntries['enableFallback'].html(self) %>
+      </div>
+    </div>
+
+  <%= FormUtils.formSubmitButtons(self) %>
+  </fieldset>
+
+</form>
+
+<div class="topLevel">
+  <h3>Certificate:</h3>
+  <div class="midLevel">
+    <div class="tabControl" id="peeringRadioTabs">
+    <div class="grayBorder">
+      <%= FormUtils.radioTabControl(
+              self,
+              'peeringTabs',
+               ('details', 'Details', 'peeringTab_details'),
+               ('pem', 'PEM', 'peeringTab_pem'),
+               ('replace', 'Replace', 'peeringTab_replace'),
+               ('export', 'Export', 'peeringTab_export'),
+               ('csr', 'Generate CSR', 'peeringTab_csr'),
+               ('scep', 'SCEP Management', 'peeringTab_scep')) %>
+
+      <div class="midLevel" id="peeringTab_details">
+        <%= certDetails %>
+      </div>
+
+      <div class="midLevel" id="peeringTab_pem">
+        <pre class="cert_pem"><%= cert.get('raw', '--') %></pre>
+      </div>
+
+      <div class="midLevel" id="peeringTab_replace">
+        <form method="post"
+              enctype="multipart/form-data"
+              action="<%= self.thisPageletRequest() %>"
+              id="replaceCertForm">
+          <div>
+            <input type="hidden" name="_action_" value="sslPeering" />
+            <%= certdialog.certDialog(self, '', needSCEP=True, defaultCSR=onDemandCSR) %>
+          </div>
+        </form>
+      </div>
+
+      <div class="midLevel" id="peeringTab_export">
+        <form method="post"
+              enctype="multipart/form-data"
+              action="/mgmt/ssldata"
+              id="exportCertForm">
+          <div class="indent">
+            <%= dialogEntries['exportIncludeKey'].html(self) %>
+            <div id="exportKeyPassword" class="indent">
+              <table>
+                <%= dialogEntries['exportPassword'].html(self) %>
+                <%= dialogEntries['exportPasswordConfirm'].html(self) %>
+              </table>
+            </div>
+            <input type="hidden" name="action" value="exportPeeringSSLData" />
+            <%= FormUtils.formSubmitButtons(self, {'name': 'exportCert',
+                                             'value': 'Export'}) %>
+          </div>
+        </form>
+      </div>
+
+      <div class="midLevel" id="peeringTab_csr">
+        <form method="post"
+              enctype="multipart/form-data"
+              action="/mgmt/ssldata"
+              id="generateCSRForm">
+          <%= certdialog.csrDialog(self, '') %>
+          <div>
+            <input type="hidden" name="action" value="generateCSRSSLData" />
+          </div>
+          <%= FormUtils.formSubmitButtons(self, {'name': 'generateCSR',
+                                           'value': 'Generate CSR'}) %>
+        </form>
+      </div>
+
+      <div class="midLevel" id="peeringTab_scep">
+        <form method="post"
+              enctype="multipart/form-data"
+              action="<%= self.thisPageletRequest() %>"
+              id="scepForm">
+          <p>
+            <strong class="labelPaddedRight">Current Enrollment Status:</strong><span id="SCEP_settings_status"><%= currentStatus %></span>
+            <input type="hidden" name="_action_" value="sslPeering" />
+          </p>
+
+          <fieldset>
+            <legend>SCEP Settings</legend>
+            <table class="midLevel">
+            <%= dialogEntries['scep_URL'].html(self) %>
+            <%= dialogEntries['scep_nPolls'].html(self) %>
+            <%= dialogEntries['scep_pollFreq'].html(self) %>
+            </table>
+            <%= dialogEntries['scep_passphrase_enable'].html(self) %>
+            <div id="scepPassphraseDiv" class="indent">
+                <%= dialogEntries['scep_passphrase'].html(self, format='block') %>
+            </div>
+            <%= dialogEntries['scep_auto_enable'].html(self, format='block') %>
+            <div id="SCEP_threshold" class="indent">
+                <%= dialogEntries['scep_exp_threshold'].html(self, format='block') %>
+            </div>
+            <%= FormUtils.formSubmitButtons(self, {'name': 'updateSCEPSettings',
+                                                   'value': 'Update SCEP Settings'}) %>
+          </fieldset>
+
+          <fieldset>
+            <legend>Most Recent On-Demand Enrollment</legend>
+            <% if onDemandLastResultOK: { %>
+              <table class="midLevel">
+                <tr><td>Success:</td><td><%= onDemandLastResult['success'].capitalize() %></td></tr>
+                <tr><td>Start Time:</td><td><%= onDemandLastResult.get('start_time', '') %></td></tr>
+                <tr><td>End Time:</td><td><%= onDemandLastResult.get('stop_time', '') %></td></tr>
+                <tr><td>Message:</td><td><%= onDemandLastResult.get('msg', '') %></td></tr>
+              </table>
+            <% } %>
+            <% if onDemandCSR: { %>
+              <h3 class="midLevel">On-Demand Key And CSR</h3>
+              <%= SSLUtils.presentCert(onDemandCSR, csrOnly=True) %>
+              <% if enrollmentActive: { %>
+                <%= FormUtils.formSubmitButtons(self,
+                                              {'name': 'cancelOndemandEnroll',
+                                               'value': 'Cancel On-Demand Enrollment'}
+                                               ) %>
+              <% } else: { # not enrollmentActive %>
+                <%= FormUtils.formSubmitButtons(self,
+                                              {'name': 'manualReEnroll',
+                                               'value': 'Re-Enroll',
+                                               'class': 'applyButton'},
+                                              {'name': 'removeOnDemandKeyAndCSR',
+                                               'value': 'Remove On-Demand Key And CSR',
+                                               'class': 'applyButton'}
+                                               ) %>
+              <% } %>
+            <% } else: { # not onDemandCSR %>
+              <p class="notAvailable">No On-Demand Key and CSR</p>
+              <% if enrollmentActive: { %>
+                <%= FormUtils.formSubmitButtons(self,
+                                              {'name': 'cancelOndemandEnroll',
+                                               'value': 'Cancel Enrollment'},
+                                               ) %>
+              <% } %>
+            <% } %>
+          </fieldset>
+          <fieldset>
+            <legend>Most Recent Automatic Enrollment</legend>
+            <% if autoLastResultOK: { %>
+              <table class="midLevel">
+                <tr><td>Success:</td><td><%= autoLastResult['success'].capitalize() %></td></tr>
+                <tr><td>Start Time:</td><td><%= autoLastResult.get('start_time', '') %></td></tr>
+                <tr><td>End Time:</td><td><%= autoLastResult.get('stop_time', '') %></td></tr>
+                <tr><td>Message:</td><td><%= autoLastResult.get('msg', '') %></td></tr>
+              </table>
+              <% if autoCSR: { %>
+              <h3 class="midLevel">Automatic Enrollment Key And CSR</h3>
+              <%= SSLUtils.presentCert(autoCSR, csrOnly=True) %>
+              <%= FormUtils.formSubmitButtons(self,
+                                              {'name': 'removeAutoKeyAndCSR',
+                                               'value': 'Remove Auto Enrollment Key And CSR',
+                                               'class': 'applyButton'}
+                                              ) %>
+              <% } else: { %>
+              <p class="notAvailable">Automatic Enrollment Key and CSR Not Available.</p>
+              <% } %>
+            <% } else: { %>
+              <p class="notAvailable">Enrollment result not available.</p>
+            <% } %>
+          </fieldset>
+        </form>
+      </div>
+
+    </div>
+    </div>
+    <div style="clear: both;"></div>
+  </div>
+</div>
+
+<%
+
+# Trusted Entities Table
+entitiesTable = ajaxentrytable.AjaxEntryTable('entities',
+    url='/mgmt/xmldata?p=sslTrustedEntities',
+    titleText='Peering Trust',
+    headerSpec=('',
+                ('Trusted Entity', '', "sortAttrib('entity_name')"),
+                ('Issued To', '', "sortAttrib('subject_common_name')"),
+                ('Expiration Date', '', "sortAttrib('expiry_sort')")),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('entity_name', 'trustedSelected_'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('entity_name', 'entity_name')]),
+ AjaxEntryTable.tdAttrStyle('subject_common_name', 'expiry_style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'expiry_style')]""",
+    emptyMessage='No Trusted Entities.',
+    addButtonText='Add a New Trusted Entity',
+    addButtonName='trustedAdd',
+    removeName='trustedRemove',
+    removeButtonText='Remove Selected',
+    removePrefix='trustedSelected_')
+
+entitiesTable.editDivContent = '''
+<div class="midLevel">
+  <h3 class="midLevel">Trusted Certificate:</h3>
+  <div class="tabControl midLevel" id="peeringEditTabs">
+    <div class="grayBorder">
+      %s
+      <div id="peeringEditTab_details" class="peeringEditTab"></div>
+      <div id="peeringEditTab_pem" class="peeringEditTab"></div>
+    </div>
+  </div>
+</div>
+''' % (FormUtils.radioTabControl(
+              self,
+              'peeringEditTabs',
+               ('details', 'Details', 'peeringEditTab_details'),
+               ('pem', 'PEM', 'peeringEditTab_pem')))
+entitiesTable.addDivContent = '''
+  <div class="midLevel">
+    %s
+    <div id="addTrusted_existing" class="indent">
+      %s
+      %s
+    </div>
+    %s
+    <div id="addTrusted_new" class="indent">
+      %s
+      <table>
+        <tr><td>%s</td><td>&nbsp;&nbsp;&nbsp;</td><td><div id="addTrusted_newfile">%s</div></td></tr>
+        <tr><td>%s</td><td>&nbsp;&nbsp;&nbsp;</td><td><div id="addTrusted_newcert">%s</div></td></tr>
+      </table>
+    </div>
+  </div>
+''' % (dialogEntries['addTrusted_trustExisting'].html(self, value='true'),
+       dialogEntries['addTrusted_trust'].html(self, format='inline'),
+       certdialog.caNameIssuer(),
+
+       dialogEntries['addTrusted_trustExisting'].html(self, value='false'),
+       dialogEntries['addTrusted_name'].html(self, format='block'),
+
+       dialogEntries['addTrusted_fileMode'].html(self, value='true'),
+       dialogEntries['addTrusted_file'].html(self, format='block'),
+
+       dialogEntries['addTrusted_fileMode'].html(self, value='false'),
+       dialogEntries['addTrusted_certText'].html(self, format='block'))
+
+# SCEP Entities Table
+scepEntitiesTable = ajaxentrytable.AjaxEntryTable('scepEntities',
+    url='/mgmt/xmldata?p=sslSCEPEntities',
+    titleText='SCEP Peering Trust',
+    headerSpec=('',
+                ('Trusted Entity', '', "sortAttrib('entity_name')"),
+                ('Issued To', '', "sortAttrib('subject_common_name')"),
+                ('Expiration Date', '', "sortAttrib('expiry_sort')")),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('entity_name', 'scepTrustedSelected_'),
+ AjaxEntryTable.td([AjaxEntryTable.edit('entity_name', 'entity_name')]),
+ AjaxEntryTable.tdAttrStyle('subject_common_name', 'expiry_style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'expiry_style')]""",
+    emptyMessage='No SCEP Entities.',
+    addButtonText='Add a New SCEP Entity',
+    addButtonName='scepTrustedAdd',
+    removeName='scepTrustedRemove',
+    removeButtonText='Remove Selected')
+
+scepEntitiesTable.editDivContent = '''
+<div class="midLevel">
+  <h3 class="midLevel">SCEP Trusted Certificate:</h3>
+      <div id="scepEditTab_details" class="peeringEditTab"></div>
+</div>
+'''
+scepEntitiesTable.addDivContent = '''
+  <div class="midLevel">
+    %s
+  </div>
+''' % (dialogEntries['addSCEP_trust'].html(self, format='inline'))
+
+# Mobile Trust Table
+mobileEntitiesTable = ajaxentrytable.AjaxEntryTable('mobileEntities',
+    url='/mgmt/xmldata?p=sslMobileEntities',
+    titleText='Mobile Trust',
+    headerSpec=('',
+                ('Trusted Entity', '', "sortAttrib('entity_name')"),
+                ('Issued To', '', "sortAttrib('subject_common_name')"),
+                ('Expiration Date', '', "sortAttrib('expiry_sort')")),
+    rowSpec = """
+[AjaxEntryTable.tdSelectCheckbox('entity_name', 'mobileSelected_'),
+ AjaxEntryTable.tdClick('entity_name', viewMobileCert, 'table_sslCAs_ca'),
+ AjaxEntryTable.tdAttrStyle('subject_common_name', 'expiry_style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'expiry_style')]""",
+    emptyMessage='No Mobile Entities.',
+    addButtonText='Add a New Mobile Entity',
+    addButtonName='mobileAdd',
+    removeName='mobileRemove',
+    removeButtonText='Remove Selected',
+    removePrefix='mobileSelected_')
+
+mobileEntitiesTable.addDivContent = '''
+  <div class="midLevel">
+    %s
+    <table>
+      <tr><td>%s</td><td>&nbsp;&nbsp;&nbsp;</td><td><div id="addMobile_newfile">%s</div></td></tr>
+      <tr><td>%s</td><td>&nbsp;&nbsp;&nbsp;</td><td><div id="addMobile_newcert">%s</div></td></tr>
+    </table>
+  </div>
+''' % (dialogEntries['addMobile_name'].html(self, format='block'),
+
+       dialogEntries['addMobile_fileMode'].html(self, value='true'),
+       dialogEntries['addMobile_file'].html(self, format='block'),
+
+       dialogEntries['addMobile_fileMode'].html(self, value='false'),
+       dialogEntries['addMobile_certText'].html(self, format='block'))
+%>
+
+<script type="text/javascript">
+<!--
+
+function viewPeeringCert(element) {
+    var name = element.getAttribute('entity_name');
+    return popupCert(name, 'peering', name);
+}
+
+function viewMobileCert(element) {
+    var name = element.getAttribute('entity_name');
+    return popupCert(name, 'mobile', name);
+}
+
+function viewColorCert(element) {
+    var ip = element.getAttribute('ip');
+    var color = element.getAttribute('color');
+    return popupCert(ip, color, ip);
+}
+
+function sslPeerSelect(element) {
+    var color = element.getAttribute('color');
+    switch (color) {
+    case 'white':
+    return [['', 'Actions:'],
+            ['dont_trust', 'Do Not Trust']]
+    case 'gray':
+    return [['', 'Actions:'],
+            ['trust', 'Trust'],
+            ['dont_trust', 'Do Not Trust']]
+    case 'black':
+    return [['', 'Actions:'],
+            ['trust', 'Trust']]
+    }
+}
+// -->
+</script>
+
+<form method="post"
+      id="entityForm"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= entitiesTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+<form method="post"
+      id="scepEntityForm"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= scepEntitiesTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+<form method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>">
+  <div>
+    <%= mobileEntitiesTable.html(self, 'topLevel') %>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+
+<%
+# Peer Tables in colors White, Gray and Black
+# They share common headers and row specs.
+
+ssPeerTablesHeader = ('',
+                      ('IP', 'table_sslPeers_ip', "sortAttrib('ip')"),
+                      ('Hostname', 'table_sslPeers_hostname', "sortAttrib('hostname')"),
+                      ('Expiration Date', 'table_sslPeers_date', "sortAttrib('expiry_sort')"),
+                      ('', 'table_sslPeers_actions'))
+ssPeerTablesRow = """
+[AjaxEntryTable.tdSelectCheckbox('id', 'ssPeerSelected_'),
+ AjaxEntryTable.tdClick('ip', viewColorCert, 'table_sslColorPeering_ca'),
+ AjaxEntryTable.tdAttrStyle('hostname', 'style'),
+ AjaxEntryTable.tdAttrStyle('expiry_date', 'style'),
+ AjaxEntryTable.tdActiveSelect(null, '_', 'id', sslPeerSelect, 'sslPeerClick(this)')]"""
+
+ssPeerWhiteTable = ajaxentrytable.AjaxEntryTable('ssPeerWhite',
+    url='/mgmt/xmldata?p=sslSelfSignedPeers&color=white',
+    titleText='Self-Signed Peer White List',
+    headerSpec=ssPeerTablesHeader,
+    rowSpec=ssPeerTablesRow,
+    emptyMessage='No Trusted White SSL Peers.',
+    removeButtonText='Remove Selected',
+    removeName='removePeer_white')
+
+ssPeerGrayTable = ajaxentrytable.AjaxEntryTable('ssPeerGray',
+    url='/mgmt/xmldata?p=sslSelfSignedPeers&color=gray',
+    titleText='Self-Signed Peer Gray List',
+    headerSpec=ssPeerTablesHeader,
+    rowSpec=ssPeerTablesRow,
+    emptyMessage='No Gray SSL Peers.',
+    removeButtonText='Remove Selected',
+    removeName='removePeer_gray')
+
+ssPeerBlackTable = ajaxentrytable.AjaxEntryTable('ssPeerBlack',
+    url='/mgmt/xmldata?p=sslSelfSignedPeers&color=black',
+    titleText='Self-Signed Peer Black List',
+    headerSpec=ssPeerTablesHeader,
+    rowSpec=ssPeerTablesRow,
+    emptyMessage='No Black SSL Peers.',
+    removeButtonText='Remove Selected',
+    removeName='removePeer_black')
+%>
+
+<form method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>"
+      id="whitePeerTableForm">
+  <%= ssPeerWhiteTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+<form method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>"
+      id="grayPeerTableForm">
+  <%= ssPeerGrayTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+<form method="post"
+      enctype="multipart/form-data"
+      action="<%= self.thisPageletRequest() %>"
+      id="blackPeerTableForm">
+  <%= ssPeerBlackTable.html(self, 'topLevel') %>
+  <div>
+    <input type="hidden" name="_action_" value="sslPeering" />
+  </div>
+</form>
+
+
+<%
+self.endPagelet()
+%>
+
+<script type="text/javascript">
+<!--
+
+entitiesTable.editEntry = function(editName) {
+    var entityEl = this.getEntryElement('entity_name', editName);
+    var details = entityEl.getElementsByTagName('details')[0].firstChild.nodeValue;
+    var pem = entityEl.getElementsByTagName('pem')[0].firstChild.nodeValue;
+    Y.one('#peeringEditTab_details').setContent(details);
+    Y.one('#peeringEditTab_pem').setContent('<pre class="cert_pem">' + pem + '</pre>');
+}
+scepEntitiesTable.editEntry = function(editName) {
+    var entityEl = this.getEntryElement('entity_name', editName);
+    var details = entityEl.getElementsByTagName('details').item(0).firstChild.nodeValue;
+    Y.one('#scepEditTab_details').setContent(details);
+}
+
+<%
+# Create a JavaScript table of issuer names
+caIssuers = SSLUtils.getCAIssuersJS(mgmt, [ca[0] for ca in caNames])
+self.writeln('var caIssuers = %s;' % caIssuers)
+peeringCaIssuers = SSLUtils.getCAIssuersJS(mgmt, [ca[0] for ca in peeringCaNames], True)
+self.writeln('var peeringCaIssuers = %s;' % peeringCaIssuers)
+%>
+
+Y.on('domready', function() {
+    // Refresh the full name & issuer text when the page loads.
+    updateCANameIssuer($('entityForm').elements.addTrusted_trust);
+});
+
+function sslPeerClick(sel) {
+    sel.name = "control" + sel.name;
+    sel.form.submit();
+}
+
+// enable the No Encryption Fallback checkbox iff the Traffic Type is
+// not SSL Only
+var displayControl = new DisplayControl();
+displayControl.display = function(div) {
+    var form = document.forms['settingsForm'];
+    var trafficType = form.elements['<%= nodeEntries["enableEncryptedPeering"].elementName(self) %>'].value;
+    return trafficType != 'ssl-only';
+}
+addUpdateable('enable', displayControl, 'fallbackCheckboxContainer');
+
+// -->
+</script>
+
+<%
+} # end secure vault check
+%>
+

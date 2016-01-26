@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<!--  (C) Copyright 2008 Riverbed Technology, Inc.                          -->
+<!--  All rights reserved.                                                  -->
+<!--                                                                        -->
+<!--   Module Name: rbt_datastore_notification                              -->
+<!--   Module Root: /rbt/sport/datastore                                    -->
+<!--                                                                        -->
+<!--   Source File:                                                         -->
+<!--      .../products/rbt_sh/src/bin/mgmtd/modules/md_rbt_datastore.c      -->
+<!--                                                                        -->
+<!--   Sample Node:                                                         -->
+<!--                                                                        -->
+<!--     <config>                                                           -->
+<!--        <name>/rbt/sport/datastore/config/myconfig</name>               -->
+<!--        <description>The description of the node...</description>       -->
+<!--        <value type="int32">42</value>                                  -->
+<!--     </config>                                                          -->
+
+<node-list module="rbt_datastore_notification">
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/wrap_version</name>
+         <description>Datastore wrap version</description>
+         <value type="uint8"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/avg_tput</name>
+         <description>Average LAN throughput in Kbps</description>
+         <value type="uint32"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/lz_compress</name>
+         <description>LZ-compressed percentage</description>
+         <value type="uint8"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/tot_reduction</name>
+         <description>Data reduction percentage</description>
+         <value type="uint8"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/lz_reduction</name>
+         <description>LZ reduction percentage</description>
+         <value type="uint8"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+    <external-state>
+         <name>/rbt/sport/datastore/stats/state/fp_mode</name>
+         <description>FP mode</description>
+         <value type="uint8"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/datastore/safety_valve/state/current_state</name>
+         <description>Data Store Safety valve state</description>
+         <value type="int32"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/datastore/safety_valve/state/threshold</name>
+         <description>Data Store Safety valve threshold</description>
+         <value type="int32"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <external-state>
+         <name>/rbt/sport/datastore/safety_valve/state/timeout</name>
+         <description>Data Store Safety valve timeout</description>
+         <value type="int32"/>
+         <state-provider>sport</state-provider>
+    </external-state>
+
+    <config>
+        <name>/rbt/sport/datastore/config/safety_valve/threshold</name>
+        <description>Safety valve threshold</description>
+        <value type="int32">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/datastore/config/safety_valve/timeout</name>
+        <description>Safety valve timeout</description>
+        <value type="int32">0</value>
+    </config>
+
+    <event>
+        <name>/rbt/sport/datastore/event/safety_valve/threshold_change</name>
+        <description>Safety valve threshold change</description>
+        <parameter>threshold</parameter>
+    </event>
+
+    <event>
+        <name>/rbt/sport/datastore/event/safety_valve/timeout_change</name>
+        <description>Safety valve timeout change</description>
+        <parameter>timeout</parameter>
+    </event>
+
+    <event>
+        <name>/rbt/sport/datastore/event/sync_updated</name>
+        <description>Data Store Synchronization changed</description>
+    </event>
+
+    <config>
+        <name>/rbt/sport/datastore/config/disk_load/mode</name>
+        <description>Selects legacy disk load threshold</description>
+        <value type="uint32" squash="false">0</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/datastore/config/own_thread</name>
+        <description>Enables the use of dedicated thread for segstore</description>
+        <value type="bool">false</value>
+    </config>
+
+    <config>
+        <name>/rbt/sport/datastore/config/fp_mode</name>
+        <description>The FP mode</description>
+        <value type="string">0</value>
+        <value-choices>
+          <choice>0</choice>
+          <choice>100</choice>
+          <choice>101</choice>
+          <choice>102</choice>
+          <choice>200</choice>
+          <choice>201</choice>
+          <choice>202</choice>
+        </value-choices>
+    </config>
+
+    <config>
+        <name>/rbt/sport/datastore/config/segidx_cache_lines</name>
+        <description>Number of cache lines used per segment index bucket</description>
+        <value type="uint32">2</value>
+    </config>
+</node-list>

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en" lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <!-- MOTW-DISABLED saved from url=(0014)about:internet -->
+    <title>Configuring RSP Data Flow</title>
+    <link rel="StyleSheet" href="css/branch-services_cx.css" type="text/css" media="all" />
+    <link rel="StyleSheet" href="css/webworks.css" type="text/css" media="all" />
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/context.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/towwhdir.js"></script>
+    <script type="text/javascript" language="JavaScript1.2" src="wwhdata/common/wwhpagef.js"></script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        var  WebWorksRootPath = "";
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        // Set reference to top level help frame
+        //
+        var  WWHFrame = WWHGetWWHFrame("", true);
+      // -->
+    </script>
+    <script type="text/javascript" language="JavaScript1.2" src="scripts/expand.js"></script>
+  </head>
+  <body onload="WWHUpdate();" onunload="WWHUnload();" onkeydown="WWHHandleKeyDown((document.all||document.getElementById||document.layers)?event:null);" onkeypress="WWHHandleKeyPress((document.all||document.getElementById||document.layers)?event:null);" onkeyup="WWHHandleKeyUp((document.all||document.getElementById||document.layers)?event:null);">
+    <br />
+    <div class="WebWorks_Breadcrumbs" style="text-align: left;">
+      <a class="WebWorks_Breadcrumb_Link" href="branch-services_cx.07.01.html#285663">Chapter 5	Configuring Branch Services</a> : Configuring RSP Data Flow</div>
+    <hr align="left" />
+    <blockquote>
+      <div class="Heading1Topic"><a name="285663">Configuring RSP Data Flow</a></div>
+      <div class="Body"><a name="285669">You can configure Virtual Network Interfaces (VNIs) for an in-path RSP package in the Configure &gt; Branch </a>Services &gt; RSP Data Flow page. </div>
+      <div class="Body"><a name="285677">RSP packages use their own virtual network interfaces (VNIs), equivalent to VMware network interfaces, </a>to communicate with the network. These virtual network interfaces are connected to the physical network interfaces on the Steelhead appliance, or taps into the optimization data flow. VNIs are network taps that enable data flow in and out of the RSP packages. VNIs are the connection points for the LAN, WAN, primary, and auxiliary interfaces of the Steelhead appliance. </div>
+      <div class="Body"><a name="285690">Each package can have up to ten RSP network interfaces, which enables each package to support ten VNIs. </a>VNIs provide a great deal of configuration flexibility. VNIs also provide the basis for controlling the flow of data through packages in a multiple package scenario. </div>
+      <div class="Body"><a name="285691">You can use the following types of VNIs: </a></div>
+      <li class="Bullet"><span style="font-weight: bold"><a name="285694">Optimization VNIs</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>Optimization VNIs are used with in-band packages. Optimization VNIs are part of the optimized data flow on either the LAN- or WAN-side of RiOS. There are several types of optimization VNIs:</li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285699">In-path</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>In-path VNIs are used for packages such as security packages. The following types of in-path optimization VNIs are available:</li>
+      <li class="BulletSubDash"><span style="font-weight: bold"><a name="285700">LAN</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>LAN VNIs forward packets from the LAN-side to the virtual machine, to the WAN-side, or both. LAN VNIs unconditionally forward packets from the virtual machine to the LAN-side for RSP. LAN VNIs cannot receive packets from the WAN-side. For VRSP, packets from LAN or WAN VNIs can go in either direction, depending on the subnet side rules. For details, see <span class="xref"><a href="javascript:WWHClickedPopup('cx_test', 'setupSubnetSide.html#279838', '');" title="Configuring Subnet Side Rules">Configuring Subnet Side Rules</a></span>. </li>
+      <li class="BulletSubDash"><span style="font-weight: bold"><a name="285704">WAN</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>WAN VNIs forward packets from the WAN-side to the virtual machine, to the LAN-side, or both. WAN VNIs unconditionally forward packets from the virtual machine to the WAN-side. WAN VNIs cannot receive packets from the LAN-side. </li>
+      <li class="BulletSubBullet2"><span style="font-weight: bold"><a name="285705">Virtual-in-path</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>Virtual-in-path VNIs are used for packages that need redirection to intercept traffic. The types of virtual-in-path VNIs are: </li>
+      <li class="BulletSubDash"><span style="font-weight: bold"><a name="285707">DNAT</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>Destination Network Address Translation (DNAT) VNIs are used for proxy-based solutions, such as video proxies.</li>
+      <li class="BulletSubDash"><span style="font-weight: bold"><a name="285708">Mirror</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>Mirror VNIs are used with network monitoring-based solutions and act like a SPAN port.</li>
+      <li class="Bullet"><span style="font-weight: bold"><a name="285713">Management VNIs</a></span><span style="font-size: 9.0pt; font-weight: bold"> </span><span style="font-size: 9.0pt">- </span>Management VNIs are bridged to the Steelhead appliance primary or auxiliary port. Management VNIs are used as a management interface for in-band packages. Management VNIs are the primary communication path for out-of-band packages. </li>
+      <div class="Heading2"><a name="285715">Adding a VNI to the Data Flow</a></div>
+      <div class="Body"><a name="285719">After you install and configure RSP, you can add VNI to your configuration. </a></div>
+      <div class="HeadingProcedure"><a name="285720">To add a VNI to the data flow</a></div>
+      <div class="Step1_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step1_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">1.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step1_inner"><a name="285727">Choose Configure &gt; Branch Services &gt; RSP Data Flow to display the RSP Data Flow page.</a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="Step_outer" style="margin-left: 0pt">
+        <table border="0" cellspacing="0" cellpadding="0" summary="">
+          <tr style="vertical-align: baseline;">
+            <td>
+              <div class="Step_inner" style="width: 16.128pt; white-space: nowrap;">
+                <span class="Bold">2.	</span>
+              </div>
+            </td>
+            <td width="100%">
+              <div class="Step_inner"><a name="285735">Under Data Flow for the selected, complete the configuration as described in the following table. </a></div>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <table class="RegularTable" style="text-align: left; width: 468.87624000000005pt" cellspacing="0" summary="">
+        <caption></caption>
+        <tr>
+          <td style="background-color: #ADBDF2; border-right-color: none; border-right-style: none; border-right-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 144.76464pt">
+            <div class="CellHeading"><a name="287511">Control</a></div>
+          </td>
+          <td style="background-color: #ADBDF2; border-left-color: none; border-left-style: none; border-left-width: 0.0pt; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top; width: 324.1116pt">
+            <div class="CellHeading"><a name="287513">Description</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287515">Add a VNI</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287517">Displays the controls to add a VNI.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287519">Interface</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287521">Select an in-path interface from the drop-down list.</a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287523">Data Flow Position</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287525">Select one of the following from the drop-down list.</a></div>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="287528">Start </a></span>- Locates the VNI next to the LAN. A packet coming from the Steelhead appliance LAN interface goes to this VNI first.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="287532">End </a></span>- Locates the VNI next to the WAN. A packet coming from the Steelhead appliance WAN interface goes to this VNI first.</li>
+            <li class="CellBullet"><span style="font-weight: bold"><a name="287534">Order number </a></span>- Specifies the VNI order number. A lower number locates the VNI closer to the LAN. A higher number locates the VNI closer to the WAN.</li>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287536">Add </a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287538">Adds the VNI to the data flow. </a></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287540">Removed Selected VNIs</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287542">Select the check box next to the name and click </a><span style="font-weight: bold">Remove Selected VNIs</span>.</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287544">Move Selected VNIs</a></div>
+          </td>
+          <td style="border-bottom-color: #000000; border-bottom-style: solid; border-bottom-width: 1px; border-top-color: #000000; border-top-style: solid; border-top-width: 1px; padding-bottom: 3pt; padding-left: 3pt; padding-right: 3pt; padding-top: 3pt; vertical-align: top">
+            <div class="CellBody"><a name="287546">Moves the selected VNIs. Click the arrow next to the desired VNI position; the </a>VNI moves to the new position.</div>
+          </td>
+        </tr>
+      </table>
+      <div class="Body"><a name="285778">The next step is to add rules to configure the traffic flow, unless you use the default rules for the package. </a>For more details on the package data flow, refer to the package documentation.</div>
+      <div class="Important">
+        <span class="Bold">Important: </span><a name="285782">To route optimized traffic through a Steelhead appliance that is using QoS and RSP simultaneously, RiOS </a>must be positioned last in the RSP traffic data flow. At the bottom of the RSP Data Flow page, verify that RiOS appears as the last item in the data flow table, directly above the WAN interface. If it does not appear last, select the check box next to RiOS, click <span style="font-weight: bold">Move Selected VNIs</span>, and then click the arrow next to the position directly above WAN. RiOS moves to the last position.</div>
+      <script type="text/javascript" language="JavaScript1.2">
+        <!--
+          // Clear related topics
+          //
+          WWHClearRelatedTopics();
+
+          document.writeln(WWHRelatedTopicsInlineHTML());
+        // -->
+      </script>
+    </blockquote>
+    <hr align="left" />
+    <table align="right">
+      <tr>
+        <td class="WebWorks_Company_Logo_Bottom">
+          <a href="http://riverbed.com" target="external_window"><img src="riverbed_logo_without_tagline.jpg" border="0" /></a>
+        </td>
+      </tr>
+    </table>
+    <script type="text/javascript" language="JavaScript1.2">
+      <!--
+        document.write(WWHRelatedTopicsDivTag() + WWHPopupDivTag() + WWHALinksDivTag());
+      // -->
+    </script>
+  </body>
+</html>

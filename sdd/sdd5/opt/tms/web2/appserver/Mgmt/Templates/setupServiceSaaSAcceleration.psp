@@ -1,0 +1,313 @@
+<%
+## Copyright 2012, Riverbed Technology, Inc., All rights reserved.
+## Author: Yoganshi Shah
+##
+## setupServiceSaaSAcceleration.psp
+##
+%>
+
+<%@page indentType="braces" %>
+<%@page imports="time, Nodes, FormUtils, OSUtils, PagePresentation:Pagelet, ajaxentrytable, json" %>
+<%@page extends="Pagelet" %>
+
+<% self.hasHelp = True %>
+
+<psp:method name="nodeEntries">
+    return {
+        'saasAccelerationEnable': FormUtils.NodeEntry(
+            path='/rbt/akam/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Cloud Acceleration',
+            enableDiv='proxyMode'),
+        'proxyMode': FormUtils.NodeEntry(
+            path='/rbt/akam/acp/config/enable',
+            type='bool',
+            widget='checkboxLeft',
+            label='Enable Cloud Acceleration Redirection',
+            enableDiv='proxyModePort',
+            action='changeHiddenProxyMode(this)',
+            tooltip='Enable redirection of connections through the Cloud Accelerator.'),
+       'proxyPort': FormUtils.NodeEntry(
+            path='/rbt/akam/acp/config/srip_tunnel_port',
+            type='uint16',
+            widgetClass='small',
+            label='Redirection Tunnel Port',
+            tooltip='Destination port used to redirect connections through the Cloud Accelerator.')
+    }
+</psp:method>
+
+<psp:method name="dialogEntries">
+    return {
+        'companyRegistrationKey': FormUtils.NodeEntry(
+            name='companyRegistrationKey',
+            widgetClass='wide3pt5',
+            inputOptional=False,
+            label='Appliance Registration Key',
+            validate='nonempty')
+    }
+</psp:method>
+
+<psp:method name="css">
+    return '''
+div.indentLess {
+  padding-left: 23px;
+}
+#saasServiceStatus td.labelPaddedRight {
+  white-space: nowrap;
+}
+'''
+</psp:method>
+
+<%
+mgmt = self.session().value('mgmt')
+nodeEntries = self.nodeEntries()
+dialogEntries = self.dialogEntries()
+
+isRegistered = '' != Nodes.present(mgmt, '/rbt/akam/config/esh_url', '')
+
+saasOptimizationTable = ajaxentrytable.AjaxEntryTable('saasOptimization',
+    url=self.urlForCmcEdit('/mgmt/xmldata?p=saasOptimization'),
+    headerSpec=('SaaS Platform Control', 'Optimization'),
+    rowSpec="""
+[AjaxEntryTable.tdAttr('name'),
+ AjaxEntryTable.tdActiveSelect('enabled', '_sp_enable_', 'app_id', [['false', 'Disabled'], ['true', 'Enabled']], 'return saasService(this)')]""",
+    emptyMessage='No Saas Services')
+%>
+
+<% self.beginPagelet() %>
+<div class="csa_notRegistered">
+<form method="post" action="<%= self.thisPageletRequest() %>">
+  <fieldset>
+    <legend>Registration Control</legend>
+    <div class="midLevel">
+      <table><tr>
+        <td class="labelPaddedRight"><%= dialogEntries['companyRegistrationKey'].label %>:</td>
+        <%= dialogEntries['companyRegistrationKey'].html(self, format='horiz') %>
+        <td class="labelPaddedLeft"><input type="submit" name="registerEshAppliance" value="Register" /></td>
+      </tr></table>
+    <input type="hidden" name="_action_" value="setupServiceSaaSAcceleration" />
+    </div>
+  </fieldset>
+</form>
+</div>
+
+<div class="csa_registered">
+<form method="post"  action="<%= self.thisPageletRequest() %>" id="deregistrationForm">
+  <fieldset>
+    <legend>Registration Control</legend>
+    <div class="midLevel">
+      <table><tr>
+      <td><span class="hint">This appliance is currently registered with the Cloud Portal.</span></td>
+      <td class="labelPaddedLeft">
+        <input type="button" id="deregisterESHApplianceID" name="deregisterEshAppliance" value="De-register" />
+      </td>
+      </tr></table>
+      <input type="hidden" name="_action_" value="setupServiceSaaSAcceleration" />
+    </div>
+  </fieldset>
+</form>
+</div>
+
+<div class="csa_registered">
+<form method="post"
+      id="enableSaaSAccelerationForm"
+      action="<%= self.thisPageletRequest() %>">
+  <fieldset class="topLevel">
+    <legend>Cloud Accelerator Control</legend>
+    <div class="midLevel">
+      <%= nodeEntries['saasAccelerationEnable'].html(self) %>
+      <div id="proxyMode" class="indent">
+        <%= nodeEntries['proxyMode'].html(self) %>
+        <div id="proxyModePort" class="indentLess">
+          <%= nodeEntries['proxyPort'].html(self, format='block') %>
+        </div>
+      </div>
+      <%= FormUtils.formSubmitButtons(self) %>
+      <input type="hidden" name="hiddenProxyMode" />
+      <input type="hidden" name="_action_" value="setupServiceSaaSAcceleration" />
+    </div>
+  </fieldset>
+</form>
+</div>
+
+<form method="post"
+      id="refreshServiceForm"
+      action="<%= self.thisPageletRequest() %>">
+<fieldset class="topLevel">
+  <legend>Cloud Accelerator Status</legend>
+  <div id="saasServiceStatus" class="midLevel">
+    <table>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Portal:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_portal"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Status:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_connectionStatus"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Service Ready:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_serviceReady"></td>
+      </tr>
+      <tr>
+        <td class="nodeEntry labelPaddedRight">Redirection:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_redirection"></td>
+      </tr>
+      <tr id="cloudAccelStatus_lastUpdateMessage_row" class="hidden">
+        <td class="nodeEntry labelPaddedRight">Reason:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_lastUpdateMessage"></td>
+      </tr>
+      <tr id="cloudAccelStatus_lastContact_row" class="hidden">
+        <td class="nodeEntry labelPaddedRight">Last Contact:</td>
+        <td class="nodeEntry" id="cloudAccelStatus_lastContact"></td>
+      </tr>
+    </table>
+    <div class="submitButtons liveStatusAttachPoint" id="refreshServiceLiveStatusAttachPoint">
+      <%= FormUtils.renderButton(self, {
+          'name': 'refreshService',
+          'value': 'Refresh Service',
+          'onclick': 'refreshServiceOverlay();'}) %>
+    </div>
+    <input type="hidden" name="_action_" value="setupServiceSaaSAcceleration" />
+  </div>
+</fieldset>
+</form>
+
+<div class="csa_registered">
+<form method="post"
+      id="saasServiceOptimizationForm"
+      action="/mgmt/jsondata?p=saasPlatform">
+  <div class="topLevel">
+    <%= saasOptimizationTable.html(self) %>
+  </div>
+</form>
+</div>
+
+<% self.endPagelet() %>
+
+<script type="text/javascript">
+// <![CDATA[
+function saasService(el) {
+    el.name = el.name.substr(1);
+    submitPlatformAjax('/mgmt/jsondata?p=saasPlatform', el);
+    el.name = '_' + el.name;
+    return false;
+}
+
+function changeHiddenProxyMode(proxyMode)
+{
+     var hiddenProxyMode = Y.one(proxyMode).get("checked");
+     Y.one("[name=hiddenProxyMode]").set("value", hiddenProxyMode)
+}
+
+Y.on('domready', function () {
+    Y.on('click', confirmDeregister, '#deregisterESHApplianceID');
+
+    refreshServiceLiveStatus = new LiveStatus({
+        attachPoint: 'div#refreshServiceLiveStatusAttachPoint'
+    }).render();
+});
+
+function refreshServiceOverlay() {
+    setTimeout(function () { refreshServiceLiveStatus.show('Contacting Cloud Portal to retrieve latest service information.'); }, 0);
+}
+
+function confirmDeregister(evt) {
+    new RBT.Dialog({
+        affinity: RBT.Dialog.AFFINITY_CENTER,
+        alignNode: '#deregisterESHApplianceID',
+        content: 'De-registering this Steelhead will terminate the Cloud Accelerator Service.<br/> Are you sure you want to de-register?',
+        contentWidth: '40em',
+        buttons: [
+            { label: 'De-register', clickFn: function () {
+                    var formNode = Y.one('#deregistrationForm');
+                    formNode.appendChild(Y.Node.create('<input type="hidden" name="deregisterEshAppliance" />'));
+                    formNode.submit();
+                }
+            },
+            { label: 'Cancel', clickFn: RBT.Dialog.dismiss }
+        ]
+    }).render();
+
+    evt.halt();
+}
+
+function submitPlatformAjax(url, el) {
+    RBT.rpc({
+        url: url,
+        form: el.form,
+        method: 'GET',
+        errorFn: function (errorMsg) { alert(errorMsg); }
+    });
+}
+
+function toggleSections(isRegistered) {
+    if (isRegistered) {
+        Y.all('div.csa_notRegistered').hide();
+        Y.all('div.csa_registered').show();
+    } else {
+        Y.all('div.csa_notRegistered').show();
+        Y.all('div.csa_registered').hide();
+    }
+}
+toggleSections(<%= json.dumps(isRegistered) %>);
+
+if (window.location.search.indexOf('dynstatus=off') === -1) {
+    var updater = new AjaxUpdater('/mgmt/jsondata?p=saasCloudAcceleratorStatus');
+    updater.repeatTime = 10000; // 10 seconds
+
+    updater.update = function (xhr) {
+        var status, html, connectionStatus, lastUpdateMessage,
+            lastUpdateTime, lastContactTime;
+
+        try {
+            status = Y.JSON.parse(xhr.responseText).response;
+        } catch (e) {
+            return;
+        }
+
+        toggleSections(status.isRegistered);
+
+        if (status.isRegistered) {
+            connectionStatus = status.connected ? 'Connected' : 'Disconnected';
+        } else {
+            connectionStatus = 'Unregistered';
+        }
+        Y.one('#cloudAccelStatus_connectionStatus').setContent(connectionStatus);
+
+        html = Y.substitute('{portal}:{port} ({protocol})', {
+            portal: status.portal,
+            port: status.port,
+            protocol: status.useHttps ? 'HTTPS' : 'HTTP'
+        });
+        Y.one('#cloudAccelStatus_portal').setContent(html);
+
+        Y.one('#cloudAccelStatus_serviceReady').setContent(status.serviceReady ? 'Yes' : 'No');
+        Y.one('#cloudAccelStatus_redirection').setContent(status.redirectionState ? 'Active' : 'Inactive');
+
+        if (status.lastUpdateTime !== 0) {
+            lastUpdateTime = new Date(status.lastUpdateTime * 1000);
+            lastUpdateMessage = Y.substitute("{msg} ({updateTime})", {
+                msg: status.lastUpdateMessage,
+                updateTime: lastUpdateTime.toString()
+            });
+            Y.one('#cloudAccelStatus_lastUpdateMessage').setContent(lastUpdateMessage);
+            Y.one('#cloudAccelStatus_lastUpdateMessage_row').removeClass('hidden');
+        } else {
+            Y.one('#cloudAccelStatus_lastUpdateMessage_row').addClass('hidden');
+        }
+
+        if (status.isRegistered && status.lastSuccessfulContact !== 0) {
+            lastContactTime = new Date(status.lastSuccessfulContact * 1000);
+            Y.one('#cloudAccelStatus_lastContact').setContent(lastContactTime.toString());
+            Y.one('#cloudAccelStatus_lastContact_row').removeClass('hidden');
+        } else  {
+            Y.one('#cloudAccelStatus_lastContact_row').addClass('hidden');
+        }
+    };
+}
+
+// ]]>
+</script>
+
