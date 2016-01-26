@@ -1,0 +1,89 @@
+#!/bin/bash
+#
+#  VMware Server 2.0 or Workstation 8 modules 
+#  load (start) and unload (stop)
+# 
+
+KMODS=/lib/modules/`uname -r`/kernel
+
+MFG_TYPE=`/opt/tms/bin/hald_model -m`
+
+# The module order matters.
+VMWARE_MODULES="vmnet vmmon vmci vsock"
+VMWARE_MODULES_REV="vsock vmmon vmci vmnet"
+
+VMWARE_NODE_START=0
+VMWARE_NODE_END=59
+
+VMWARE_MAJOR=10
+VMNET_MAJOR=119
+
+VSOCK_MINOR=62
+VMCI_MINOR=63
+VMMON_MINOR=165
+VMWARE_SERVER_MODULES=/opt/tms/vmware/vmware_server_modules/`uname -r`
+WS_MODULES=/opt/vmware/vil_modules/`uname -r`
+
+# Functions to load and unload VMware's modules.
+
+start () {
+    for d in $VMWARE_MODULES; do
+        if [ "x$MFG_TYPE" = "xrvbd_ex" ]; then
+            insmod ${WS_MODULES}/$d.ko
+            if [ $? -ne 0 ]; then
+                /usr/bin/logger -p user.err -t "VSP" "Failed to load VMware module $MODULE"
+            fi
+        else
+            insmod ${VMWARE_SERVER_MODULES}/$d.o
+            if [ $? -ne 0 ]; then
+                /usr/bin/logger -p user.err -t "RSP" "Failed to load VMware module $MODULE"
+            fi
+        fi
+    done
+
+    if [ ! -e /dev/vsock ]; then
+        mknod /dev/vsock c $VMWARE_MAJOR $VSOCK_MINOR
+    fi
+
+    if [ ! -e /dev/vmci ]; then
+        mknod /dev/vmci c $VMWARE_MAJOR $VMCI_MINOR
+    fi
+
+    if [ ! -e /dev/vmmon ]; then
+        mknod /dev/vmmon c $VMWARE_MAJOR $VMMON_MINOR
+    fi
+
+    for i in `seq $VMWARE_NODE_START $VMWARE_NODE_END`; do
+        if [ ! -e /dev/vmnet$i ]; then
+            mknod /dev/vmnet$i c $VMNET_MAJOR $i
+        fi
+    done
+}
+
+stop () {
+    for i in `seq $VMWARE_NODE_START $VMWARE_NODE_END`; do
+        if [ -e /dev/vmnet$i ]; then
+            rm -f /dev/vmnet$i
+        fi
+    done
+
+    for d in $VMWARE_MODULES_REV; do
+        rmmod $d
+    done
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart}"
+        exit 1
+esac

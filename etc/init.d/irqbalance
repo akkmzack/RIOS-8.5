@@ -1,0 +1,139 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides: irqbalance 
+# Default-Start:  3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: start and stop irqbalance daemon 
+# Description:  The irqbalance daemon will distribute interrupts across
+#		the cpus on a multiprocessor system with the purpose of
+#		spreading the load
+### END INIT INFO
+# chkconfig: 2345 13 87
+
+
+# This is an interactive program, we need the current locale
+
+# Source function library.
+. /etc/init.d/functions
+
+# Check that we're a priviledged user
+[ `id -u` = 0 ] || exit 0
+
+
+prog="irqbalance"
+
+[ -f /usr/sbin/irqbalance ] || exit 0
+
+# fetch configuration if it exists
+# ONESHOT=yes says to wait for a minute, then look at the interrupt
+# load and balance it once; after balancing exit and do not change
+# it again.
+# The default is to keep rebalancing once every 10 seconds.
+ONESHOT=
+[ -f /etc/sysconfig/irqbalance ] && . /etc/sysconfig/irqbalance
+case "$ONESHOT" in
+	y*|Y*|on) ONESHOT=--oneshot ;;
+	*) ONESHOT= ;;
+esac
+
+RETVAL=0
+
+# Don't let irqbalance manage the "aha" cards on the 7055; it's pretty much 
+# leaving all aha interrupts in one place (cpu 8) with the result of high
+# interrupt load on that one core, triggering customer alarms
+# detect the 7055 as the only 16 processor system with a card of this type.
+# (The 7050 has the same card, and no problems reported, so leave it alone.)
+check_aha() {
+	AHAS=`grep aha36x /proc/interrupts | cut -d: -f1 | tr "\n" " "`
+	NAHAS=`echo $AHAS | wc -w`
+	if [ $NAHAS -gt 0 ]
+	then
+	    SPECIAL_AHA_HANDLING=1
+	else
+	    SPECIAL_AHA_HANDLING=0
+	fi    
+}
+
+# kill the script that manages "aha" card interrupts on the 7055
+# even "pidof -x" can't find the script, so do it ourselves
+kill_aha_script() {
+    	SCRIPT_PID=`ps axlwww | grep aha_irqbalance.sh | grep -v grep | cut -c 8-13 | tr "\n" " "`
+	if [ "${SCRIPT_PID}x" != "x" ]
+	then
+	    kill ${SCRIPT_PID}
+	fi
+}
+
+start() {
+        if [ -n "$ONESHOT" -a -f /var/run/irqbalance.pid ]; then
+                exit 0
+        fi
+        echo -n $"Starting $prog: "
+	if [ -n "$IRQ_AFFINITY_MASK" ];
+	then
+		export IRQBALANCE_BANNED_CPUS=$IRQ_AFFINITY_MASK
+	fi 	
+
+	if [ $SPECIAL_AHA_HANDLING -eq 1 -a -z "$ONESHOT" ]
+	then
+	        export IRQBALANCE_BANNED_INTERRUPTS=${AHAS}
+	fi
+
+        daemon irqbalance $ONESHOT 
+        RETVAL=$?
+
+	if [ $SPECIAL_AHA_HANDLING -eq 1 -a -z "$ONESHOT" ]
+	then 
+		#nohup sh /etc/aha_irqbalance.sh $AHAS &
+		nohup sh /etc/aha_irqbalance.sh $AHAS >/dev/null 2>&1 &
+		# sh ./aha_irqbalance.sh $AHAS &
+	fi
+
+        echo
+        return $RETVAL
+}
+
+stop() {
+        echo -n $"Stopping $prog: "
+        killproc irqbalance
+        RETVAL=$?
+        echo
+        [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/irqbalance
+	if [ $SPECIAL_AHA_HANDLING -eq 1 ]
+	then
+	        kill_aha_script
+	fi
+	return $RETVAL
+}
+
+restart() {
+	stop
+	start
+}
+
+check_aha
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	status irqbalance
+	;;
+  restart|reload|force-reload)
+	restart
+	;;
+  condrestart)
+	[ -f /var/lock/subsys/irqbalance ] && restart || :
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|restart|reload|condrestart|force-reload}"
+	exit 1
+	;;
+esac
+
+exit $?

@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+# softwatch        Starts softwatch.sh
+#
+#
+# chkconfig: 2345 60 40
+# description: Watches to see if the system is responsive.
+### BEGIN INIT INFO
+# Provides: $softwatch
+### END INIT INFO
+
+# Source function library.
+. /etc/init.d/functions
+
+SOFTWATCH=/opt/tms/bin/csoftwatch
+
+[ -f "$SOFTWATCH" ] || exit 0
+
+RETVAL=0
+
+umask 077
+
+start() {
+ 	echo -n $"Starting softwatch: "
+	"$SOFTWATCH" &
+	RETVAL=$?
+	echo
+	return $RETVAL
+}	
+stop() {
+	echo -n $"Shutting down softwatch: "
+	killproc "$SOFTWATCH"
+	echo
+	RETVAL=$?
+	return $RETVAL
+}
+rhstatus() {
+	status "$SOFTWATCH"
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  status)
+  	rhstatus
+	;;
+  restart|reload)
+  	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|restart}"
+	exit 1
+esac
+
+exit $?
+

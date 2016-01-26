@@ -1,0 +1,20 @@
+serial --unit=0 --speed=9600 --word=8 --parity=no --stop=1
+terminal --timeout=10 --dumb serial console
+default=0
+timeout=5
+fallback=1 2
+
+title Boot to GRUB on Hard Disk
+      root @FLASH_BOOT_0@
+      map (@BOOT_DISK_GRUB_NAME@) (@BOOT_FLASH_GRUB_NAME@) 
+      chainloader @GRUB_BOOTMGR@/boot/grub/stage1
+
+title Restore 1: @IMAGE_NAME_3@
+      root @FLASH_BOOT_1@
+      kernel /linux rw root=/dev/ram1 ramdisk_size=32768 console=tty0 console=ttyS0,9600n8
+      initrd /rootflop.img
+
+title Restore 2: @IMAGE_NAME_4@
+      root @FLASH_BOOT_2@
+      kernel /linux rw root=/dev/ram2 ramdisk_size=32768 console=tty0 console=ttyS0,9600n8
+      initrd /rootflop.img

@@ -1,0 +1,108 @@
+#!/bin/bash
+#
+# rsisinit            Determine if this is a Cloud SH and do setup if so
+
+# chkconfig: 2345 17 75
+# description: Do cloud-specific setup including remote storage initialization
+
+
+# Source function library.
+. /etc/init.d/functions
+
+# Variable definitions that are applicable to all or most clouds, or that
+# are needed in this file
+
+HWTOOL="/opt/tms/bin/hwtool"
+MDDBREQ="/opt/tms/bin/mddbreq"
+CLOUD_OUTPUT_DIR="/var/etc/opt/tms/cloud"
+METADATA_FILE="$CLOUD_OUTPUT_DIR/instance-metadata"
+BOOTTIME_FILE="$CLOUD_OUTPUT_DIR/boottime"
+
+prog="rsisinit"
+
+# Utility functions for logging, that are used by the cloud-specific
+# scripts
+
+log_error()
+{
+    /usr/bin/logger -p user.err "RSIS phase 2" $1
+}
+
+log_info()
+{
+    /usr/bin/logger -p user.info "RSIS phase 2" $1
+}
+
+# Default implementations of start(), stop(), and metadata() that do nothing.
+# They will be used if we don't find a more specific cloud implementation to
+# use; e.g. if we're on a physical SH.
+
+start() {
+	echo -n $"Executing $prog: "
+	return 0
+}
+
+stop() {
+	echo -n $"Stopping $prog: "
+	return 0
+}
+
+metadata() {
+        echo -n $"Generating metadata using $prog: "
+        return 0
+}
+
+# Decide whether we are running in a cloud; if so, source the appropriate
+# file to pick up the right functionality, which will override the default
+# definitions above.
+check_inside_aws()
+{
+    if [ -f /config/mfg/mfdb ]; then
+        DEV_NODE=`$MDDBREQ -v /config/mfg/mfdb query get - /rbt/mfd/rsis_dev_name`
+        if [ $? -eq 0 ] && [ -n "$DEV_NODE" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+check_inside_esx()
+{
+    mb=`$HWTOOL -q motherboard`
+    if [ "$mb" == "VM" ]; then
+        return 0
+    fi
+    return 1
+}
+
+if check_inside_aws; then
+    . /etc/rsisinit_aws
+elif check_inside_esx; then
+    . /etc/rsisinit_esx
+fi
+
+restart() {
+  	stop
+	start
+}
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart)
+	stop
+	start
+	;;
+  metadata)
+        metadata
+        ;;
+  *)
+	echo $"Usage: $0 {start|stop|restart|metadata}"
+	exit 1
+esac
+
+exit $?

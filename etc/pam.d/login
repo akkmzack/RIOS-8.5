@@ -1,0 +1,14 @@
+#%PAM-1.0
+auth       [user_unknown=ignore success=ok ignore=ignore default=bad]	pam_securetty.so
+auth       include	con-auth
+auth       required	pam_nologin.so
+account    include	con-auth
+password   include	con-auth
+# pam_selinux.so close should be the first session rule
+session    required	pam_selinux.so close
+session    include	con-auth
+session    required     pam_loginuid.so
+session    optional	pam_console.so
+# pam_selinux.so open should be the last session rule
+session    required	pam_selinux.so open
+

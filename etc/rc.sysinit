@@ -1,0 +1,1296 @@
+#!/bin/bash
+#
+# /etc/rc.d/rc.sysinit - run once at boot time
+#
+# Taken in part from Miquel van Smoorenburg's bcheckrc.
+#
+
+HOSTNAME=$(/bin/hostname)
+
+set -m
+
+# python site initialization tries to resolve ~ which
+# needs either /etc/passwd or $HOME.  since we don't
+# have /etc/passwd until we've brought up raid, mgmtd, etc.
+# just set $HOME.
+export HOME=${HOME:-"/"}
+
+# if [ -f /etc/sysconfig/network ]; then
+#     . /etc/sysconfig/network
+# fi
+if [ -z "$HOSTNAME" -o "$HOSTNAME" = "(none)" ]; then
+    HOSTNAME=localhost
+fi
+
+if [ ! -e /proc/mounts ]; then
+	mount -n -t proc /proc /proc
+	mount -n -t sysfs /sys /sys >/dev/null 2>&1
+fi
+if [ ! -d /proc/bus/usb ]; then
+	modprobe usbcore >/dev/null 2>&1 && mount -n -t usbfs /proc/bus/usb /proc/bus/usb
+else
+	mount -n -t usbfs /proc/bus/usb /proc/bus/usb
+fi
+
+. /etc/init.d/functions
+
+PLYMOUTH=
+[ -x /usr/bin/plymouth ] && PLYMOUTH=yes
+
+# Check SELinux status
+SELINUX_STATE=
+if [ -e "/selinux/enforce" ] && [ "$(cat /proc/self/attr/current)" != "kernel" ]; then
+	if [ -r "/selinux/enforce" ] ; then
+		SELINUX_STATE=$(cat "/selinux/enforce")
+	else
+		# assume enforcing if you can't read it
+		SELINUX_STATE=1
+	fi
+fi
+
+if [ -n "$SELINUX_STATE" -a -x /sbin/restorecon ] && __fgrep " /dev " /proc/mounts >/dev/null 2>&1 ; then
+	/sbin/restorecon  -R /dev 2>/dev/null
+fi
+
+disable_selinux() {
+	echo $"*** Warning -- SELinux is active"
+	echo $"*** Disabling security enforcement for system recovery."
+	echo $"*** Run 'setenforce 1' to reenable."
+	echo "0" > "/selinux/enforce"
+}
+
+relabel_selinux() {
+    # if /sbin/init is not labeled correctly this process is running in the
+    # wrong context, so a reboot will be required after relabel
+    AUTORELABEL=
+    . /etc/selinux/config
+    echo "0" > /selinux/enforce
+     [ -n "$PLYMOUTH" ] && plymouth --hide-splash
+
+    if [ "$AUTORELABEL" = "0" ]; then
+	echo
+	echo $"*** Warning -- SELinux ${SELINUXTYPE} policy relabel is required. "
+	echo $"*** /etc/selinux/config indicates you want to manually fix labeling"
+	echo $"*** problems. Dropping you to a shell; the system will reboot"
+	echo $"*** when you leave the shell."
+	sulogin
+
+    else
+	echo
+	echo $"*** Warning -- SELinux ${SELINUXTYPE} policy relabel is required."
+	echo $"*** Relabeling could take a very long time, depending on file"
+	echo $"*** system size and speed of hard drives."
+
+	/sbin/fixfiles -F restore > /dev/null 2>&1
+    fi
+    rm -f  /.autorelabel
+    echo $"Unmounting file systems"
+    umount -a
+    mount -n -o remount,ro /
+    echo $"Automatic reboot in progress."
+    reboot -f
+}
+
+key_is_random() {
+    [ "$1" = "/dev/urandom" -o "$1" = "/dev/hw_random" \
+	-o "$1" = "/dev/random" ]
+}
+
+find_crypto_mount_point() {
+    local fs_spec fs_file fs_vfstype remaining_fields
+    local fs
+    while read fs_spec fs_file remaining_fields; do
+	if [ "$fs_spec" = "/dev/mapper/$1" ]; then
+	    echo $fs_file
+	    break;
+	fi
+    done < /etc/fstab
+}
+
+# Because of a chicken/egg problem, init_crypto must be run twice.  /var may be
+# encrypted but /var/lib/random-seed is needed to initialize swap.
+init_crypto() {
+    local have_random dst src key opt mode owner params makeswap skip arg opt
+    local param value rc ret mke2fs mdir prompt mount_point
+
+    ret=0
+    have_random=$1
+    while read dst src key opt; do
+	[ -z "$dst" -o "${dst#\#}" != "$dst" ] && continue
+        [ -b "/dev/mapper/$dst" ] && continue;
+	if [ "$have_random" = 0 ] && key_is_random "$key"; then
+	    continue
+	fi
+	if [ -n "$key" -a "x$key" != "xnone" ]; then
+	    if test -e "$key" ; then
+		owner=$(ls -l $key | (read a b owner rest; echo $owner))
+		if ! key_is_random "$key"; then
+		    mode=$(ls -l "$key" | cut -c 5-10)
+		    if [ "$mode" != "------" ]; then
+		       echo $"INSECURE MODE FOR $key"
+		    fi
+		fi
+		if [ "$owner" != root ]; then
+		    echo $"INSECURE OWNER FOR $key"
+		fi
+	    else
+		echo $"Key file for $dst not found, skipping"
+		ret=1
+		continue
+	    fi
+	else
+	    key=""
+	fi
+	params=""
+	makeswap=""
+	mke2fs=""
+	skip=""
+	# Parse the src field for UUID= and convert to real device names
+	if [ "${src%%=*}" == "UUID" ]; then
+		src=$(/sbin/blkid -t "$src" -l -o device)
+	elif [ "${src/^\/dev\/disk\/by-uuid\/}" != "$src" ]; then
+		src=$(__readlink $src)
+	fi
+	# Is it a block device?
+	[ -b "$src" ] || continue
+	# Is it already a device mapper slave? (this is gross)
+	devesc=${src##/dev/}
+	devesc=${devesc//\//!}
+	for d in /sys/block/dm-*/slaves ; do
+	    [ -e $d/$devesc ] && continue 2
+	done
+	# Parse the options field, convert to cryptsetup parameters and
+	# contruct the command line
+	while [ -n "$opt" ]; do
+	    arg=${opt%%,*}
+	    opt=${opt##$arg}
+	    opt=${opt##,}
+	    param=${arg%%=*}
+	    value=${arg##$param=}
+
+	    case "$param" in
+	    cipher)
+		params="$params -c $value"
+		if [ -z "$value" ]; then
+		    echo $"$dst: no value for cipher option, skipping"
+		    skip="yes"
+		fi
+	    ;;
+	    size)
+		params="$params -s $value"
+		if [ -z "$value" ]; then
+		    echo $"$dst: no value for size option, skipping"
+		    skip="yes"
+		fi
+	    ;;
+	    hash)
+		params="$params -h $value"
+		if [ -z "$value" ]; then
+		    echo $"$dst: no value for hash option, skipping"
+		    skip="yes"
+		fi
+	    ;;
+	    verify)
+	        params="$params -y"
+	    ;;
+	    swap)
+		makeswap=yes
+		;;
+	    tmp)
+		mke2fs=yes
+	    esac
+	done
+	if [ "$skip" = "yes" ]; then
+	    ret=1
+	    continue
+	fi
+	if [ -z "$makeswap" ] && cryptsetup isLuks "$src" 2>/dev/null ; then
+	    if key_is_random "$key"; then
+		echo $"$dst: LUKS requires non-random key, skipping"
+		ret=1
+		continue
+	    fi
+	    if [ -n "$params" ]; then
+		echo "$dst: options are invalid for LUKS partitions," \
+		    "ignoring them"
+	    fi
+	    if [ -n "$key" ]; then
+		/sbin/cryptsetup -d $key luksOpen "$src" "$dst" <&1 2>/dev/null && success || failure
+		rc=$?
+	    else
+		mount_point="$(find_crypto_mount_point $dst)"
+		[ -n "$mount_point" ] || mount_point=${src##*/}
+		prompt=$(printf $"%s is password protected" "$mount_point")
+		plymouth ask-for-password --prompt "$prompt" --command="/sbin/cryptsetup luksOpen -T1 $src $dst" <&1
+		rc=$?
+	    fi
+	else
+	    [ -z "$key" ] && plymouth --hide-splash
+	    /sbin/cryptsetup $params ${key:+-d $key} create "$dst" "$src" <&1 2>/dev/null && success || failure
+	    rc=$?
+	    [ -z "$key" ] && plymouth --show-splash
+	fi
+	if [ $rc -ne 0 ]; then
+	    ret=1
+	    continue
+	fi
+	if [ -b "/dev/mapper/$dst" ]; then
+	    if [ "$makeswap" = "yes" ]; then
+		mkswap "/dev/mapper/$dst" 2>/dev/null >/dev/null
+	    fi
+	    if [ "$mke2fs" = "yes" ]; then
+		if mke2fs "/dev/mapper/$dst" 2>/dev/null >/dev/null \
+		    && mdir=$(mktemp -d /tmp/mountXXXXXX); then
+		    mount "/dev/mapper/$dst" "$mdir" && chmod 1777 "$mdir"
+		    umount "$mdir"
+		    rmdir "$mdir"
+		fi
+	    fi
+	fi
+    done < /etc/crypttab
+    return $ret
+}
+
+# Print a text banner.
+# echo -en $"\t\tWelcome to "
+# read -r redhat_release < /etc/redhat-release
+# if [[ "$redhat_release" =~ "Red Hat" ]]; then
+#  [ "$BOOTUP" = "color" ] && echo -en "\\033[0;31m"
+#  echo -en "Red Hat"
+#  [ "$BOOTUP" = "color" ] && echo -en "\\033[0;39m"
+#  PRODUCT=$(sed "s/Red Hat \(.*\) release.*/\1/" /etc/redhat-release)
+#  echo " $PRODUCT"
+# elif [[ "$redhat_release" =~ "Fedora" ]]; then
+#  [ "$BOOTUP" = "color" ] && echo -en "\\033[0;34m"
+#  echo -en "Fedora"
+#  [ "$BOOTUP" = "color" ] && echo -en "\\033[0;39m"
+#  PRODUCT=$(sed "s/Fedora \(.*\) \?release.*/\1/" /etc/redhat-release)
+#  echo " $PRODUCT"
+# else
+#  PRODUCT=$(sed "s/ release.*//g" /etc/redhat-release)
+#  echo "$PRODUCT"
+# fi
+PROMPT=no
+if [ "$PROMPT" != "no" ]; then
+ echo -en $"\t\tPress 'I' to enter interactive startup."
+ echo
+fi
+
+# Fix console loglevel
+if [ -n "$LOGLEVEL" ]; then
+	/bin/dmesg -n $LOGLEVEL
+fi
+
+# mount /tmp, it turns out having /tmp in root was causing intermittent failures
+# when remount root as ro, see bug 112014.
+mount /tmp
+
+# Load root rw to ensure that /tmp is rw which is needed to create
+# fru files 
+mount -o remount,rw /
+
+# Need to modprobe these modules to figure out
+# the new redfin motherboard
+modprobe i2c-core
+modprobe i2c-dev
+modprobe i2c-piix4
+modprobe i2c-i801
+
+# For swordfish only:
+# Need to perform RAID consistency and FSCK before CONFIG, VAR or DATA
+#   are mounted, since they are on the head unit's RAID array
+# When I get a chance, this will be moved to a graft point
+echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" > /dev/console
+echo "file system integrity check: calling" > /dev/console
+
+SWORDFISH_MOBO="425-00220-01"
+if [ -x /usr/bin/python ]
+then
+    echo /usr/bin/python found > /dev/console
+    if [ -x /opt/hal/bin/hwtool.py ]
+    then
+         echo /opt/hal/bin/hwtool.py found > /dev/console
+         MOBO=`/opt/hal/bin/hwtool.py -q motherboard`
+         if [ "x$MOBO" == "x$SWORDFISH_MOBO" ]
+         then
+             echo "SWORDFISH motherboard found" > /dev/console
+             if [ -x /opt/hal/bin/gemcli.py ]
+             then
+                 echo "####################################################" > /dev/console
+                 echo "/opt/hal/bin/gemcli.py found" > /dev/console
+                 # /bootmgr is needed for shutdown status file and log file
+                 # If /bootmgr doesn't need a fix, the fsck will be only a few seconds
+                 /sbin/fsck -p /bootmgr
+                 echo "mounting /bootmgr"
+                 mount /bootmgr
+                 echo "calling hwraid_check_integrity"
+                 (/usr/bin/python /opt/hal/bin/gemcli.py hwraid_check_integrity)
+                 echo "hwraid_check_integrity done"
+             fi
+         fi
+    fi
+fi
+
+echo "file system integrity check: done" > /dev/console
+echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" > /dev/console
+
+# Initialize Remote Storage
+[ -x /etc/rc.rsisinit ] && /etc/rc.rsisinit
+
+#
+# we need to find out who last mounted config if
+# config is shadow mounted (see bug 67643).  In
+# order to do that, we take the time of the last
+# mount and store it away until later, if it is
+# the same as our last mount, we know we did it.
+#       
+cdev=`/sbin/blkid -c /dev/null -t LABEL=CONFIG | sed 's/:.*$//1'`
+cbdev=`echo "$cdev" | sed -e 's,^/dev/,,1' -e 's/[0-9]*$//1'`
+cmnt=""  
+[ -n "${cbdev}" -a -d /sys/block/${cbdev}/shadow ] && \
+        cmnt="`/sbin/tune2fs -l ${cdev} | grep 'Mount count:' | awk '{print $3}'`"
+
+
+# Mount the config partition early
+echo "mounting /config partition early"
+mount LABEL=CONFIG /config -o noatime
+while [ $? -ne 0 ]; do
+    sleep 1
+    mount LABEL=CONFIG /config -o noatime
+done
+
+# Only read this once.
+cmdline=$(cat /proc/cmdline)
+
+# Initialize hardware
+if [ -f /proc/sys/kernel/modprobe ]; then
+   if ! strstr "$cmdline" nomodules && [ -f /proc/modules ] ; then
+       sysctl -w kernel.modprobe="/sbin/modprobe" >/dev/null 2>&1
+   else
+       # We used to set this to NULL, but that causes 'failed to exec' messages"
+       sysctl -w kernel.modprobe="/bin/true" >/dev/null 2>&1
+   fi
+fi
+
+touch /dev/.in_sysinit >/dev/null 2>&1
+
+# Set default affinity
+if [ -x /bin/taskset ]; then
+   if strstr "$cmdline" default_affinity= ; then
+     for arg in $cmdline ; do
+         if [ "${arg##default_affinity=}" != "${arg}" ]; then
+             /bin/taskset -p ${arg##default_affinity=} 1
+         fi
+     done
+   fi
+fi
+
+nashpid=$(pidof nash 2>/dev/null)
+[ -n "$nashpid" ] && kill $nashpid >/dev/null 2>&1
+unset nashpid
+
+# -----------------------------------------------------------------------------
+# This is used to save the motherboard type. It may be used in customer.sh 
+# Do not remove this caching mechanism. 
+# This is also used by 'start_udev' below. There is a subtle race condition
+# when hwtool is non-cached. The disk related queries, as initiated by
+# udev rules (name_disk.sh), is expensive. The setting of MOBO value here
+# allows the cpickle cache to be created beforehand, and thus  
+# allow correct /dev/sdXXX -> /dev/diskXXX links (refer to bug #97056).
+#
+HWTOOL=/opt/hal/bin/hwtool.py
+MOBO=
+CONFIG_FILE="/opt/tms/lib/hwtool/config/config.xml"
+if [ -e ${HWTOOL} ]; then
+	if [ -e $CONFIG_FILE ]; then
+		MOBO=`${HWTOOL} -c ${CONFIG_FILE} -q motherboard`
+	else
+		MOBO=`${HWTOOL} -q motherboard`
+	fi
+fi
+
+# We need to create a temporary copy of /etc/passwd and /etc/group
+# between linux initialization and mounting of /var. This allows
+# udev rules run correctly, thus supressing user/group existence errors
+# 1. Ensure /var hasn't been mounted yet 
+# 2. Create the directory path, if one doesn't exist
+# 3. Populate the file (which will eventually be overridden during /var mount)
+
+/bin/grep -q "/var " /proc/mounts
+if [ $? -ne 0 ]; then  # var NOT is mounted
+
+	PASSWD_DIR=/var/etc/opt/tms/output
+	PASSWD_FILE=$PASSWD_DIR/passwd
+	GROUP_FILE=$PASSWD_DIR/group
+
+	if [ ! -e $PASSWD_DIR ]; then
+		mkdir -p $PASSWD_DIR 
+	fi
+
+	# Temp /etc/passwd file contents 
+	# (same as one mounted later on /var)
+	/bin/cat > $PASSWD_FILE <<EOF
+admin:x:0:0:Admin User:/var/home/root:/opt/tms/bin/cli
+administrator:x:0:0:Administrator User:/var/empty/administrator:/sbin/nologin
+apache:x:48:48:Apache User:/opt/tms/lib/web:/sbin/nologin
+localvixuser:x:98:99:VIX:/:/sbin/nologin
+named:x:25:25:Named:/var/named:/sbin/nologin
+nobody:x:99:99:Nobody User:/:/sbin/nologin
+ntp:x:38:38:Ntp User:/etc/ntp:/sbin/nologin
+pcap:x:77:77:Pcap user for tcpdump:/var/arpwatch:/sbin/nologin
+rcud:x:0:0:RCUd User:/var/empty/rcud:/sbin/nologin
+root:x:0:0:Root User:/var/home/root:/bin/bash
+shark:x:1002:1003:User shark:/var/home/shark:/opt/tms/bin/cli
+sshd:x:74:74:Sshd User for privilege separation:/var/empty/sshd:/sbin/nologin
+statsd:x:2001:1000:Statsd User:/var/opt/tms/stats:/sbin/nologin
+vserveruser:x:0:0:Virtual Server User:/var/empty/vserveruser:/sbin/nologin
+vcsa:x:69:69:virtual console memory owner:/dev:/sbin/nologin
+EOF
+
+	# Temp /etc/group for udev rules 
+	/bin/cat > $GROUP_FILE <<EOF
+root:x:0:
+admin:x:0:
+bin:x:1:
+daemon:x:2:
+sys:x:3:
+adm:x:4:
+tty:x:5:
+disk:x:6:
+lp:x:7:
+mem:x:8:
+kmem:x:9:
+wheel:x:10:
+mail:x:12:
+news:x:13:
+uucp:x:14:
+man:x:15:
+floppy:x:19:
+games:x:20:
+slocate:x:21:
+utmp:x:22:
+named:x:25:
+nscd:x:28:
+rpcuser:x:29:
+rpc:x:32:
+rpm:x:37:
+ntp:x:38:
+canna:x:39:
+dip:x:40:
+mailman:x:41:
+gdm:x:42:
+xfs:x:43:
+mailnull:x:47:
+apache:x:48:
+ftp:x:50:
+smmsp:x:51:
+lock:x:54:
+ldap:x:55:
+fuse:x:60:
+vcsa:x:69:
+sshd:x:74:
+pcap:x:77:
+desktop:x:80:
+video:x:81
+audio:x:82
+cdrom:x:83
+tape:x:84
+nobody:x:99:
+users:x:100:
+vserveruser:x:101:
+radmin:x:1000:
+monitor:x:1001:
+unpriv:x:1002:
+rbm:x:1003:
+local_pfs_users:x:2000:
+rsp_users:x:2001:admin,monitor
+nfsnobody:x:65534:
+dialout:x:18:
+EOF
+fi
+
+# As the /etc/passwd|group file hack above, 
+# /sbin/start_udev looks for /etc/sysconfig/network
+# file which hasn't been mounted at this point. 
+[ ! -e /etc/sysconfig ] && mkdir -p /etc/sysconfig
+touch /etc/sysconfig/network
+
+#XXX/munirb: Bug 48980
+# udev uses hwtool and that needs ldconfig, but now we have symlinks 
+# in the image itself so python will work
+# Once udev is up, we need to run ldconfig for other bins like hald_model
+# to work
+# Running ldconfig before udev will cause mount failures on xx20 models
+/sbin/start_udev
+
+# Ensure udev is aware of shadow driver
+if [ -b /dev/sha ]; then      
+        /sbin/udevadm control --env=RVBD_SHADOW=yes
+else                                               
+        /sbin/udevadm control --env=RVBD_SHADOW=no
+fi                             
+/sbin/udevadm trigger
+
+if [ -f /etc/.firstboot ]; then
+    # to work around the fact that python is not set up out ot the box
+    # we run ldconfig early in boot to allow python support during udev.
+    # we use python to drive persistant disk naming through udev scripts.
+    /sbin/ldconfig /lib /usr/lib /usr/kerberos/lib /opt/tms/lib /opt/tms/lib64
+fi
+
+/sbin/securetty ttyS0
+
+# Revert the mount mode of / to ro 
+mount -o ro,remount /
+
+# Load other user-defined modules
+for file in /etc/sysconfig/modules/*.modules ; do
+  [ -x $file ] && $file
+done
+
+# Load modules (for backward compatibility with VARs)
+if [ -f /etc/rc.modules ]; then
+	/etc/rc.modules
+fi
+
+mount -n /dev/pts >/dev/null 2>&1
+[ -n "$SELINUX_STATE" ] && restorecon /dev/pts >/dev/null 2>&1
+
+# Configure kernel parameters
+update_boot_stage RCkernelparam
+sysctl -e -p /etc/sysctl.conf >/dev/null 2>&1
+
+# Set the hostname.
+update_boot_stage RChostname
+action $"Setting hostname ${HOSTNAME}: " hostname ${HOSTNAME}
+
+if [ -f /fastboot ] || strstr "$cmdline" fastboot ; then
+	fastboot=yes
+fi
+
+# Sync waiting for storage.
+{ rmmod scsi_wait_scan ; modprobe scsi_wait_scan ; rmmod scsi_wait_scan ; } >/dev/null 2>&1
+
+# Device mapper & related initialization
+if ! __fgrep "device-mapper" /proc/devices >/dev/null 2>&1 ; then
+       modprobe dm-mod >/dev/null 2>&1
+fi
+
+if [ -f /etc/crypttab ]; then
+    init_crypto 0
+fi
+
+if ! strstr "$cmdline" nompath && [ -f /etc/multipath.conf -a \
+		-x /sbin/multipath ]; then
+	modprobe dm-multipath > /dev/null 2>&1
+	/sbin/multipath -v 0
+	if [ -x /sbin/kpartx ]; then
+		/sbin/dmsetup ls --target multipath --exec "/sbin/kpartx -a -p p" >/dev/null
+	fi
+fi
+
+if ! strstr "$cmdline" nodmraid && [ -x /sbin/dmraid ]; then
+	modprobe dm-mirror >/dev/null 2>&1
+	dmraidsets=$(LC_ALL=C /sbin/dmraid -s -c -i)
+	if [ "$?" = "0" ]; then
+		for dmname in $dmraidsets; do
+			if [[ "$dmname" =~ '^isw_.*' ]] && \
+			   ! strstr "$cmdline" noiswmd; then
+				continue
+			fi
+			/sbin/dmraid -ay -i --rm_partitions -p "$dmname" >/dev/null 2>&1
+			/sbin/kpartx -a -p p "/dev/mapper/$dmname"
+		done
+	fi
+fi
+
+# Start any MD RAID arrays that haven't been started yet
+[ -r /proc/mdstat -a -r /dev/md/md-device-map ] && /sbin/mdadm -IRs
+
+if [ -x /sbin/lvm ]; then
+	action $"Setting up Logical Volume Management:" /sbin/lvm vgchange -a y --sysinit
+fi
+
+# do the hal link setup early so it can be used to start the required RAID arrays.
+#
+HAL="/opt/hal/bin/hal"
+if [ ! -L ${HAL} ]; then 
+    touch / 2>/dev/null
+    READ_ONLY_ROOT=$?
+
+    [ $READ_ONLY_ROOT -ne 0 ] && mount -o rw,remount /
+
+    HAL_PATH=`/opt/hal/bin/hwtool.py -q hal-path`
+    if [ $? != 0 ]; then
+	echo "Unable to determine HAL, defaulting to base."
+	rm -f ${HAL}
+	ln -s /opt/hal/bin/amax/hal ${HAL}
+    else
+	rm -f ${HAL}
+	ln -s ${HAL_PATH} ${HAL}
+    fi
+
+    [ $READ_ONLY_ROOT -ne 0 ] && mount -o ro,remount /
+fi
+
+if [ -f /etc/crypttab ]; then
+    init_crypto 0
+fi
+
+if [ -f /fsckoptions ]; then
+	fsckoptions=$(cat /fsckoptions)
+fi
+
+if [ -f /forcefsck ] || strstr "$cmdline" forcefsck ; then
+	fsckoptions="-f $fsckoptions"
+elif [ -f /.autofsck ]; then
+	[ -f /etc/sysconfig/autofsck ] && . /etc/sysconfig/autofsck
+	if [ "$AUTOFSCK_DEF_CHECK" = "yes" ]; then
+		AUTOFSCK_OPT="$AUTOFSCK_OPT -f"
+	fi
+	if [ -n "$AUTOFSCK_SINGLEUSER" ]; then
+		[ -n "$PLYMOUTH" ] && plymouth --hide-splash
+		echo
+		echo $"*** Warning -- the system did not shut down cleanly. "
+		echo $"*** Dropping you to a shell; the system will continue"
+		echo $"*** when you leave the shell."
+		[ -n "$SELINUX_STATE" ] && echo "0" > /selinux/enforce
+		sulogin
+		[ -n "$SELINUX_STATE" ] && echo "1" > /selinux/enforce
+		[ -n "$PLYMOUTH" ] && plymouth --show-splash
+	fi
+	fsckoptions="$AUTOFSCK_OPT $fsckoptions"
+fi
+
+if [ "$BOOTUP" = "color" ]; then
+	fsckoptions="-C $fsckoptions"
+else
+	fsckoptions="-V $fsckoptions"
+fi
+
+READONLY=
+if [ -f /etc/sysconfig/readonly-root ]; then
+	. /etc/sysconfig/readonly-root
+fi
+if strstr "$cmdline" readonlyroot ; then
+	READONLY=yes
+	[ -z "$RW_MOUNT" ] && RW_MOUNT=/var/lib/stateless/writable
+	[ -z "$STATE_MOUNT" ] && STATE_MOUNT=/var/lib/stateless/state
+fi
+if strstr "$cmdline" noreadonlyroot ; then
+	READONLY=no
+fi
+
+_RUN_QUOTACHECK=0
+ROOTFSTYPE=`awk '/ \/ / && ($3 !~ /rootfs/) { print $3 }' /proc/mounts`
+if [ -z "$fastboot" -a "$READONLY" = "yes" -a "X$ROOTFSTYPE" != "Xnfs" -a "X$ROOTFSTYPE" != "Xnfs4" ]; then 
+
+        STRING=$"Checking root filesystem"
+        echo $STRING
+        rootdev=`awk '/ \/ / && ($3 !~ /rootfs/) {print $1}' /proc/mounts`
+        if [ -b /initrd/"$rootdev" ] ; then
+                rootdev=/initrd/"$rootdev"
+        else
+                rootdev=/
+        fi
+
+        touch /testfile > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+                rm -f /testfile > /dev/null 2>&1
+        else
+                # make sure ROOT FS is RO
+                /sbin/fsck -T -a $rootdev $fsckoptions
+        fi
+
+        rc=$?
+
+        if [ "$rc" -eq "0" ]; then
+                success "$STRING"
+                echo
+        elif [ "$rc" -eq "1" ]; then
+                passed "$STRING"
+                echo
+        elif [ "$rc" -eq "2" -o "$rc" -eq "3" ]; then
+                echo $"Unmounting file systems"
+                umount -a
+                mount -n -o remount,ro /
+                echo $"Automatic reboot in progress."
+                reboot -f
+        fi
+
+        # A return of 4 or higher means there were serious problems.
+        if [ $rc -gt 1 ]; then
+                failure "$STRING"
+                echo
+                echo
+                echo $"*** An error occurred during the file system check."
+                echo $"*** Dropping you to a shell; the system will reboot"
+                echo $"*** when you leave the shell."
+
+                str=$"(Repair filesystem)"
+                PS1="$str \# # "; export PS1
+                [ "$SELINUX" = "1" ] && disable_selinux
+                sulogin
+
+                echo $"Unmounting file systems"
+                umount -a
+                mount -n -o remount,ro /
+                echo $"Automatic reboot in progress."
+                reboot -f
+        elif [ "$rc" -eq "1" ]; then
+                _RUN_QUOTACHECK=1
+        fi
+fi
+
+
+# Possibly update quotas if fsck was run on /.
+LC_ALL=C grep -E '[[:space:]]+/[[:space:]]+' /etc/fstab | \
+    awk '{ print $4 }' | \
+    LC_ALL=C fgrep -q quota
+_ROOT_HAS_QUOTA=$?
+if [ "X$_RUN_QUOTACHECK" = "X1" -a \
+    "X$_ROOT_HAS_QUOTA" = "X0" -a \
+    -x /sbin/quotacheck ]; then
+        if [ -x /sbin/convertquota ]; then
+            if [ -f /quota.user ]; then
+                action $"Converting old user quota files: " \
+                    /sbin/convertquota -u / && rm -f /quota.user
+            fi
+            if [ -f /quota.group ]; then
+                action $"Converting old group quota files: " \
+                    /sbin/convertquota -g / && rm -f /quota.group
+            fi
+        fi
+        action $"Checking root filesystem quotas: " /sbin/quotacheck -nug /
+fi
+
+if ! [[ " $fsckoptions" =~ " -y" ]]; then
+	fsckoptions="-a $fsckoptions"
+fi
+
+
+# Do checks for config filesystem first
+config_part=`/bin/cat /etc/fstab | /bin/grep "1 2" | /bin/awk '{print $1}' | grep "CONFIG"`
+umount /config
+while [ $? -ne 0 ]; do
+    sleep 1
+    umount /config
+done
+
+if [ "x${config_part}" != "x" ]; then
+	/sbin/fsck -T -a $fsckoptions ${config_part}
+	rc=$?
+	if [ "$rc" -eq "0" ]; then
+		success "$STRING"
+		echo
+	elif [ "$rc" -eq "1" ]; then
+       		passed "$STRING"
+		echo
+	elif [ "$rc" -eq "2" -o "$rc" -eq "3" ]; then 
+		echo $"Unmounting file systems"
+ 		umount -a
+ 		mount -n -o remount,ro /
+	 	echo $"Automatic reboot in progress."
+		reboot -f
+	fi
+
+	# should do recovery checks here.
+	mount /config
+
+	# init hardware phase 0 brings up critical parts of the system for booting
+	# such as /var and /swap on sw raided units
+	#
+	# init hardware phase 1 will bring up things like PFS and Segstore the new units.
+	#
+
+	#initlog -c "/opt/hal/bin/hal init_hardware_phase0"
+	/opt/hal/bin/hal init_hardware_phase0
+	if [ $? -ne 0 ]; then
+		echo "Init_hardware_phase0 failed, check system logs."
+	fi
+
+	umount /config
+fi
+
+_RUN_QUOTACHECK=0
+# Check filesystems
+# XXX/munirb: BUG:64836
+# mount the root partition rw at this point and run the
+# /sbin/blkid to regenerate the /etc/blkid.tab cache
+# We need to have an updated label cache before we start using the
+# labels to figure out mount partitions.
+touch / 2>/dev/null
+READ_ONLY_ROOT=$?
+ 
+[ $READ_ONLY_ROOT -ne 0 ] && mount -o rw,remount /
+echo "Updating the label cache file"
+/sbin/blkid > /dev/null 2>&1
+
+# Remount ROOT Read-only 
+# to not listen to fsck complain
+mount -o ro,remount /
+
+if [ -z "$fastboot" ]; then
+STRING=$"Checking filesystems"
+echo $STRING
+
+PLATFORM=`cat /etc/build_version.sh | grep "^BUILD_PROD_ID=" | sed 's/^BUILD_PROD_ID="//' | sed 's/"//'`
+if [ $? != 0 ]; then
+    echo "Failed to determine platform."
+    PLATFORM=""
+fi
+
+for part in `/bin/cat /etc/fstab | /bin/grep "1 2" | /bin/awk '{print $1}'`; do
+	#fsck -T -t noopts=_netdev -A $fsckoptions
+	/sbin/fsck -T -a $fsckoptions ${part}
+	rc=$?
+	
+	if [ "$rc" -eq "0" ]; then
+		success "$STRING"
+		echo
+	elif [ "$rc" -eq "1" ]; then
+       		passed "$STRING"
+		echo
+	elif [ "$rc" -eq "2" -o "$rc" -eq "3" ]; then
+		echo $"Unmounting file systems"
+		umount -a
+		mount -n -o remount,ro /
+		echo $"Automatic reboot in progress."
+		reboot -f
+	fi
+	
+	# A return of 4 or higher means there were serious problems.
+	if [ $rc -gt 1 ]; then
+		if [ "x${part}" = "xLABEL=VAR" ]; then
+			# run the var recovery script that will know what to do
+			# with different machines
+			mount ${config_part} /config
+			/sbin/do_fs_recovery.sh var
+			umount /config
+		elif [ "x${part}" = "xLABEL=DATA" ]; then
+                    # For WW do not try to wipe out the data partition even if there is corruption
+                    if [ "x${PLATFORM}" != "xCB" ]; then
+			mount ${config_part} /config
+			/sbin/do_fs_recovery.sh data
+			umount /config
+                    fi
+		fi
+	elif [ "$rc" -eq "1" -a -x /sbin/quotacheck ]; then
+		_RUN_QUOTACHECK=1
+	fi
+	echo
+done
+fi
+
+#remount_needed() {
+#  local state oldifs
+#  [ "$READONLY" = "yes" ] && return 1
+#  state=$(LC_ALL=C awk '/ \/ / && ($3 !~ /rootfs/) { print $4 }' /proc/mounts)
+#  oldifs=$IFS
+#  IFS=","
+#  for opt in $state ; do
+#	if [ "$opt" = "rw" ]; then
+#		IFS=$oldifs
+#		return 1
+#	fi
+#  done
+#  IFS=$oldifs
+#  return 0
+#}
+
+# Remount the root filesystem read-write.
+update_boot_stage RCmountfs
+
+# XXX/munirb: no need to mount root RW as we want it in RO mode
+#if remount_needed ; then
+#  action $"Remounting root filesystem in read-write mode: " mount -n -o remount,rw /
+#fi
+
+# Clean up SELinux labels
+if [ -n "$SELINUX_STATE" ]; then
+   restorecon /etc/mtab /etc/ld.so.cache /etc/blkid/blkid.tab /etc/resolv.conf >/dev/null 2>&1
+fi
+
+# If relabeling, relabel mount points.
+if [ -n "$SELINUX_STATE" -a "$READONLY" != "yes" ]; then
+    if [ -f /.autorelabel ] || strstr "$cmdline" autorelabel ; then
+	restorecon $(awk '!/^#/ && $4 !~ /noauto/ && $2 ~ /^\// { print $2 }' /etc/fstab) >/dev/null 2>&1
+    fi
+fi
+
+# Define graft functions
+if [ -f /etc/customer.sh ]; then
+    . /etc/customer.sh
+fi
+
+if [ "$HAVE_SYSINIT_GRAFT_1" = "y" ]; then
+    sysinit_graft_1
+fi
+
+# Mount all other filesystems (except for NFS and /proc, which is already
+# mounted). Contrary to standard usage,
+# filesystems are NOT unmounted in single user mode.
+if [ "$READONLY" != "yes" ] ; then
+	action $"Mounting local filesystems: " mount -a -t nonfs,nfs4,smbfs,ncpfs,cifs,gfs,gfs2,proc,devpts -O no_netdev
+	# out of an "abundance of caution", try to mount devpts (which 
+	# is probably already mounted), but ignore any failure
+	mount -a -t devpts >/dev/null 2>&1
+else
+	action $"Mounting local filesystems: " mount -a -n -t nonfs,nfs4,smbfs,ncpfs,cifs,gfs,gfs2,proc,devpts -O no_netdev
+	# out of an "abundance of caution", try to mount devpts (which 
+	# is probably already mounted), but ignore any failure
+	mount -a -n -t devpts >/dev/null 2>&1
+fi
+
+# Update quotas if necessary
+if [ X"$_RUN_QUOTACHECK" = X1 -a -x /sbin/quotacheck ]; then
+	action $"Checking local filesystem quotas: " /sbin/quotacheck -anug
+fi
+
+if [ -x /sbin/quotaon ]; then
+    action $"Enabling local filesystem quotas: " /sbin/quotaon -aug
+fi
+
+# Check to see if a full relabel is needed
+if [ -n "$SELINUX_STATE" -a "$READONLY" != "yes" ]; then
+    if [ -f /.autorelabel ] || strstr "$cmdline" autorelabel ; then
+	relabel_selinux
+    fi
+else
+    if [ -d /etc/selinux -a "$READONLY" != "yes" ]; then
+        [ -f /.autorelabel ] || touch /.autorelabel
+    fi
+fi
+
+# Initialize pseudo-random number generator
+if [ -f "/var/lib/random-seed" ]; then
+	cat /var/lib/random-seed > /dev/urandom
+else
+	[ "$READONLY" != "yes" ] && touch /var/lib/random-seed
+fi
+if [ "$READONLY" != "yes" ]; then
+	chmod 600 /var/lib/random-seed
+	dd if=/dev/urandom of=/var/lib/random-seed count=1 bs=512 2>/dev/null
+fi
+
+if [ -f /etc/crypttab ]; then
+    init_crypto 1
+fi
+
+# # Configure machine if necessary.
+# if [ -f /.unconfigured ]; then
+#     if [ -x /usr/bin/rhgb-client ] && /usr/bin/rhgb-client --ping ; then
+# 	/usr/bin/rhgb-client --quit
+#     fi
+# 
+#     if [ -x /usr/bin/system-config-keyboard ]; then
+# 	/usr/bin/system-config-keyboard
+#     fi
+#     if [ -x /usr/bin/passwd ]; then
+#         /usr/bin/passwd root
+#     fi
+#     if [ -x /usr/sbin/system-config-network-tui ]; then
+# 	/usr/sbin/system-config-network-tui
+#     fi
+#     if [ -x /usr/sbin/timeconfig ]; then
+# 	/usr/sbin/timeconfig
+#     fi
+#     if [ -x /usr/sbin/authconfig-tui ]; then
+# 	/usr/sbin/authconfig-tui --nostart
+#     fi
+#     if [ -x /usr/sbin/ntsysv ]; then
+# 	/usr/sbin/ntsysv --level 35
+#     fi
+# 
+#     # Reread in network configuration data.
+#     if [ -f /etc/sysconfig/network ]; then
+# 	. /etc/sysconfig/network
+# 
+# 	# Reset the hostname.
+# 	action $"Resetting hostname ${HOSTNAME}: " hostname ${HOSTNAME}
+#     fi
+# 
+#     rm -f /.unconfigured
+# fi
+
+# Clean out /.
+rm -f /fastboot /fsckoptions /forcefsck /.autofsck /forcequotacheck /halt \
+	/poweroff /.suspended &> /dev/null
+
+# Do we need (w|u)tmpx files? We don't set them up, but the sysadmin might...
+_NEED_XFILES=
+[ -f /var/run/utmpx -o -f /var/log/wtmpx ] && _NEED_XFILES=1
+
+# Clean up /var.
+rm -rf /var/lock/cvs/* /var/run/screen/*
+find /var/lock /var/run ! -type d -exec rm -f {} \;
+rm -f /var/lib/rpm/__db* &> /dev/null
+rm -f /var/gdm/.gdmfifo &> /dev/null
+
+# Clean up stale httpd pidfile
+[ -f /var/log/httpd.pid ] && rm -f /var/log/httpd.pid
+
+{
+# Clean up utmp/wtmp
+> /var/run/utmp
+touch /var/log/wtmp
+chgrp utmp /var/run/utmp /var/log/wtmp
+chmod 0664 /var/run/utmp /var/log/wtmp
+if [ -n "$_NEED_XFILES" ]; then
+  > /var/run/utmpx
+  touch /var/log/wtmpx
+  chgrp utmp /var/run/utmpx /var/log/wtmpx
+  chmod 0664 /var/run/utmpx /var/log/wtmpx
+fi
+[ -n "$SELINUX_STATE" ] && restorecon /var/run/utmp* /var/log/wtmp* >/dev/null 2>&1
+
+#generate cache file for rrdm_tool
+/opt/hal/bin/raid/rrdm_tool.py --generate-spec-cache
+
+# Clean up various /tmp bits
+[ -n "$SELINUX_STATE" ] && restorecon /tmp
+rm -f /tmp/.X*-lock /tmp/.lock.* /tmp/.gdm_socket /tmp/.s.PGSQL.*
+rm -rf /tmp/.X*-unix /tmp/.ICE-unix /tmp/.font-unix /tmp/hsperfdata_* \
+       /tmp/kde-* /tmp/ksocket-* /tmp/mc-* /tmp/mcop-* /tmp/orbit-*  \
+       /tmp/scrollkeeper-*  /tmp/ssh-* \
+       /dev/.in_sysinit
+
+# Make ICE directory
+mkdir -m 1777 -p /tmp/.ICE-unix >/dev/null 2>&1
+chown root:root /tmp/.ICE-unix
+[ -n "$SELINUX_STATE" ] && restorecon /tmp/.ICE-unix >/dev/null 2>&1
+
+# Save kernel crash dump to /var before starting swap
+reformat_swap=0
+SWAP_PARTITION=`/opt/hal/bin/raid/rrdm_tool.py --get-partition swap`
+if [ "x$SWAP_PARTITION" == "x" ]; then
+	# This is a VSH model
+	SWAP_PARTITION=`blkid | grep swap | cut -d':' -f1 | awk '{print substr($0, length($0), 1)}'`
+fi
+VAR_USAGE=`df /var | awk '{ print $5 }' | tail -1 | cut -d '%' -f1`
+if [ $VAR_USAGE -gt 80 ]; then
+        echo "No space on /var to store kernel crash dump."
+else
+	SWAP_LIST=`/opt/hal/bin/hwtool.py -q disk=map | grep disk | grep -o sd[a-z]*`
+	for DEV in ${SWAP_LIST}; do
+		DUMP_DEVICE=/dev/${DEV}${SWAP_PARTITION}
+	        DATE=`date '+%Y%m%d-%H%M%S'`
+        	/opt/tms/bin/save_dump -d ${DUMP_DEVICE} -r > /var/tmp/kernel-crashdump-${DATE}
+		DUMP_SIZE=`stat -c %s /var/tmp/kernel-crashdump-${DATE}`
+		if [ $DUMP_SIZE -lt 100 ]; then
+                	# Not a valid dump; its an error message being logged by save_dump  
+			# as we loop through all the swap partitions
+			rm -rf /var/tmp/kernel-crashdump-${DATE}
+		else
+			# Deleting any older dumps; We store a max of 2 kernel crash dumps
+	    		DUMP_COUNT=0
+		        DUMP_LIST=`ls -t /var/tmp/kernel-crashdump-* 2> /dev/null`
+		        if [ "x$DUMP_LIST" != "x" ]; then
+				for FILE in $DUMP_LIST; do
+			    	    DUMP_COUNT=$[DUMP_COUNT+1]
+		          	done
+			fi
+	    	        if [ $DUMP_COUNT -gt 2 ]; then
+		    		# we have to delete the oldest dump
+			        OLDEST_DUMP=`ls -t /var/tmp/kernel-crashdump-* | tail -1`
+				rm -rf $OLDEST_DUMP
+		        fi
+			# We have extracted a dump; restart swap
+			reformat_swap=1
+		fi
+	done
+fi
+
+# Check to see if kexec-disable.conf exists
+if [ -f /etc/init/kexec-disable.conf ]; then
+        # echo out the file
+	mount / -o remount,rw
+        echo "#" > /etc/init/kexec-disable.conf
+	mount / -o remount,ro
+fi
+
+# Load the kexec crash kernel and it's rootflop into memory
+# if the kexec mechanism has been enabled by the user
+if [ ! -f /var/kexec_enable ]; then
+        # Kexec mechanism is disabled
+        /sbin/kexec_unload.sh
+else
+        # Kexec mechanism has been enabled
+        /sbin/kexec_load.sh 96
+        rm -f /var/kexec_enable
+fi
+
+retry_starting_swap()
+{
+        swap_i=0
+        while [ $swap_i -lt 5 ]; do
+                swap_i=$((swap_i+1))
+                swapon -a
+                swapsize=`awk '{ print $3; }' /proc/swaps | sed -n '1!p'`
+                if [ "x$swapsize" == "x" ]; then
+                        sleep 1
+                        echo "Retrying to start swap"
+                else
+                        echo "Enabling swap space: succeeded"
+                        break
+                fi
+        done
+}
+
+recreate_and_reformat_swap_array()
+{
+	# Recreate the raid array, reformat swap and then start swapping
+        SWAP_DEV=$( cat /etc/fstab | grep swap | awk '{print $1}' )
+        echo "Formatting swap on ${SWAP_DEV}"
+        /opt/hal/bin/raid/rrdm_tool.py -c swap > /dev/null 2>&1
+        /opt/hal/bin/raid/rrdm_tool.py --run=/swap
+        mkswap -f ${SWAP_DEV} 2> /dev/null
+}
+
+# Start up swapping.
+update_boot_stage RCswap
+action $"Enabling /etc/fstab swaps: " swapon -a
+
+swapsize=`awk '{ print $3; }' /proc/swaps | sed -n '1!p'`
+swap_i=0
+if [ "x$swapsize" == "x" ]; then
+        # swap has not yet been initialized. Retry for 5 times.
+        retry_starting_swap
+fi
+
+if [ $swap_i -eq 5  -o $reformat_swap -eq 1 ]; then
+	# Recreate the raid array, reformat swap and then start swapping
+	recreate_and_reformat_swap_array
+        swapon -a
+        swapsize=$( awk '{ print $3; }' /proc/swaps | sed -n '1!p' )
+        if [ "x$swapsize" == "x" ]; then
+                retry_starting_swap
+        fi
+fi
+
+if [ "$AUTOSWAP" = "yes" ]; then
+	curswap=$(awk '/^\/dev/ { print $1 }' /proc/swaps | while read x; do get_numeric_dev dec $x ; echo -n " "; done)
+	swappartitions=$(blkid -t TYPE=swap -o device)
+	if [ x"$swappartitions" != x ]; then
+		for partition in $swappartitions ; do
+			[ ! -e $partition ] && continue
+			majmin=$(get_numeric_dev dec $partition)
+			echo $curswap | grep -qw "$majmin" || action $"Enabling local swap partitions: " swapon $partition
+		done
+	fi
+fi
+
+# Set up binfmt_misc
+/bin/mount -t binfmt_misc none /proc/sys/fs/binfmt_misc > /dev/null 2>&1
+
+
+#
+# setup shadow device...
+#
+[ -b /dev/sha ] && [ -x /sbin/shadow_setup.sh ] && \
+        /sbin/shadow_setup.sh -c "$cmnt" "$cdev" sha
+
+## Boot time profiles. Yes, this should be somewhere else.
+#if [ -x /usr/sbin/system-config-network-cmd ]; then
+#  if strstr "$cmdline" netprofile= ; then
+#    for arg in $cmdline ; do
+#        if [ "${arg##netprofile=}" != "${arg}" ]; then
+#	    /usr/sbin/system-config-network-cmd --profile ${arg##netprofile=}
+#        fi
+#    done
+#  fi
+#fi
+
+# Now that we have all of our basic modules loaded and the kernel going,
+# let's dump the syslog ring somewhere so we can find it later
+[ -f /var/log/dmesg ] && mv -f /var/log/dmesg /var/log/dmesg.old
+dmesg -s 131072 > /var/log/dmesg
+
+# create the crash indicator flag to warn on crashes, offer fsck with timeout
+touch /.autofsck &> /dev/null
+
+if [ "$PROMPT" != no ]; then
+    while :; do
+	pid=$(/sbin/pidof getkey)
+	[ -n "$pid" -o -e /var/run/getkey_done ] && break
+	usleep 100000
+    done
+    [ -n "$pid" ] && kill -TERM "$pid" >/dev/null 2>&1
+fi
+} &
+if strstr "$cmdline" confirm ; then
+	touch /var/run/confirm
+fi
+if [ "$PROMPT" != "no" ]; then
+	/sbin/getkey i && touch /var/run/confirm
+	touch /var/run/getkey_done
+fi
+wait
+[ "$PROMPT" != no ] && rm -f /var/run/getkey_done
+
+# Let rhgb know that we're leaving rc.sysinit
+if [ -x /usr/bin/rhgb-client ] && /usr/bin/rhgb-client --ping ; then
+    /usr/bin/rhgb-client --sysinit
+fi
+
+touch / 2>/dev/null
+READ_ONLY_ROOT=$?
+
+[ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,rw
+
+# RAID firmware update
+if [ -f /etc/.upgrade ]; then
+    rm -f /etc/.upgrade
+    if [ -f /sbin/raid_upgrade.sh ]; then
+        action $"Running raid fw update script" /sbin/raid_upgrade.sh
+    fi
+fi
+
+if [ -d /tmp/upgrade ]; then
+    umount /tmp/upgrade > /dev/null 2>&1
+    rm -rf /tmp/upgrade > /dev/null 2>&1
+fi
+
+# check if any previous con_dump contents exist and set a
+# flag file for afail.sh
+dmesg | grep "con_dump: restoring" > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    KEXEC_ENABLE=$(cat /sys/kernel/kexec_crash_loaded)
+    if [ ${KEXEC_ENABLE} -eq 0 ];then #kexec will create sysdump by itself
+        touch /var/tmp/.needsysdump
+    fi
+fi
+
+
+# Do some post-install steps if this is our first boot
+if [ -f /etc/.firstboot ]; then
+    action $"Running firstboot script" /sbin/firstboot.sh
+    rm -f /etc/.firstboot
+
+    # If this is the first boot, and they have no config db, use the wizard,
+    # assuming the wizard has not been disabled in the image.
+    if [ ! -e /etc/.disablewizard ]; then
+        if [ ! -f /config/db/active ]; then
+            touch /var/opt/tms/.usewizard
+        else
+            if [ ! -f /config/db/`cat /config/db/active` ]; then
+                touch /var/opt/tms/.usewizard
+            fi
+       fi
+    else
+        logger -p user.info "Global Wizard-disable flag detected; skipping wizard."
+    fi
+fi
+
+# Do specific upgrade checks that need to happen prior
+# to sw initialization
+#
+if [ -f /sbin/upgrade_checks.sh ]; then
+	/sbin/upgrade_checks.sh
+fi
+
+# Clean out /.
+rm -f /fastboot /fsckoptions /forcefsck /.autofsck /var/tmp/halt /var/tmp/poweroff &> /dev/null
+
+[ $READ_ONLY_ROOT -ne 0 ] && mount / -o remount,ro

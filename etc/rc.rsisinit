@@ -1,0 +1,351 @@
+#!/bin/bash
+#
+# Remote Storage Initialization Script
+#
+# This script initializes /var and /config storage only. It waits
+# for an EBS volume to appear on the device node specified in the AMI
+# and assumes that it is the volume on which partitions should be
+# created. If the partitions exist already it then skips the initialization
+# stage.
+#
+
+PATH=$PATH:/sbin:/bin:/opt/tms/bin
+
+INIT_CONFIG_DIR="/config"
+INIT_VAR_DIR="/var"
+INIT_BOOTMGR_DIR="/bootmgr"
+RVBD_RSIS_FLAG=".rsis_ok"
+
+EC2_TTY="/dev/hvc0"
+EC2_I386_SWAP_NODE="/dev/xvde3"
+EC2_X86_64_SWAP_NODE="/dev/xvdf"
+EC2_X86_64_SWAP_NODE_MAJOR="202"
+EC2_X86_64_SWAP_NODE_MINOR="81"
+
+###############################################################################
+#
+# RSIS version. Allows the RSIS to refuse to work with /config EBS volumes
+# that are too old. Only bump this is you make a change that means the new
+# script (or other system software) should not work with, or should perhaps
+# upgrade, the EBS volume.
+#
+###############################################################################
+RVBD_RSIS_VERSION=1
+
+SLEEP_PERIOD=5
+
+BOOTMGR_PARTITION=1
+CONFIG_PARTITION=2
+VAR_PARTITION=3
+BOOTMGR_LABEL="BOOTMGR"
+CONFIG_LABEL="CONFIG"
+VAR_LABEL="VAR"
+
+MIN_CYLINDERS=1250
+CONFIG_CYLINDERS=7
+BOOTMGR_CYLINDERS=28
+X86_64_SWAP_CYLINDERS=985
+
+TMP_MOUNT_POINT=`mktemp -d` 2>/dev/null
+DEV_NODE=""
+DEV_MAJOR=""
+DEV_MINOR=""
+
+# Clean up resources and exit.
+# $1 - exit code to be returned.
+cleanup_exit()
+{
+    umount $TMP_MOUNT_POINT  >/dev/null 2>&1
+    rm -rf $TMP_MOUNT_POINT
+    exit $1
+}
+
+# Ensure that a given block device node exists. If it doesn't, create it.
+# $1 - device node path.
+# $2 - desired major number.
+# $3 - desired minor number.
+ensure_block_node()
+{
+    if [ ! -e $1 ]; then
+        mknod $1 b $2 $3
+        if [ $? -ne 0 ]; then
+            echo "Unable to create $1"
+            cleanup_exit 1
+        fi
+    fi
+}
+
+# Ensure that a given symlink exists, overwriting files as necessary.
+# $1 target file
+# $2 desired symlink
+ensure_symlink()
+{
+    link=$2
+    target=$1
+
+    rm -f $link
+    ln -s $target $link
+}
+
+# Return 0 if the given partition has the given label. Otherwise return
+# 1.
+# $1 - Partition device node.
+# $2 - Expected label.
+confirm_partition_label ()
+{
+    device=$1
+    expected_label=$2
+    LABEL=`e2label $device`
+    if [ "$LABEL" != "$expected_label" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# Copy the entire contents of a given directory to a partition.
+# The partition is assumed to have been formatted.
+# $1 - Partition device node.
+# $2 - Source directory.
+copy_dir_to_partition()
+{
+    device_node=$1
+    src_dir=$2
+
+    mount -t ext3 $device_node $TMP_MOUNT_POINT
+    if [ $? -ne 0 ]; then
+        echo "unable to mount $device_node"
+        return 1
+    fi
+    (cd $src_dir && tar c . | tar x -C $TMP_MOUNT_POINT/)
+    if [ $? -ne 0 ]; then
+        echo "unable to copy $src_dir to $TMP_MOUNT_POINT"
+        return 1
+    fi
+
+    umount $TMP_MOUNT_POINT
+    if [ $? -ne 0 ]; then
+        echo "unable to unmount $device_node"
+        return 1
+    fi
+    return 0
+}
+
+# Create the "RSIS OK" file.
+# $1 - Partition on which to create the file.
+create_rsis_flag_file()
+{
+    target_partition=$1
+    version=$2
+
+    mount -t ext3 $target_partition $TMP_MOUNT_POINT
+    if [ $? -ne 0 ]; then
+        echo "unable to mount $target_partition"
+        return 1
+    fi
+    echo "$version" > $TMP_MOUNT_POINT/$RVBD_RSIS_FLAG
+    if [ $? -ne 0 ]; then
+        echo "unable to create $RVBD_RSIS_FLAG on $TMP_MOUNT_POINT"
+        return 1
+    fi
+    umount $TMP_MOUNT_POINT
+    if [ $? -ne 0 ]; then
+        echo "unable to unmount $target_partition"
+        return 1
+    fi
+
+    return 0
+}
+
+# Learn on which node we should expect an EBS volume.
+
+if [ -f /config/mfg/mfdb ]; then
+    DEV_NODE=`mddbreq -v /config/mfg/mfdb query get - /rbt/mfd/rsis_dev_name`
+    if [ $? -ne 0 ]; then
+        echo "Unable to determine RSIS device node."
+        cleanup_exit 1
+    fi
+    DEV_MAJOR=`mddbreq -v /config/mfg/mfdb query get - /rbt/mfd/rsis_dev_major`
+    if [ $? -ne 0 ]; then
+        echo "Unable to determine RSIS device major number."
+        cleanup_exit 1
+    fi
+    DEV_MINOR=`mddbreq -v /config/mfg/mfdb query get - /rbt/mfd/rsis_dev_minor`
+    if [ $? -ne 0 ]; then
+        echo "Unable to determine RSIS device minor number."
+        cleanup_exit 1
+    fi
+fi
+
+
+# If we're not running in an AWS Instance we should just exit.
+if [ -z "$DEV_NODE" ]; then
+    echo "No RSIS device node found, so exiting the RSIS."
+    cleanup_exit 0
+fi
+
+# Ensure the device nodes exist.
+
+ensure_block_node ${DEV_NODE} ${DEV_MAJOR} ${DEV_MINOR}
+ensure_block_node ${DEV_NODE}${BOOTMGR_PARTITION} ${DEV_MAJOR} $[${DEV_MINOR} + $BOOTMGR_PARTITION]
+ensure_block_node ${DEV_NODE}${VAR_PARTITION} ${DEV_MAJOR} $[${DEV_MINOR} + $VAR_PARTITION]
+ensure_block_node ${DEV_NODE}${CONFIG_PARTITION} ${DEV_MAJOR} $[${DEV_MINOR} + $CONFIG_PARTITION]
+
+# Create swap space. What exactly happens depends on the arch.
+grep swap /etc/fstab
+if [ $? -eq 1 ]; then
+    arch=`uname -i`
+    # swap needs configuration
+    if [ "$arch" == "i386" ]; then
+        # i386 EC2 Instances have a node available for immediate use at EC2_I386_SWAP_NODE.
+        echo "$EC2_I386_SWAP_NODE     swap        swap    defaults            0 0" >> /etc/fstab
+    else
+        # x86_64 EC2 Instances can use EC2_X86_64_SWAP_NODE, but it must be first partitioned.
+sfdisk $EC2_X86_64_SWAP_NODE >/dev/null 2>&1 << EOF
+,$X86_64_SWAP_CYLINDERS,L
+,,L
+EOF
+        ensure_block_node ${EC2_X86_64_SWAP_NODE}1 $EC2_X86_64_SWAP_NODE_MAJOR $EC2_X86_64_SWAP_NODE_MINOR
+        mkswap -v1 ${EC2_X86_64_SWAP_NODE}1 >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "Unable to make swap on ${EC2_X86_64_SWAP_NODE}1"
+        else
+            echo "${EC2_X86_64_SWAP_NODE}1     swap        swap    defaults            0 0" >> /etc/fstab
+        fi
+    fi
+fi
+
+# Start polling for volume attachment
+
+rc=1
+until [ $rc -eq 0 ]; do
+    sfdisk -s ${DEV_NODE}
+    rc=$?
+    echo "`date`: Waiting for volume to attach to $DEV_NODE..."
+    sleep $SLEEP_PERIOD
+done
+echo "Volume attachment detected."
+
+# Check if there are any partitions on the device.
+
+sfdisk -l $DEV_NODE 2>&1 | grep "No partitions found"
+if [ $? -eq 0 ]; then
+    cylinders=`sfdisk -g $DEV_NODE | awk {'print $2'}`
+    if [ "$cylinders" -lt "$MIN_CYLINDERS" ]; then
+        echo "Insufficient cyclinders on $DEV_NODE."
+        cleanup_exit 1
+    fi
+
+    # We seem to have an unpartitioned device so partition it.
+    echo -n "Partitioning $DEV_NODE..."
+sfdisk $DEV_NODE >/dev/null 2>&1 << EOF
+,$BOOTMGR_CYLINDERS,L
+,$CONFIG_CYLINDERS,L
+,,L
+EOF
+    if [ $? -ne 0 ]; then
+        echo "unable to partition $DEV_NODE."
+       cleanup_exit 1
+    fi
+    echo "done."
+
+    echo -n "Formatting ${DEV_NODE}${BOOTMGR_PARTITION}..."
+    mke2fs -O ^resize_inode -q -L $BOOTMGR_LABEL -j ${DEV_NODE}${BOOTMGR_PARTITION} >/dev/null
+    if [ $? -ne 0 ]; then
+        echo "unable to format BOOTMGR partition."
+       cleanup_exit 1
+    fi
+    echo "done."
+    echo -n "Formatting ${DEV_NODE}${CONFIG_PARTITION}..."
+    mke2fs -O ^resize_inode -q -L $CONFIG_LABEL -j ${DEV_NODE}${CONFIG_PARTITION} >/dev/null
+    if [ $? -ne 0 ]; then
+        echo "unable to format CONFIG partition."
+       cleanup_exit 1
+    fi
+    echo "done."
+    echo -n "Formatting ${DEV_NODE}${VAR_PARTITION}..."
+    mke2fs -O ^resize_inode -q -L $VAR_LABEL -j ${DEV_NODE}${VAR_PARTITION} >/dev/null
+    if [ $? -ne 0 ]; then
+        echo "Unable to format VAR partition."
+       cleanup_exit 1
+    fi
+    echo "done."
+
+    # Copy necessary directories from AMI to new partitions.
+    echo -n "Copying /bootmgr to new volume..."
+    copy_dir_to_partition ${DEV_NODE}${BOOTMGR_PARTITION} $INIT_BOOTMGR_DIR
+    if [ $? -ne 0 ]; then
+       cleanup_exit 1
+    fi
+    echo "done."
+    echo -n "Copying /config to new volume..."
+    copy_dir_to_partition ${DEV_NODE}${CONFIG_PARTITION} $INIT_CONFIG_DIR
+    if [ $? -ne 0 ]; then
+       cleanup_exit 1
+    fi
+    echo "done."
+    echo -n "Copying /var to new volume..."
+    copy_dir_to_partition ${DEV_NODE}${VAR_PARTITION} $INIT_VAR_DIR
+    if [ $? -ne 0 ]; then
+       cleanup_exit 1
+    fi
+    echo "done."
+
+    # Create the "RSIS OK" file.
+    echo -n "Creating $RVBD_RSIS_FLAG..."
+    create_rsis_flag_file ${DEV_NODE}${VAR_PARTITION} $RVBD_RSIS_VERSION
+    if [ $? -ne 0 ]; then
+        echo "unable to create $RVBD_RSIS_FLAG"
+        cleanup_exit 1
+    fi
+    echo "done."
+
+fi
+
+# OK, there are partitions on the device, but are they correctly labeled? We want to be sure
+# this is a Riverbed disk.
+
+echo -n "Checking partition labels on $DEV_NODE..."
+confirm_partition_label ${DEV_NODE}${BOOTMGR_PARTITION} $BOOTMGR_LABEL
+if [ $? -ne 0 ]; then
+    echo "${DEV_NODE}${BOOTMGR_PARTITION} does not have correct label ($BOOTMGR_LABEL)"
+    cleanup_exit 1
+fi
+
+confirm_partition_label ${DEV_NODE}${VAR_PARTITION} $VAR_LABEL
+if [ $? -ne 0 ]; then
+    echo "${DEV_NODE}${VAR_PARTITION} does not have correct label ($VAR_LABEL)"
+    cleanup_exit 1
+fi
+
+confirm_partition_label ${DEV_NODE}${CONFIG_PARTITION} $CONFIG_LABEL
+if [ $? -ne 0 ]; then
+    echo "${DEV_NODE}${CONFIG_PARTITION} does not have correct label ($CONFIG_LABEL)"
+    cleanup_exit 1
+fi
+echo "OK."
+
+# Final sanity check - test for the existence of the RSIS flag file.
+echo -n "Checking for $RVBD_RSIS_FLAG..."
+mount -t ext3 ${DEV_NODE}${VAR_PARTITION} $TMP_MOUNT_POINT
+if [ $? -ne 0 ]; then
+    echo "unable to mount ${DEV_NODE}${VAR_PARTITION} for $RVBD_RSIS_FLAG check"
+    cleanup_exit 1
+fi
+
+if [ ! -e $TMP_MOUNT_POINT/$RVBD_RSIS_FLAG ]; then
+    echo "${DEV_NODE} is missing $RVBD_RSIS_FLAG"
+    cleanup_exit 1
+fi
+umount $TMP_MOUNT_POINT
+if [ $? -ne 0 ]; then
+    echo "unable to unmount ${DEV_NODE}${VAR_PARTITION}"
+    cleanup_exit 1
+fi
+echo "OK."
+
+# Fix up device nodes for EC2 Xen environment
+ensure_symlink $EC2_TTY /dev/ttyS0
+
+# This seems to be a valid disk.
+echo "Attached volume looks good."
+cleanup_exit 0

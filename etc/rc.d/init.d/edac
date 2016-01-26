@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# edac	Startup script to load EDAC memory labels
+#
+# chkconfig:	345 40 60
+# description:	Startup	script to load EDAC memory labels
+
+### BEGIN INIT INFO
+# Provides:       edac
+# Required-Start: $named $time
+# Default-Start:  3 4 5
+# Description:    Initialize EDAC drivers for machine hardware
+# Short-Description: Initialize EDAC drivers for machine hardware
+### END INIT INFO
+
+. /etc/rc.d/init.d/functions
+
+EDAC=/usr/sbin/edac-ctl
+LOGGER="logger -t edac -p info"
+
+###############################################################################
+
+service_start ()
+{
+  # If no EDAC driver is load, there's nothing to do. Just exit
+  #
+  [ -e /sys/devices/system/edac/mc/mc0/ ] || exit 0
+
+  [ `id -u` = 0 ] || exit 4
+  [ -x $EDAC ] || exit 5
+  echo -n "Loading EDAC memory labels: "
+
+  # Load EDAC tables at the kernel driver
+  #
+  $EDAC --register-labels 2>&1 | $LOGGER
+  rc=$?
+  if [ $rc -eq 0 ]; then
+   daemon true
+   echo
+  else
+   daemon false
+   echo
+   exit 1
+  fi
+}
+
+usage ()
+{
+    echo "Usage: $0 {start|stop|status|restart|condrestart|try-restart|reload|force-reload}"
+}
+
+###############################################################################
+
+case "$1" in
+  start|restart|reload|condrestart|try-restart|force-reload)
+    service_start
+    ;;
+  stop|status)
+    ;;
+  usage)
+    usage
+    ;;
+  *)
+    usage
+    exit 2
+esac
+exit 0

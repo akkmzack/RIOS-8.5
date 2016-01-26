@@ -1,0 +1,42 @@
+#! /bin/sh
+#
+# start up daemons from chroot environments
+#
+# chkconfig: 2345 19 86
+# description: starts various vserver daemons
+#
+# Bjoern Jacke <bj@sernet.de>
+#
+
+CHROOT_NAME=/proxy/__RBT_VSERVER_SHELL__
+
+if [ ! -d ${CHROOT_NAME} ]; then
+    exit 0
+fi
+
+if [ -d ${CHROOT_NAME}/rsp -a ! -f ${CHROOT_NAME}/.vserver-shell ]; then
+	exit 0
+fi
+
+# make sure we can enable some users to authenticate:
+mkdir ${CHROOT_NAME}/etc 2>/dev/null
+grep ^admin: /etc/passwd > ${CHROOT_NAME}/etc/passwd
+grep ^admin: /etc/shadow > ${CHROOT_NAME}/etc/shadow
+grep ^root: /etc/passwd >> ${CHROOT_NAME}/etc/passwd
+grep ^root: /etc/shadow >> ${CHROOT_NAME}/etc/shadow
+grep ^root: /etc/group > ${CHROOT_NAME}/etc/group
+
+cp /etc/resolv.conf ${CHROOT_NAME}/etc
+
+if [ ! -d ${CHROOT_NAME}/etc/rc.d/init.d ]; then
+    exit 0
+fi
+
+echo "Starting init scripts from ${CHROOT_NAME}"
+
+cd ${CHROOT_NAME} && find ./etc/rc.d/init.d/ -type f | sort | while read DAEMON_INIT_SCRIPT
+do
+	chroot ${CHROOT_NAME} ${DAEMON_INIT_SCRIPT} $@
+done
+
+echo "Done starting init scripts from ${CHROOT_NAME}"

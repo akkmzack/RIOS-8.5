@@ -1,0 +1,20 @@
+KERNEL=="sd*", PROGRAM="/sbin/name_disk.sh %k %n", SYMLINK="%c"
+KERNEL=="sh*", PROGRAM="/sbin/name_shadow.sh %k", SYMLINK="%c"
+
+# probe filesystem metadata of disks with shadow
+KERNEL=="sh*", ENV{RVBD_SHADOW}=="yes", IMPORT{program}="/sbin/blkid -o udev -p $tempnode"
+# by-label/by-uuid links (filesystem metadata)
+ENV{ID_FS_USAGE}=="filesystem|other", ENV{ID_FS_LABEL_ENC}=="?*", SYMLINK+="disk/by-label/$env{ID_FS_LABEL_ENC}"
+
+# probe filesystem metadata of disks without shadow
+KERNEL=="sd*", ENV{RVBD_SHADOW}=="no", IMPORT{program}="/sbin/blkid -o udev -p $tempnode"
+# by-label/by-uuid links (filesystem metadata)
+ENV{ID_FS_USAGE}=="filesystem|other", ENV{ID_FS_LABEL_ENC}=="?*", SYMLINK+="disk/by-label/$env{ID_FS_LABEL_ENC}"
+
+# firmware-class requests, copies files into the kernel
+SUBSYSTEM=="firmware", ACTION=="add", RUN+="firmware.sh"
+
+# invoke periodic_raidhcheck.sh upon disk add/remove
+SUBSYSTEM=="scsi_disk", ACTION=="add", RUN+="/sbin/periodic_raidcheck.sh"
+SUBSYSTEM=="scsi_disk", ACTION=="remove", RUN+="/sbin/periodic_raidcheck.sh"
+

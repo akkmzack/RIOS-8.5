@@ -1,0 +1,261 @@
+#! /bin/bash
+#
+# mdinit          Apply initial configuration to the system
+#
+# chkconfig: 2345 15 80
+# description: apply initial configuration to the system
+
+# Source function library.
+. /etc/init.d/functions
+
+if [ -r /opt/tms/release/build_version.sh ] ; then
+   . /opt/tms/release/build_version.sh
+fi
+
+if [ -r /etc/mdinit_customer.sh ] ; then
+   . /etc/mdinit_customer.sh
+fi
+
+ATTEMPTING_FALLBACK_FILE=/var/opt/tms/.attempting_fallback_reboot
+
+RETVAL=0
+
+switch_bob_partition()
+{
+	BOOT_INFO=`/opt/tms/bin/launch_esxi_ssh.py ". /etc/profile; /sbin/aigen.py -D | /bin/grep \"altbootbank/bank\""`
+	AIG_FALLBACK_BOOT_ID=`echo ${BOOT_INFO} | /bin/awk -F '=' '{print $2}'`
+	/opt/tms/bin/launch_esxi_ssh.py ". /etc/profile; /sbin/aigen.py -s ${AIG_FALLBACK_BOOT_ID}"
+}
+
+start() {
+	#XXX bug 72374 udev apparently generates events for disk partitions but
+	# not for actual disks.  perhaps this is because it already ran
+	# once from the ramdisk?  we need callbacks for full disks, should
+	# figure out if there's a cleaner way to do this but for now, just
+	# force a re-trigger for disks now...
+	#XXX bug 113600 repeated tests show no problems with udev correctly
+	# reporting disk/partition changes. however, in the rare case it doesn't
+	# the trigger should be initiated as a "change" action. this is a very
+	# lightweight way of rescanning devices, and will not treat devices as new.
+	# it is safe method and tells udev to conduct a simple list refresh
+	logger -t mdinit "mdinit: udevadm re-trigger for block devices"
+	udevadm trigger --action=change --subsystem-match=block
+
+
+        MOBO=`/opt/hal/bin/hwtool.py -q motherboard`
+
+        # make sure mfdb is world-readable so RBM users logging into the
+        # CLI can get the variant information.  This check is needed for the
+        # upgrade case.
+        MFDB_PATH=/config/mfg/mfdb
+        if [ -f ${MFDB_PATH} ]; then
+            chmod a+r ${MFDB_PATH}
+        fi
+
+        logger -t mdinit $"Running system image: ${BUILD_PROD_VERSION}"
+
+        # maybe run product-specific checks to make sure we support
+        # this upgrade path
+	if [ -f /bin/product_image_check.sh ]; then
+	    /bin/product_image_check.sh
+	    if [ $? -ne 0 ]; then
+	        eval `/sbin/aiget.sh`
+
+                PREVIOUS_RIOS_VERSION=`/sbin/imgq.sh -i -d -l ${AIG_FALLBACK_BOOT_ID} | grep "BUILD_PROD_RELEASE" | gawk -F = '{ print $2 }' | tr -d \"`
+                CURRENT_RIOS_VERSION=`/sbin/imgq.sh -i -d -l ${AIG_THIS_BOOT_ID} | grep "BUILD_PROD_RELEASE" | gawk -F = '{ print $2 }' | tr -d \"`
+
+                logger "ERROR - Upgrading from ${PREVIOUS_RIOS_VERSION} to ${CURRENT_RIOS_VERSION} is unsupported for this appliance. For more upgrade information, see the Software Upgrade tool for the appliances and the related knowledge base articles on the Riverbed Support site. For further assistance with upgrading and downgrading, please contact Riverbed Support."
+
+		logger $"Forcing reboot from fallback image ${AIG_FALLBACK_BOOT_ID}"
+		/sbin/aigen.py -i -l ${AIG_FALLBACK_BOOT_ID}
+
+		touch ${ATTEMPTING_FALLBACK_FILE}
+
+		umount -a
+		mount -n -o remount,ro /
+		reboot -f
+ 	     fi
+	fi
+
+	# monitor shadow device...
+	[ -b /dev/sha ] && [ -x /sbin/shadow_setup.sh ] && \
+        	/sbin/shadow_setup.sh -m sha
+
+	logger -t mdinit $"Applying configuration: "
+
+        # Run mgmtd on var to save core file if it happens
+	HOSTNAME=`hostname`
+	TIME=`date +"%Y%m%d-%H%M%S"`
+	WORKING_DIR="${HOSTNAME}-mgmtd-${TIME}"
+	SNAPSHOT_DIR="/var/opt/tms/snapshots"
+	STAGING_DIR="${SNAPSHOT_DIR}/.staging"
+	ABS_WORKING_DIR="${STAGING_DIR}/${WORKING_DIR}"
+	mkdir -p $ABS_WORKING_DIR
+
+	(cd ${ABS_WORKING_DIR}; ulimit -c unlimited; /opt/tms/bin/mgmtd -o -w; exit $?)
+	RETVAL=$?
+
+	# Check if there is mgmtd core file
+	CORE_COUNT=`ls -l $ABS_WORKING_DIR/core.* 2>/dev/null | wc -l`
+	if [ ${CORE_COUNT} != 0 ]; then
+		/sbin/pcs_script.sh -w ${STAGING_DIR} -f ${STAGING_DIR}/${WORKING_DIR}.tar.gz -d ${WORKING_DIR}
+		mv ${STAGING_DIR}/${WORKING_DIR}.tar.gz ${SNAPSHOT_DIR}/
+	fi
+	rm -rf ${ABS_WORKING_DIR}
+
+        if [ $RETVAL -ne 0 ]; then
+            logger -t mdinit "failed."
+
+            # The initial commit failed, which is bad news.  We'll switch to
+            # reboot from the fallback image, unless we are the fallback
+            # image, or have already tried to do this.
+
+            eval `/sbin/aiget.sh`
+
+            if [ ! -z "${AIG_THIS_BOOT_ID}" -a ! -z "${AIG_FALLBACK_BOOT_ID}" ]; then
+                if [ ! -f ${ATTEMPTING_FALLBACK_FILE} ]; then
+                    if [ "${AIG_THIS_BOOT_ID}" -ne "${AIG_FALLBACK_BOOT_ID}" ]; then
+                        logger -t mdinit $" Forcing reboot from fallback image ${AIG_FALLBACK_BOOT_ID}"
+			if [ "x${MOBO}" = "xBOB-MOBO" ]; then
+				switch_bob_partition
+			else
+                        	/sbin/aigen.py -i -l ${AIG_FALLBACK_BOOT_ID}
+			fi
+
+                        touch ${ATTEMPTING_FALLBACK_FILE}
+
+                        umount -a
+                        mount -n -o remount,ro /
+                        telinit 6
+			exit 0
+                    fi
+                fi
+            fi
+
+
+            # If we are the fallback image, we'll just have to go with an
+            # initial config file.
+
+            logger -t mdinit $"Forcing initial configuration: "
+            /opt/tms/bin/mgmtd -o -f -w
+            RETVAL=$?
+            if [ $RETVAL -ne 0 ]; then
+                logger -t mdinit "failed."
+                return $RETVAL
+            fi
+        fi
+
+        # The "all" disabling IPv6 autoconfig does not work for some unknown reason
+        #echo 0 >> /proc/sys/net/ipv6/conf/all/autoconf
+        #echo 0 >> /proc/sys/net/ipv6/conf/all/accept_ra
+        IPV6_CONF="/proc/sys/net/ipv6/conf"
+        for intf in default aux primary
+        do
+            [ -e ${IPV6_CONF}/${intf}/autoconf ]  && echo 0 > ${IPV6_CONF}/${intf}/autoconf
+            [ -e ${IPV6_CONF}/${intf}/accept_ra ] && echo 0 > ${IPV6_CONF}/${intf}/accept_ra
+        done
+
+        #flush current ipv6 addr in wan/lan/inpath/prihw/auxhw interfaces
+        #the call does not error out if the interface passed does not exist
+        /sbin/ip -6 addr flush label "*[w|l]an*"
+        /sbin/ip -6 addr flush label "prihw"
+        /sbin/ip -6 addr flush label "auxhw"
+
+        # append to image history
+        if [ -f /var/opt/tms/image_history ]; then
+            SEEN_BEFORE=0
+            SAME_VERSION=0
+
+            grep "${BUILD_PROD_VERSION}" /var/opt/tms/image_history > /dev/null
+            if [ $? = 0 ]; then
+                SEEN_BEFORE=1
+            fi
+            tail -1 /var/opt/tms/image_history | grep "${BUILD_PROD_VERSION}" > /dev/null
+            if [ $? = 0 ]; then
+                SAME_VERSION=1
+            fi
+
+            if [ $SAME_VERSION = 0 ]; then
+                if [ $SEEN_BEFORE = 0 ]; then
+                    echo "Upgraded to ${BUILD_PROD_VERSION} on `date`" >> /var/opt/tms/image_history
+                else
+                    echo "Reverted to ${BUILD_PROD_VERSION} on `date`" >> /var/opt/tms/image_history
+                fi
+                if [ "$HAVE_UPGRADE_REVERT_GRAFT" = "y" ]; then
+    			upgrade_revert
+		fi
+            fi
+        else
+            echo "Firstboot to ${BUILD_PROD_VERSION} on `date`" >> /var/opt/tms/image_history
+        fi
+
+
+        # Clear state about any forced fallback reboot, as the commit was good
+        rm -f ${ATTEMPTING_FALLBACK_FILE}
+        # See if we have a db from manufacturing to include
+        if [ -f /config/mfg/mfincdb ]; then
+            logger -t mdinit $"Applying manufacturing configuration: "
+            /opt/tms/bin/mddbreq -d /config/mfg/mfincdb \
+		`cat /config/db/active` set modify -
+            RETVAL=$?
+            if [ $RETVAL -ne 0 ]; then
+               logger -t mdinit "failed."
+                return $RETVAL
+            fi
+	    # Save to /config/local/db as well as active db
+	    # in case a quick reload is done as in bug 89321
+            /opt/tms/bin/mddbreq -d /config/mfg/mfincdb \
+		/config/local/db set modify -
+            RETVAL=$?
+            if [ $RETVAL -ne 0 ]; then
+                logger -t mdinit "failed."
+                return $RETVAL
+            fi
+            mv /config/mfg/mfincdb /config/mfg/mfincdb-prev
+        fi
+
+
+	[ $RETVAL -eq 0 ] && touch /var/lock/subsys/mdinit
+	return $RETVAL
+}
+
+stop() {
+        # shutdown shadow device...
+	[ -b /dev/sha ] && [ -x /sbin/shadow_setup.sh ] && \
+		/sbin/shadow_setup.sh -h sha
+	rm -f /var/lock/subsys/mdinit
+	RETVAL=$?
+	return $RETVAL
+}	
+
+restart() {
+  	stop
+	start
+}	
+
+reload() {
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart)
+	stop
+	start
+	;;
+  reload)
+  	reload
+	;;
+  status)
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|status|reload|restart}"
+	exit 1
+esac
+
+exit $?
